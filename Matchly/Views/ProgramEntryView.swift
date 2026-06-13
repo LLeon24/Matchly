@@ -934,6 +934,7 @@ struct ProgramEntryView: View {
                             }
                         }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .navigationTitle(program == nil ? (hospital.isEmpty ? "Add Program" : "") : "Edit Program")
                 .navigationBarTitleDisplayMode(.inline)

@@ -51,83 +51,149 @@ struct Questionnaire: Codable, Equatable {
     }
     
     init() {
-        // Section A — Big-picture priorities
-        let sectionA = QuestionnaireSection(
-            title: "Section A — Big-picture priorities",
-            items: [
-                QuestionnaireItem(question: "Overall \"fit\" / gut feeling from interview day"),
-                QuestionnaireItem(question: "Desired geographic location / ability to live where I want"),
-                QuestionnaireItem(question: "Career goals alignment (academic vs community, research vs clinical)"),
-                QuestionnaireItem(question: "Reputation / program prestige"),
-                QuestionnaireItem(question: "Fellowship opportunities and fellowship match record"),
-                QuestionnaireItem(question: "Job placement / alumni network after residency")
-            ]
+        self.sections = Self.makeStandardSections()
+    }
+
+    /// Stable IDs so questionnaire customization prefs match every new program entry.
+    static func makeStandardSections() -> [QuestionnaireSection] {
+        [
+            standardSection(
+                id: "matchly.section.a",
+                title: "Section A — Big-picture priorities",
+                questions: [
+                    "Overall \"fit\" / gut feeling from interview day",
+                    "Desired geographic location / ability to live where I want",
+                    "Career goals alignment (academic vs community, research vs clinical)",
+                    "Reputation / program prestige",
+                    "Fellowship opportunities and fellowship match record",
+                    "Job placement / alumni network after residency"
+                ]
+            ),
+            standardSection(
+                id: "matchly.section.b",
+                title: "Section B — Training quality & clinical experience",
+                questions: [
+                    "Breadth and depth of clinical exposure (variety of cases)",
+                    "Procedural volume / hands-on opportunities",
+                    "Quality of teaching (faculty commitment to education, protected teaching time)",
+                    "Board pass rates and objective outcomes",
+                    "Strength of simulation, procedural labs, and learning resources",
+                    "Research opportunities & support (funding, mentors, time)"
+                ]
+            ),
+            standardSection(
+                id: "matchly.section.c",
+                title: "Section C — Workload, schedule & lifestyle",
+                questions: [
+                    "Call schedule (frequency, night float vs home call)",
+                    "Typical work hours / resident workload",
+                    "Vacation / parental leave policies and flexibility",
+                    "Opportunities for moonlighting or outside work",
+                    "Salary, benefits, housing stipend if any",
+                    "Cost of living in city / housing availability"
+                ]
+            ),
+            standardSection(
+                id: "matchly.section.d",
+                title: "Section D — Culture, support & wellbeing",
+                questions: [
+                    "Resident camaraderie / morale",
+                    "Program leadership accessibility & responsiveness (PD/APDs)",
+                    "Psychological safety (ability to speak up, reporting mistreatment)",
+                    "Diversity, equity & inclusion climate",
+                    "Mentorship availability (senior resident and faculty mentors)",
+                    "Wellness resources (counseling, time off, wellness stipend)"
+                ]
+            ),
+            standardSection(
+                id: "matchly.section.e",
+                title: "Section E — Practical & logistic items",
+                questions: [
+                    "Clinic structure / outpatient continuity experience",
+                    "Elective flexibility (ability to tailor training)",
+                    "Availability of subspecialty rotations or niche experiences I care about",
+                    "Call coverage/backup, how nights are covered",
+                    "Housing/commute time from hospital",
+                    "Spousal/partner support (job market, community)"
+                ]
+            ),
+            standardSection(
+                id: "matchly.section.f",
+                title: "Section F — Red flags & dealbreakers",
+                questions: [
+                    "Did you observe or hear any concerning behavior from faculty or residents?",
+                    "Are there concerning board pass rates, litigation issues, or program probation history?",
+                    "Do you feel you could see yourself living in this city for the length of training?",
+                    "Any scheduling or leave policies that would be a dealbreaker?"
+                ]
+            )
+        ]
+    }
+
+    private static func standardSection(
+        id: String,
+        title: String,
+        questions: [String]
+    ) -> QuestionnaireSection {
+        QuestionnaireSection(
+            id: id,
+            title: title,
+            items: questions.enumerated().map { index, question in
+                QuestionnaireItem(id: "\(id).q\(index + 1)", question: question)
+            }
         )
-        
-        // Section B — Training quality & clinical experience
-        let sectionB = QuestionnaireSection(
-            title: "Section B — Training quality & clinical experience",
-            items: [
-                QuestionnaireItem(question: "Breadth and depth of clinical exposure (variety of cases)"),
-                QuestionnaireItem(question: "Procedural volume / hands-on opportunities"),
-                QuestionnaireItem(question: "Quality of teaching (faculty commitment to education, protected teaching time)"),
-                QuestionnaireItem(question: "Board pass rates and objective outcomes"),
-                QuestionnaireItem(question: "Strength of simulation, procedural labs, and learning resources"),
-                QuestionnaireItem(question: "Research opportunities & support (funding, mentors, time)")
-            ]
-        )
-        
-        // Section C — Workload, schedule & lifestyle
-        let sectionC = QuestionnaireSection(
-            title: "Section C — Workload, schedule & lifestyle",
-            items: [
-                QuestionnaireItem(question: "Call schedule (frequency, night float vs home call)"),
-                QuestionnaireItem(question: "Typical work hours / resident workload"),
-                QuestionnaireItem(question: "Vacation / parental leave policies and flexibility"),
-                QuestionnaireItem(question: "Opportunities for moonlighting or outside work"),
-                QuestionnaireItem(question: "Salary, benefits, housing stipend if any"),
-                QuestionnaireItem(question: "Cost of living in city / housing availability")
-            ]
-        )
-        
-        // Section D — Culture, support & wellbeing
-        let sectionD = QuestionnaireSection(
-            title: "Section D — Culture, support & wellbeing",
-            items: [
-                QuestionnaireItem(question: "Resident camaraderie / morale"),
-                QuestionnaireItem(question: "Program leadership accessibility & responsiveness (PD/APDs)"),
-                QuestionnaireItem(question: "Psychological safety (ability to speak up, reporting mistreatment)"),
-                QuestionnaireItem(question: "Diversity, equity & inclusion climate"),
-                QuestionnaireItem(question: "Mentorship availability (senior resident and faculty mentors)"),
-                QuestionnaireItem(question: "Wellness resources (counseling, time off, wellness stipend)")
-            ]
-        )
-        
-        // Section E — Practical & logistic items
-        let sectionE = QuestionnaireSection(
-            title: "Section E — Practical & logistic items",
-            items: [
-                QuestionnaireItem(question: "Clinic structure / outpatient continuity experience"),
-                QuestionnaireItem(question: "Elective flexibility (ability to tailor training)"),
-                QuestionnaireItem(question: "Availability of subspecialty rotations or niche experiences I care about"),
-                QuestionnaireItem(question: "Call coverage/backup, how nights are covered"),
-                QuestionnaireItem(question: "Housing/commute time from hospital"),
-                QuestionnaireItem(question: "Spousal/partner support (job market, community)")
-            ]
-        )
-        
-        // Section F — Red flags & dealbreakers (yes/no + comment)
-        let sectionF = QuestionnaireSection(
-            title: "Section F — Red flags & dealbreakers",
-            items: [
-                QuestionnaireItem(question: "Did you observe or hear any concerning behavior from faculty or residents?"),
-                QuestionnaireItem(question: "Are there concerning board pass rates, litigation issues, or program probation history?"),
-                QuestionnaireItem(question: "Do you feel you could see yourself living in this city for the length of training?"),
-                QuestionnaireItem(question: "Any scheduling or leave policies that would be a dealbreaker?")
-            ]
-        )
-        
-        self.sections = [sectionA, sectionB, sectionC, sectionD, sectionE, sectionF]
+    }
+
+    private static func stableSectionId(forTitle title: String) -> String? {
+        makeStandardSections().first { $0.title == title }?.id
+    }
+
+    private static func stableItemId(forQuestion question: String, sectionTitle: String) -> String? {
+        guard let section = makeStandardSections().first(where: { $0.title == sectionTitle }) else { return nil }
+        return section.items.first { $0.question == question }?.id
+    }
+
+    private func sectionIsEnabled(_ section: QuestionnaireSection, preferences: UserPreferences, allSections: [QuestionnaireSection]) -> Bool {
+        if preferences.enabledSectionIds.isEmpty {
+            return true
+        }
+        if preferences.enabledSectionIds.contains(section.id) {
+            return true
+        }
+        if let stableId = Self.stableSectionId(forTitle: section.title),
+           preferences.enabledSectionIds.contains(stableId) {
+            return true
+        }
+        let hasAnyMatch = allSections.contains { candidate in
+            preferences.enabledSectionIds.contains(candidate.id) ||
+            (Self.stableSectionId(forTitle: candidate.title).map { preferences.enabledSectionIds.contains($0) } ?? false)
+        }
+        return !hasAnyMatch
+    }
+
+    private func itemIsEnabled(
+        _ item: QuestionnaireItem,
+        section: QuestionnaireSection,
+        preferences: UserPreferences,
+        candidateItems: [QuestionnaireItem]
+    ) -> Bool {
+        if preferences.enabledQuestionIds.isEmpty {
+            return true
+        }
+        if preferences.enabledQuestionIds.contains(item.id) {
+            return true
+        }
+        if let stableId = Self.stableItemId(forQuestion: item.question, sectionTitle: section.title),
+           preferences.enabledQuestionIds.contains(stableId) {
+            return true
+        }
+        let hasAnyMatch = candidateItems.contains { candidate in
+            preferences.enabledQuestionIds.contains(candidate.id) ||
+            (Self.stableItemId(forQuestion: candidate.question, sectionTitle: section.title).map {
+                preferences.enabledQuestionIds.contains($0)
+            } ?? false)
+        }
+        return !hasAnyMatch
     }
     
     // Calculate total weighted score (0-100) - weighted average of all enabled sections
@@ -140,11 +206,9 @@ struct Questionnaire: Codable, Equatable {
         // Get all enabled sections (standard + custom, excluding red flags)
         let allSections = sections + customSections
         let enabledSections = allSections.filter { section in
-            // Check if section is enabled (empty set = all enabled)
-            if !preferences.enabledSectionIds.isEmpty && !preferences.enabledSectionIds.contains(section.id) {
+            guard sectionIsEnabled(section, preferences: preferences, allSections: allSections) else {
                 return false
             }
-            // Skip red flags section from scoring
             if section.title.contains("Red flags") {
                 return false
             }
@@ -157,9 +221,11 @@ struct Questionnaire: Codable, Equatable {
         for section in enabledSections {
             var sectionRatings: [Double] = []
             
+            let candidateItems = section.items + (preferences.customQuestionsInSections[section.id]?.map {
+                QuestionnaireItem(id: $0.id, question: $0.question)
+            } ?? [])
             for item in section.items {
-                // Check if question is enabled (empty set = all enabled)
-                if !preferences.enabledQuestionIds.isEmpty && !preferences.enabledQuestionIds.contains(item.id) {
+                guard itemIsEnabled(item, section: section, preferences: preferences, candidateItems: candidateItems) else {
                     continue
                 }
                 
@@ -238,12 +304,7 @@ struct Questionnaire: Codable, Equatable {
     func enabledSections(preferences: UserPreferences) -> [QuestionnaireSection] {
         let allSections = sections + customSections
         return allSections.filter { section in
-            // Empty set means all enabled
-            if preferences.enabledSectionIds.isEmpty {
-                return true
-            }
-            // If set is not empty, only return sections that ARE in the enabled set
-            return preferences.enabledSectionIds.contains(section.id)
+            sectionIsEnabled(section, preferences: preferences, allSections: allSections)
         }
     }
     
@@ -260,11 +321,7 @@ struct Questionnaire: Codable, Equatable {
         }
         
         return allItems.filter { item in
-            // Empty set means all enabled
-            if preferences.enabledQuestionIds.isEmpty {
-                return true
-            }
-            return preferences.enabledQuestionIds.contains(item.id)
+            itemIsEnabled(item, section: section, preferences: preferences, candidateItems: allItems)
         }
     }
     

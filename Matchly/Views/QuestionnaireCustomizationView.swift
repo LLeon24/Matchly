@@ -26,7 +26,7 @@ struct QuestionnaireCustomizationView: View {
     private var standardSections: [QuestionnaireSection] {
         // Always return cached sections if available (they have stable IDs from programs)
         // If not cached yet, return empty array (will be populated in onAppear)
-        return cachedStandardSections.isEmpty ? Questionnaire().sections : cachedStandardSections
+        return cachedStandardSections.isEmpty ? Questionnaire.makeStandardSections() : cachedStandardSections
     }
     
     var body: some View {
@@ -279,13 +279,8 @@ struct QuestionnaireCustomizationView: View {
             customSections = dataManager.preferences.customSections
             customQuestionsInSections = dataManager.preferences.customQuestionsInSections
             
-            // Cache standard sections from an existing program if available (to get stable IDs)
-            if let program = dataManager.programs.first {
-                cachedStandardSections = program.questionnaire.sections
-            } else {
-                // No programs yet, use default questionnaire
-                cachedStandardSections = Questionnaire().sections
-            }
+            // Cache standard sections with stable IDs (same template used for new programs)
+            cachedStandardSections = Questionnaire.makeStandardSections()
         }
         .onDisappear {
             // Save preferences
