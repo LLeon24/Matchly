@@ -21,14 +21,20 @@ struct DashboardCardStyle: ViewModifier {
             .padding(.horizontal, 20)
             .padding(.vertical, 20)
             .background(
-                // Elevated card surface that floats on the warm dashboard canvas:
+                // Elevated card surface that floats on the bright dashboard canvas:
                 // pure white in light mode, elevated dark gray in dark mode so
                 // sections stay clearly distinguishable against the bright canvas.
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
                     .fill(AppColors.dashboardCard)
             )
+            // Ultra-subtle hairline so each card still reads distinctly even when
+            // the canvas is near-white (adaptive: faint dark in light, faint light in dark).
+            .overlay(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.05), lineWidth: 0.5)
+            )
             // Soft, diffuse shadow for a premium "floating card" feel.
-            .shadow(color: Color.black.opacity(0.07), radius: 18, x: 0, y: 8)
+            .shadow(color: Color.black.opacity(0.09), radius: 18, x: 0, y: 8)
     }
 }
 

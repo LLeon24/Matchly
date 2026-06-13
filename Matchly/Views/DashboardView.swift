@@ -226,7 +226,7 @@ struct DashboardView: View {
 
     // MARK: - Section Pages
 
-    /// 1) Overview — Match Readiness hero + application funnel + quick actions.
+    /// 1) Overview — Average Score hero + Needs Attention to-dos + funnel + quick actions.
     private var overviewPage: some View {
         ScrollView {
             VStack(spacing: 14) {
@@ -234,11 +234,13 @@ struct DashboardView: View {
                     score: averageScore,
                     progress: matchProgress,
                     bigNumber: String(format: "%.0f", averageScore),
-                    unit: "Avg Score",
-                    title: "Match Readiness",
-                    subtitle: "Average score across \(dataManager.programs.count) program\(dataManager.programs.count == 1 ? "" : "s")"
+                    unit: "/ 100",
+                    title: "Average Score",
+                    subtitle: averageScoreSubtitle
                 )
                 .dashboardCardStyle()
+
+                needsAttentionCard
 
                 VStack(alignment: .leading, spacing: 14) {
                     DashboardSectionHeader(
@@ -380,6 +382,104 @@ struct DashboardView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 24)
         .dashboardCardStyle()
+    }
+
+    // MARK: - Overview: Needs Attention
+
+    /// Honest subtitle for the Average Score hero.
+    private var averageScoreSubtitle: String {
+        let count = dataManager.programs.count
+        let scored = dataManager.programs.filter { $0.finalScore > 0 }.count
+        if scored == 0 {
+            return "Rate programs to build your average"
+        }
+        return "Across \(scored) scored program\(scored == 1 ? "" : "s") of \(count)"
+    }
+
+    /// Actionable to-dos surfaced from existing data, each routing to the
+    /// matching existing screen. Shows an "all caught up" state when empty.
+    private var needsAttentionCard: some View {
+        let items = Array(getNextSteps().prefix(4))
+
+        return VStack(alignment: .leading, spacing: 12) {
+            DashboardSectionHeader(
+                title: "Needs Attention",
+                icon: "bell.badge.fill",
+                tint: AppColors.accentOrange
+            )
+
+            if items.isEmpty {
+                HStack(spacing: 12) {
+                    ZStack {
+                        Circle()
+                            .fill(AppColors.accentGreen.opacity(0.15))
+                            .frame(width: 44, height: 44)
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.arial(size: 20, weight: .semibold))
+                            .foregroundColor(AppColors.accentGreen)
+                            .symbolRenderingMode(.hierarchical)
+                    }
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("You're all caught up")
+                            .font(.arial(size: 15, weight: .semibold))
+                            .foregroundColor(.primary)
+                        Text("No pending reviews or flags right now")
+                            .font(.arial(size: 13))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.vertical, 4)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(Array(items.enumerated()), id: \.offset) { _, step in
+                        NavigationLink(destination: step.destination) {
+                            attentionRow(step)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .dashboardCardStyle()
+    }
+
+    @ViewBuilder
+    private func attentionRow(_ step: NextStep) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(step.color.opacity(0.15))
+                    .frame(width: 44, height: 44)
+                Image(systemName: step.icon)
+                    .font(.arial(size: 18, weight: .semibold))
+                    .foregroundColor(step.color)
+                    .symbolRenderingMode(.hierarchical)
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(step.title)
+                    .font(.arial(size: 15, weight: .semibold))
+                    .foregroundColor(.primary)
+                if !step.subtitle.isEmpty {
+                    Text(step.subtitle)
+                        .font(.arial(size: 13))
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            Image(systemName: "chevron.right")
+                .font(.arial(size: 12, weight: .semibold))
+                .foregroundColor(.secondary.opacity(0.5))
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(step.color.opacity(0.08))
+        )
     }
 
     // MARK: - Derived Metrics for Pages
@@ -1550,13 +1650,13 @@ struct DashboardView: View {
     private func getNextSteps() -> [NextStep] {
         var steps: [NextStep] = []
         
-        // Programs needing review
+        // Programs needing review (pending questionnaires)
         if programsNeedingReview > 0 {
             steps.append(NextStep(
                 title: "Review \(programsNeedingReview) program\(programsNeedingReview == 1 ? "" : "s")",
-                subtitle: "Complete missing data",
-                icon: "exclamationmark.triangle.fill",
-                color: .red,
+                subtitle: "Complete questionnaire data",
+                icon: "square.and.pencil",
+                color: AppColors.accentOrange,
                 destination: AnyView(ProgramsNeedingReviewView())
             ))
         }
@@ -1568,12 +1668,12 @@ struct DashboardView: View {
                 title: "Add interview dates",
                 subtitle: "\(programsWithoutInterviews.count) program\(programsWithoutInterviews.count == 1 ? "" : "s") missing dates",
                 icon: "calendar.badge.plus",
-                color: .blue,
+                color: AppColors.primaryBlue,
                 destination: AnyView(InterviewsView())
             ))
         }
         
-        // Red flags
+        // Red flags (genuine warning — keep red)
         if redFlaggedProgramsCount > 0 {
             steps.append(NextStep(
                 title: "Review \(redFlaggedProgramsCount) red flag\(redFlaggedProgramsCount == 1 ? "" : "s")",

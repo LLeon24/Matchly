@@ -110,11 +110,12 @@ struct AppColors {
     static let cardBackground = Color(.systemBackground)
     static let cardBackgroundAccent = Color(.secondarySystemBackground)
 
-    // Warm, bright dashboard canvas (Monarch-style).
-    // Light: very light warm off-white/cream (~#FAF8F5) so white cards still pop.
-    // Dark: a proper near-black warm dark so elevated cards stand out clearly.
+    // Bright, clean dashboard canvas (Monarch-style).
+    // Light: crisp near-white with only a whisper of coolness (no yellow/cream
+    // cast) so it reads light & happy; white cards still separate via shadow.
+    // Dark: a proper near-black so elevated cards stand out clearly.
     static let dashboardCanvas = Color(
-        light: Color(red: 0.980, green: 0.972, blue: 0.960),
+        light: Color(red: 0.965, green: 0.969, blue: 0.976),
         dark: Color(red: 0.071, green: 0.071, blue: 0.078)
     )
 
