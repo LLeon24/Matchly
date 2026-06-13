@@ -1,0 +1,33 @@
+[
+  {
+    "id": "1403821100",
+    "name": "Internal Medicine",
+    "hospital": "Johns Hopkins Hospital",
+    "city": "Baltimore",
+    "state": "MD",
+    "specialty": "Internal Medicine",
+    "type": "Academic",
+    "accreditationID": "1403821100"
+  },
+  {
+    "id": "1403821101",
+    "name": "Internal Medicine",
+    "hospital": "Massachusetts General Hospital",
+    "city": "Boston",
+    "state": "MA",
+    "specialty": "Internal Medicine",
+    "type": "Academic",
+    "accreditationID": "1403821101"
+  },
+  {
+    "id": "1403821102",
+    "name": "Internal Medicine",
+    "hospital": "Brigham and Women's Hospital",
+    "city": "Boston",
+    "state": "MA",
+    "specialty": "Internal Medicine",
+    "type": "Academic",
+    "accreditationID": "1403821102"
+  }
+]
+
