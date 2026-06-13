@@ -9,7 +9,7 @@ import SwiftUI
 
 struct InviteManagementView: View {
     @EnvironmentObject var dataManager: DataManager
-    @StateObject private var authManager = AuthManager.shared
+    @ObservedObject private var authManager = AuthManager.shared
     @Environment(\.dismiss) var dismiss
     
     var pendingReceivedInvites: [CoupleInvite] {
@@ -58,14 +58,14 @@ struct InviteManagementView: View {
                     Section {
                         VStack(spacing: 16) {
                             Image(systemName: "envelope")
-                                .font(.system(size: 48))
+                                .font(.arial(size: 48))
                                 .foregroundColor(.secondary)
                             
                             Text("No Pending Invites")
-                                .font(.system(size: 18, weight: .semibold))
+                                .font(.arial(size: 18, weight: .semibold))
                             
                             Text("You don't have any pending invites.")
-                                .font(.system(size: 14))
+                                .font(.arial(size: 14))
                                 .foregroundColor(.secondary)
                                 .multilineTextAlignment(.center)
                         }
@@ -74,6 +74,8 @@ struct InviteManagementView: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .appCanvasBackground()
             .navigationTitle("Invites")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -161,14 +163,14 @@ struct InviteRowView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(isReceived ? "From:" : "To:")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.arial(size: 12, weight: .medium))
                         .foregroundColor(.secondary)
                     Text(isReceived ? invite.fromUserName : (invite.toUserEmail ?? "Unknown"))
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.arial(size: 16, weight: .semibold))
                     
                     if let email = isReceived ? invite.fromUserEmail : invite.toUserEmail {
                         Text(email)
-                            .font(.system(size: 13))
+                            .font(.arial(size: 13))
                             .foregroundColor(.secondary)
                     }
                 }
@@ -179,48 +181,46 @@ struct InviteRowView: View {
                     HStack(spacing: 8) {
                         Button(action: onAccept) {
                             Text("Accept")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(.white)
+                                .font(.arial(size: 14, weight: .semibold))
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 8)
-                                .background(Color.blue)
-                                .cornerRadius(8)
                         }
+                        .buttonStyle(.glassProminent)
+                        .tint(AppColors.primaryBlue)
                         
                         Button(action: onDecline) {
                             Text("Decline")
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.arial(size: 14, weight: .semibold))
                                 .foregroundColor(.red)
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 8)
-                                .background(Color.red.opacity(0.1))
-                                .cornerRadius(8)
                         }
+                        .buttonStyle(.glass)
                     }
                 } else {
                     Button(action: onDecline) {
                         Text("Cancel")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.arial(size: 14, weight: .semibold))
                             .foregroundColor(.red)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 8)
-                            .background(Color.red.opacity(0.1))
-                            .cornerRadius(8)
                     }
+                    .buttonStyle(.glass)
                 }
             }
             
             if isReceived {
                 Text("Tap Accept to link accounts and start couples matching.")
-                    .font(.system(size: 12))
+                    .font(.arial(size: 12))
                     .foregroundColor(.secondary)
             } else {
                 Text("Waiting for response...")
-                    .font(.system(size: 12))
+                    .font(.arial(size: 12))
                     .foregroundColor(.secondary)
             }
         }
         .padding(.vertical, 4)
+        .glassPanelStyle(cornerRadius: 14)
     }
 }
 

@@ -9,7 +9,7 @@ import SwiftUI
 
 struct PhoneLoginView: View {
     @Environment(\.dismiss) var dismiss
-    @StateObject private var authManager = AuthManager.shared
+    @ObservedObject private var authManager = AuthManager.shared
     @State private var phoneNumber = ""
     @State private var verificationCode = ""
     @State private var isCodeSent = false
@@ -20,22 +20,33 @@ struct PhoneLoginView: View {
         NavigationView {
             Form {
                 Section {
-                    if !isCodeSent {
-                        TextField("Phone Number", text: $phoneNumber)
-                            .textContentType(.telephoneNumber)
-                            .keyboardType(.phonePad)
-                            .onChange(of: phoneNumber) { oldValue, newValue in
-                                // Format phone number
-                                phoneNumber = formatPhoneNumber(newValue)
+                    Group {
+                        if !isCodeSent {
+                            TextField("Phone Number", text: $phoneNumber)
+                                .textContentType(.telephoneNumber)
+                                .keyboardType(.phonePad)
+                                .onChange(of: phoneNumber) { oldValue, newValue in
+                                    phoneNumber = formatPhoneNumber(newValue)
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 12)
+                                .glassEffect(.regular, in: .capsule)
+                        } else {
+                            VStack(spacing: 12) {
+                                Text(phoneNumber)
+                                    .foregroundColor(.secondary)
+                                
+                                TextField("Verification Code", text: $verificationCode)
+                                    .textContentType(.oneTimeCode)
+                                    .keyboardType(.numberPad)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 12)
+                                    .glassEffect(.regular, in: .capsule)
                             }
-                    } else {
-                        Text(phoneNumber)
-                            .foregroundColor(.secondary)
-                        
-                        TextField("Verification Code", text: $verificationCode)
-                            .textContentType(.oneTimeCode)
-                            .keyboardType(.numberPad)
+                        }
                     }
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    .listRowBackground(Color.clear)
                 } header: {
                     Text(isCodeSent ? "Enter Verification Code" : "Phone Number")
                 } footer: {
@@ -71,7 +82,11 @@ struct PhoneLoginView: View {
                             Spacer()
                         }
                     }
+                    .buttonStyle(.glassProminent)
+                    .tint(AppColors.primaryBlue)
                     .disabled(isLoading || phoneNumber.isEmpty || (isCodeSent && verificationCode.isEmpty))
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    .listRowBackground(Color.clear)
                     
                     if isCodeSent {
                         Button(action: {
@@ -84,6 +99,8 @@ struct PhoneLoginView: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .appCanvasBackground()
             .navigationTitle("Phone Sign In")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

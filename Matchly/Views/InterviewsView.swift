@@ -10,7 +10,7 @@ import EventKit
 
 struct InterviewsView: View {
     @EnvironmentObject var dataManager: DataManager
-    @StateObject private var calendarManager = CalendarManager.shared
+    @ObservedObject private var calendarManager = CalendarManager.shared
     @State private var viewMode: ViewMode = .list
     @State private var selectedMonth: Date = Date()
     @State private var selectedDate: Date?
@@ -50,6 +50,8 @@ struct InterviewsView: View {
             .pickerStyle(.segmented)
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
+            .glassEffect(.regular, in: .rect(cornerRadius: 12))
+            .padding(.horizontal, 16)
             
             if viewMode == .list {
                 listView
@@ -59,6 +61,7 @@ struct InterviewsView: View {
         }
         .navigationTitle("Interviews")
         .navigationBarTitleDisplayMode(.large)
+        .appCanvasBackground()
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: {
@@ -71,10 +74,11 @@ struct InterviewsView: View {
                             .scaleEffect(0.8)
                     } else {
                         Image(systemName: "calendar.badge.plus")
-                            .font(.system(size: 16))
+                            .font(.arial(size: 16))
                     }
                 }
                 .disabled(isCreatingEvents || allInterviews.isEmpty)
+                .accessibilityLabel("Add interviews to calendar")
             }
         }
         .alert("Calendar Access Required", isPresented: $showCalendarPermissionAlert) {
@@ -162,16 +166,16 @@ struct InterviewsView: View {
                                 Image(systemName: calendarManager.calendarAccessGranted ? "calendar.badge.checkmark" : "calendar.badge.exclamationmark")
                                     .foregroundColor(calendarManager.calendarAccessGranted ? .green : .orange)
                                 Text("Calendar Sync")
-                                    .font(.system(size: 15, weight: .medium))
+                                    .font(.arial(size: 15, weight: .medium))
                             }
                             
                             if calendarManager.calendarAccessGranted {
                                 Text("Interviews will be added to \"\(calendarManager.matchlyCalendar?.title ?? "Matchly Interviews")\" calendar")
-                                    .font(.system(size: 13))
+                                    .font(.arial(size: 13))
                                     .foregroundColor(.secondary)
                             } else {
                                 Text("Enable calendar access to create interview events")
-                                    .font(.system(size: 13))
+                                    .font(.arial(size: 13))
                                     .foregroundColor(.secondary)
                             }
                         }
@@ -188,17 +192,22 @@ struct InterviewsView: View {
                                     .scaleEffect(0.8)
                             } else {
                                 Text(calendarManager.calendarAccessGranted ? "Sync Now" : "Enable")
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundColor(.white)
+                                    .font(.arial(size: 14, weight: .medium))
                                     .padding(.horizontal, 16)
                                     .padding(.vertical, 8)
-                                    .background(calendarManager.calendarAccessGranted ? Color.blue : Color.orange)
-                                    .cornerRadius(8)
                             }
                         }
+                        .buttonStyle(.glassProminent)
+                        .tint(calendarManager.calendarAccessGranted ? AppColors.primaryBlue : .orange)
                         .disabled(isCreatingEvents || allInterviews.isEmpty)
                     }
                     .padding(.vertical, 4)
+                    .listRowBackground(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(.clear)
+                            .glassEffect(.regular, in: .rect(cornerRadius: 16))
+                            .padding(.vertical, 4)
+                    )
                 } header: {
                     Text("Calendar")
                 } footer: {
@@ -213,14 +222,14 @@ struct InterviewsView: View {
             if upcomingInterviews.isEmpty && pastInterviews.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "calendar.badge.exclamationmark")
-                        .font(.system(size: 60))
+                        .font(.arial(size: 60))
                         .foregroundColor(.secondary)
                     
                     Text("No Interviews Scheduled")
-                        .font(.system(size: 20, weight: .bold))
+                        .font(.arial(size: 20, weight: .bold))
                     
                     Text("Add interview dates to your programs to track them here")
-                        .font(.system(size: 15))
+                        .font(.arial(size: 15))
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                 }
@@ -239,7 +248,7 @@ struct InterviewsView: View {
                         }
                     } header: {
                         Text("Upcoming (\(upcomingInterviews.count))")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.arial(size: 13, weight: .semibold))
                             .foregroundColor(.secondary)
                     }
                 }
@@ -254,7 +263,7 @@ struct InterviewsView: View {
                         }
                     } header: {
                         Text("Past (\(pastInterviews.count))")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.arial(size: 13, weight: .semibold))
                             .foregroundColor(.secondary)
                     }
                 }
@@ -273,15 +282,16 @@ struct InterviewsView: View {
                     }
                 }) {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.arial(size: 16, weight: .semibold))
                         .foregroundColor(.blue)
                         .padding(8)
                 }
+                .accessibilityLabel("Previous month")
                 
                 Spacer()
                 
-                Text(monthYearFormatter.string(from: selectedMonth))
-                    .font(.system(size: 20, weight: .bold))
+                Text(Self.monthYearFormatter.string(from: selectedMonth))
+                    .font(.arial(size: 20, weight: .bold))
                 
                 Spacer()
                 
@@ -291,14 +301,16 @@ struct InterviewsView: View {
                     }
                 }) {
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.arial(size: 16, weight: .semibold))
                         .foregroundColor(.blue)
                         .padding(8)
                 }
+                .accessibilityLabel("Next month")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
-            .background(Color(.systemBackground))
+            .glassEffect(.regular, in: .rect(cornerRadius: 12))
+            .padding(.horizontal, 16)
             
             // Calendar Grid
             CalendarGridView(
@@ -314,8 +326,8 @@ struct InterviewsView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Divider()
                         
-                        Text("Interviews on \(dayDateFormatter.string(from: selectedDate))")
-                            .font(.system(size: 16, weight: .semibold))
+                        Text("Interviews on \(Self.dayDateFormatter.string(from: selectedDate))")
+                            .font(.arial(size: 16, weight: .semibold))
                             .padding(.horizontal, 16)
                             .padding(.top, 8)
                         
@@ -332,7 +344,7 @@ struct InterviewsView: View {
                         }
                         .padding(.bottom, 8)
                     }
-                    .background(Color(.systemBackground))
+                    .glassEffect(.regular, in: .rect(cornerRadius: 12))
                 }
             }
         }
@@ -346,23 +358,17 @@ struct InterviewsView: View {
         }
     }
     
-    private var monthYearFormatter: DateFormatter {
+    private static let monthYearFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMMM yyyy"
         return formatter
-    }
+    }()
     
-    private var dayDateFormatter: DateFormatter {
+    private static let dayDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "EEEE, MMMM d"
         return formatter
-    }
-    
-    private var monthFormatter: DateFormatter {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMMM yyyy"
-        return formatter
-    }
+    }()
 }
 
 // MARK: - Calendar Grid View
@@ -439,13 +445,13 @@ struct CalendarGridView: View {
             HStack(spacing: 0) {
                 ForEach(weekdays, id: \.self) { weekday in
                     Text(weekday)
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.arial(size: 12, weight: .medium))
                         .foregroundColor(.secondary)
                         .frame(maxWidth: .infinity)
                 }
             }
             .padding(.vertical, 8)
-            .background(Color(.systemGray6))
+            .glassEffect(.regular, in: .rect(cornerRadius: 12))
             
             // Calendar grid
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7), spacing: 0) {
@@ -477,7 +483,8 @@ struct CalendarGridView: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 8)
         }
-        .background(Color(.systemBackground))
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+        .padding(.horizontal, 16)
         .padding(.bottom, 90) // Space for custom tab bar
     }
 }
@@ -497,7 +504,7 @@ struct CalendarDayView: View {
     var body: some View {
         VStack(spacing: 2) {
             Text("\(dayNumber)")
-                .font(.system(size: 16, weight: isToday || isSelected ? .bold : .regular))
+                .font(.arial(size: 16, weight: isToday || isSelected ? .bold : .regular))
                 .foregroundColor(textColor)
             
             if hasInterview {
@@ -551,35 +558,37 @@ struct CompactInterviewCard: View {
             if let date = program.interviewDate {
                 HStack(spacing: 4) {
                     Image(systemName: "clock")
-                        .font(.system(size: 10))
-                    Text(timeFormatter.string(from: date))
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.arial(size: 10))
+                    Text(Self.timeFormatter.string(from: date))
+                        .font(.arial(size: 11, weight: .medium))
                 }
                 .foregroundColor(.blue)
             }
             
             Text(HospitalNameFormatter.format(program.hospital.isEmpty ? program.name : program.hospital))
-                .font(.system(size: 14, weight: .semibold))
+                .font(.arial(size: 14, weight: .semibold))
                 .lineLimit(2)
             
             if !program.city.isEmpty && !program.state.isEmpty {
                 Text("\(program.city), \(program.state)")
-                    .font(.system(size: 12))
+                    .font(.arial(size: 12))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
             }
         }
         .padding(12)
         .frame(width: 160)
-        .background(Color.blue.opacity(0.08))
-        .cornerRadius(10)
+        .glassEffect(
+            .regular.tint(Color.blue.opacity(0.12)),
+            in: .rect(cornerRadius: 10)
+        )
     }
     
-    private var timeFormatter: DateFormatter {
+    private static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "h:mm a"
         return formatter
-    }
+    }()
 }
 
 struct InterviewRow: View {
@@ -591,38 +600,42 @@ struct InterviewRow: View {
             // Date indicator
             VStack(spacing: 2) {
                 if let date = program.interviewDate {
-                    Text(dayFormatter.string(from: date))
-                        .font(.system(size: 20, weight: .bold))
+                    Text(Self.dayFormatter.string(from: date))
+                        .font(.arial(size: 20, weight: .bold))
                         .foregroundColor(isUpcoming ? .blue : .secondary)
                     
-                    Text(monthFormatter.string(from: date))
-                        .font(.system(size: 11, weight: .medium))
+                    Text(Self.monthFormatter.string(from: date))
+                        .font(.arial(size: 11, weight: .medium))
                         .foregroundColor(.secondary)
                 }
             }
             .frame(width: 50)
             .padding(.vertical, 8)
-            .background(isUpcoming ? Color.blue.opacity(0.1) : Color(.systemGray5))
-            .cornerRadius(8)
+            .glassEffect(
+                isUpcoming
+                    ? .regular.tint(Color.blue.opacity(0.18)).interactive()
+                    : .regular,
+                in: .rect(cornerRadius: 8)
+            )
             
             // Program info
             VStack(alignment: .leading, spacing: 4) {
                 Text(HospitalNameFormatter.format(program.hospital.isEmpty ? program.name : program.hospital))
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.arial(size: 16, weight: .semibold))
                     .lineLimit(2)
                 
                 if !program.city.isEmpty && !program.state.isEmpty {
                     Text("\(program.city), \(program.state)")
-                        .font(.system(size: 13))
+                        .font(.arial(size: 13))
                         .foregroundColor(.secondary)
                 }
                 
                 if let date = program.interviewDate {
                     HStack(spacing: 4) {
                         Image(systemName: "clock")
-                            .font(.system(size: 11))
-                        Text(timeFormatter.string(from: date))
-                            .font(.system(size: 12))
+                            .font(.arial(size: 11))
+                        Text(Self.timeFormatter.string(from: date))
+                            .font(.arial(size: 12))
                     }
                     .foregroundColor(.secondary)
                 }
@@ -636,10 +649,10 @@ struct InterviewRow: View {
                     let daysUntil = Calendar.current.dateComponents([.day], from: Date(), to: date).day ?? 0
                     VStack(spacing: 2) {
                         Text("\(daysUntil)")
-                            .font(.system(size: 18, weight: .bold))
+                            .font(.arial(size: 18, weight: .bold))
                             .foregroundColor(.blue)
                         Text("days")
-                            .font(.system(size: 10))
+                            .font(.arial(size: 10))
                             .foregroundColor(.secondary)
                     }
                 }
@@ -648,113 +661,23 @@ struct InterviewRow: View {
         .padding(.vertical, 8)
     }
     
-    private var dayFormatter: DateFormatter {
+    private static let dayFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "d"
         return formatter
-    }
+    }()
     
-    private var monthFormatter: DateFormatter {
+    private static let monthFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM"
         return formatter
-    }
+    }()
     
-    private var timeFormatter: DateFormatter {
+    private static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "h:mm a"
         return formatter
-    }
-}
-
-struct CalendarInterviewRow: View {
-    let program: Program
-    
-    var body: some View {
-        HStack(spacing: 12) {
-            // Calendar icon with date
-            VStack(spacing: 2) {
-                if let date = program.interviewDate {
-                    Text(dayFormatter.string(from: date))
-                        .font(.system(size: 22, weight: .bold))
-                        .foregroundColor(.blue)
-                    
-                    Text(monthFormatter.string(from: date))
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(.secondary)
-                }
-            }
-            .frame(width: 60)
-            .padding(.vertical, 10)
-            .background(Color.blue.opacity(0.1))
-            .cornerRadius(10)
-            
-            VStack(alignment: .leading, spacing: 6) {
-                Text(HospitalNameFormatter.format(program.hospital.isEmpty ? program.name : program.hospital))
-                    .font(.system(size: 16, weight: .semibold))
-                    .lineLimit(2)
-                
-                if !program.city.isEmpty && !program.state.isEmpty {
-                    Text("\(program.city), \(program.state)")
-                        .font(.system(size: 13))
-                        .foregroundColor(.secondary)
-                }
-                
-                if let date = program.interviewDate {
-                    HStack(spacing: 6) {
-                        Image(systemName: "clock")
-                            .font(.system(size: 11))
-                        Text(fullDateFormatter.string(from: date))
-                            .font(.system(size: 12))
-                    }
-                    .foregroundColor(.secondary)
-                }
-            }
-            
-            Spacer()
-            
-            if program.finalScore > 0 {
-                VStack(spacing: 2) {
-                    Text(String(format: "%.0f", program.finalScore))
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(scoreColor(program.finalScore))
-                    Text("score")
-                        .font(.system(size: 9))
-                        .foregroundColor(.secondary)
-                }
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(Color(.systemBackground))
-        .cornerRadius(12)
-        .shadow(color: Color.black.opacity(0.04), radius: 2, x: 0, y: 1)
-    }
-    
-    private var dayFormatter: DateFormatter {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "d"
-        return formatter
-    }
-    
-    private var monthFormatter: DateFormatter {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM"
-        return formatter
-    }
-    
-    private var fullDateFormatter: DateFormatter {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEEE, MMM d 'at' h:mm a"
-        return formatter
-    }
-    
-    private func scoreColor(_ score: Double) -> Color {
-        if score >= 80 { return .green }
-        if score >= 60 { return .blue }
-        if score >= 40 { return .orange }
-        return .red
-    }
+    }()
 }
 
 #Preview {

@@ -30,29 +30,30 @@ struct AllSignaledProgramsView: View {
                 // Empty state
                 VStack(spacing: 16) {
                     Image(systemName: "star.circle")
-                        .font(.system(size: 48))
+                        .font(.arial(size: 48))
                         .foregroundColor(.secondary)
                     
                     Text("No Signals Assigned")
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.arial(size: 18, weight: .semibold))
                     
                     Text("You haven't assigned any signals yet")
-                        .font(.system(size: 14))
+                        .font(.arial(size: 14))
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 60)
+                .glassCardStyle(cornerRadius: 20)
             } else {
                 List {
                     ForEach(sortedSpecialties, id: \.self) { specialty in
                         Section(header: 
                             HStack(spacing: 6) {
                                 Image(systemName: "stethoscope")
-                                    .font(.system(size: 12))
+                                    .font(.arial(size: 12))
                                     .foregroundColor(SpecialtyFormatter.color(for: specialty))
                                 Text("\(specialty) (\(SpecialtyFormatter.abbreviation(for: specialty)))")
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.arial(size: 13, weight: .semibold))
                                 
                                 Spacer()
                                 
@@ -66,9 +67,9 @@ struct AllSignaledProgramsView: View {
                                         if usage.goldLimit > 0 {
                                             HStack(spacing: 2) {
                                                 Image(systemName: "star.fill")
-                                                    .font(.system(size: 9))
+                                                    .font(.arial(size: 9))
                                                 Text("\(usage.goldUsed)/\(usage.goldLimit)")
-                                                    .font(.system(size: 10, weight: .medium))
+                                                    .font(.arial(size: 10, weight: .medium))
                                             }
                                             .foregroundColor(.yellow)
                                         }
@@ -77,9 +78,9 @@ struct AllSignaledProgramsView: View {
                                         if usage.silverLimit > 0 {
                                             HStack(spacing: 2) {
                                                 Image(systemName: "star")
-                                                    .font(.system(size: 9))
+                                                    .font(.arial(size: 9))
                                                 Text("\(usage.silverUsed)/\(usage.silverLimit)")
-                                                    .font(.system(size: 10, weight: .medium))
+                                                    .font(.arial(size: 10, weight: .medium))
                                             }
                                             .foregroundColor(.gray)
                                         }
@@ -89,9 +90,9 @@ struct AllSignaledProgramsView: View {
                                     if usage.goldLimit > 0 {
                                         HStack(spacing: 2) {
                                             Image(systemName: "star.fill")
-                                                .font(.system(size: 9))
+                                                .font(.arial(size: 9))
                                             Text("\(usage.goldUsed)/\(usage.goldLimit)")
-                                                .font(.system(size: 10, weight: .medium))
+                                                .font(.arial(size: 10, weight: .medium))
                                         }
                                         .foregroundColor(.blue)
                                     }
@@ -111,42 +112,21 @@ struct AllSignaledProgramsView: View {
                                             
                                             VStack(spacing: 0) {
                                                 Image(systemName: "star.fill")
-                                                    .font(.system(size: 9))
+                                                    .font(.arial(size: 9))
                                                     .foregroundColor(scoreColor(program.finalScore))
                                                 Text(String(format: "%.0f", program.finalScore))
-                                                    .font(.system(size: 15, weight: .bold))
+                                                    .font(.arial(size: 15, weight: .bold))
                                                     .foregroundColor(scoreColor(program.finalScore))
                                             }
                                         }
                                         
                                         // Program info - matching ProgramsListView style
                                         VStack(alignment: .leading, spacing: 3) {
-                                            // Hospital name with signal indicator
-                                            HStack(spacing: 6) {
-                                                Text(HospitalNameFormatter.format(program.hospital.isEmpty ? (program.name.isEmpty ? "Unnamed Program" : program.name) : program.hospital))
-                                                    .font(.system(size: 15, weight: .semibold))
-                                                    .lineLimit(2)
-                                                
-                                                // Red flag indicator
-                                                if program.hasRedFlags() {
-                                                    Image(systemName: "exclamationmark.triangle.fill")
-                                                        .font(.system(size: 12))
-                                                        .foregroundColor(.red)
-                                                }
-                                                
-                                                // Signal indicator - show different icons for tiered vs single-level
-                                                if SignalLimits.isTiered(for: program.specialty) {
-                                                    // Tiered: Gold = filled star (yellow), Silver = empty star (gray)
-                                                    Image(systemName: program.signalType == .gold ? "star.fill" : "star")
-                                                        .font(.system(size: 11))
-                                                        .foregroundColor(program.signalType == .gold ? .yellow : .gray)
-                                                } else {
-                                                    // Single-level: always filled star (blue)
-                                                    Image(systemName: "star.fill")
-                                                        .font(.system(size: 11))
-                                                        .foregroundColor(.blue)
-                                                }
-                                            }
+                                            // Hospital name
+                                            Text(HospitalNameFormatter.format(program.hospital.isEmpty ? (program.name.isEmpty ? "Unnamed Program" : program.name) : program.hospital))
+                                                .font(.arial(size: 15, weight: .semibold))
+                                                .lineLimit(3)
+                                                .fixedSize(horizontal: false, vertical: true)
                                             
                                             // Specialty badge - matching ProgramsListView
                                             if !program.specialty.isEmpty {
@@ -155,15 +135,14 @@ struct AllSignaledProgramsView: View {
                                                 
                                                 HStack(spacing: 3) {
                                                     Image(systemName: "stethoscope")
-                                                        .font(.system(size: 8))
+                                                        .font(.arial(size: 8))
                                                     Text(specialtyAbbrev)
-                                                        .font(.system(size: 10, weight: .semibold))
+                                                        .font(.arial(size: 10, weight: .semibold))
                                                 }
                                                 .foregroundColor(specialtyColor)
                                                 .padding(.horizontal, 6)
                                                 .padding(.vertical, 2)
-                                                .background(specialtyColor.opacity(0.15))
-                                                .cornerRadius(4)
+                                                .glassChipStyle(tint: specialtyColor, interactive: false)
                                             }
                                             
                                             // Location and Accreditation ID on first line - matching ProgramsListView
@@ -172,9 +151,9 @@ struct AllSignaledProgramsView: View {
                                                 if !program.city.isEmpty && !program.state.isEmpty {
                                                     HStack(spacing: 3) {
                                                         Image(systemName: "mappin.circle.fill")
-                                                            .font(.system(size: 9))
+                                                            .font(.arial(size: 9))
                                                         Text("\(program.city), \(program.state)")
-                                                            .font(.system(size: 11))
+                                                            .font(.arial(size: 11))
                                                     }
                                                     .foregroundColor(.secondary)
                                                 }
@@ -183,11 +162,11 @@ struct AllSignaledProgramsView: View {
                                                 if let acgmeID = program.accreditationID, !acgmeID.isEmpty {
                                                     HStack(spacing: 2) {
                                                         Image(systemName: "number.circle.fill")
-                                                            .font(.system(size: 9))
+                                                            .font(.arial(size: 9))
                                                         Text("ID:")
-                                                            .font(.system(size: 10, weight: .medium))
+                                                            .font(.arial(size: 10, weight: .medium))
                                                         Text(acgmeID)
-                                                            .font(.system(size: 11, weight: .medium))
+                                                            .font(.arial(size: 11, weight: .medium))
                                                     }
                                                     .foregroundColor(.secondary)
                                                 }
@@ -199,9 +178,9 @@ struct AllSignaledProgramsView: View {
                                                 if !program.type.isEmpty {
                                                     HStack(spacing: 3) {
                                                         Image(systemName: programTypeIcon(program.type))
-                                                            .font(.system(size: 8))
+                                                            .font(.arial(size: 8))
                                                         Text(program.type)
-                                                            .font(.system(size: 10, weight: .medium))
+                                                            .font(.arial(size: 10, weight: .medium))
                                                     }
                                                     .foregroundColor(programTypeColor(program.type))
                                                 }
@@ -211,11 +190,44 @@ struct AllSignaledProgramsView: View {
                                                 if imgStatus == true {
                                                     HStack(spacing: 3) {
                                                         Image(systemName: "globe.americas.fill")
-                                                            .font(.system(size: 8))
+                                                            .font(.arial(size: 8))
                                                         Text("IMG")
-                                                            .font(.system(size: 10, weight: .medium))
+                                                            .font(.arial(size: 10, weight: .medium))
                                                     }
                                                     .foregroundColor(.purple)
+                                                }
+                                            }
+                                            
+                                            // Signal and Red Flags on third line
+                                            HStack(spacing: 8) {
+                                                // Signal indicator - clear tag showing signal type
+                                                if program.signalType != .none {
+                                                    let isTiered = SignalLimits.isTiered(for: program.specialty)
+                                                    let signalText = isTiered 
+                                                        ? (program.signalType == .gold ? "Gold Signal" : "Silver Signal")
+                                                        : "Signal"
+                                                    let signalColor = isTiered
+                                                        ? (program.signalType == .gold ? Color.yellow : Color(white: 0.6))
+                                                        : Color.blue
+                                                    
+                                                    HStack(spacing: 3) {
+                                                        Image(systemName: program.signalType == .gold ? "star.fill" : "star")
+                                                            .font(.arial(size: 8))
+                                                        Text(signalText)
+                                                            .font(.arial(size: 10, weight: .medium))
+                                                    }
+                                                    .foregroundColor(signalColor)
+                                                }
+                                                
+                                                // Red flag indicator
+                                                if program.hasRedFlags() {
+                                                    HStack(spacing: 3) {
+                                                        Image(systemName: "exclamationmark.triangle.fill")
+                                                            .font(.arial(size: 8))
+                                                        Text("Red Flag")
+                                                            .font(.arial(size: 10, weight: .medium))
+                                                    }
+                                                    .foregroundColor(.red)
                                                 }
                                             }
                                         }
@@ -229,37 +241,16 @@ struct AllSignaledProgramsView: View {
                     }
                 }
                 .listStyle(.insetGrouped)
+                .scrollContentBackground(.hidden)
+                .appCanvasBackground()
             }
         }
+        .appCanvasBackground()
         .navigationTitle("Signals")
         .navigationBarTitleDisplayMode(.inline)
         .padding(.bottom, 90) // Account for custom tab bar
     }
     
-    private func scoreColor(_ score: Double) -> Color {
-        if score >= 80 { return .green }
-        if score >= 60 { return .blue }
-        if score >= 40 { return .orange }
-        return .red
-    }
-    
-    private func programTypeColor(_ type: String) -> Color {
-        switch type {
-        case "Academic": return .blue
-        case "Community": return .green
-        case "Hybrid": return .orange
-        default: return .secondary
-        }
-    }
-    
-    private func programTypeIcon(_ type: String) -> String {
-        switch type {
-        case "Academic": return "graduationcap.fill"
-        case "Community": return "house.fill"
-        case "Hybrid": return "square.stack.3d.up.fill"
-        default: return "building.2.fill"
-        }
-    }
 }
 
 #Preview {

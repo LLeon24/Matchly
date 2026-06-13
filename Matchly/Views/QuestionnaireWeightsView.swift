@@ -100,20 +100,25 @@ struct QuestionnaireWeightsView: View {
             }
             
             Section {
-                HStack {
-                    Text("Total Weight")
-                        .font(.arial(size: 15, weight: .medium))
-                    Spacer()
-                    Text("\(Int(totalWeight * 100))%")
-                        .font(.arial(size: 15, weight: .semibold))
-                        .foregroundColor(totalWeight == 1.0 ? .green : .orange)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Total Weight")
+                            .font(.arial(size: 15, weight: .medium))
+                        Spacer()
+                        Text("\(Int(totalWeight * 100))%")
+                            .font(.arial(size: 15, weight: .semibold))
+                            .foregroundColor(totalWeight == 1.0 ? .green : .orange)
+                    }
+                    
+                    if totalWeight != 1.0 {
+                        Text("Weights must sum to 100%")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                    }
                 }
-                
-                if totalWeight != 1.0 {
-                    Text("Weights must sum to 100%")
-                        .font(.caption)
-                        .foregroundColor(.orange)
-                }
+                .glassPanelStyle(cornerRadius: 14)
+                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                .listRowBackground(Color.clear)
             } header: {
                 Text("Weight Summary")
             } footer: {
@@ -188,8 +193,12 @@ struct QuestionnaireWeightsView: View {
                     saveWeights()
                 }
                 .disabled(totalWeight != 1.0)
+                .buttonStyle(.glassProminent)
+                .tint(AppColors.primaryBlue)
             }
         }
+        .scrollContentBackground(.hidden)
+        .appCanvasBackground()
         .onAppear {
             loadWeights()
         }

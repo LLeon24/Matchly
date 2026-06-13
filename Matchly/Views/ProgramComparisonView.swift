@@ -39,12 +39,11 @@ struct ProgramComparisonView: View {
                         }) {
                             Text("Select Programs")
                                 .font(.arial(size: 18, weight: .semibold))
-                                .foregroundColor(.white)
                                 .padding(.horizontal, 30)
                                 .padding(.vertical, 12)
-                                .background(Color.blue)
-                                .cornerRadius(10)
                         }
+                        .buttonStyle(.glassProminent)
+                        .tint(AppColors.primaryBlue)
                     }
                 } else {
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -71,9 +70,7 @@ struct ProgramComparisonView: View {
                                     .frame(width: 250)
                                     .frame(height: 400) // Match the fixed height of comparison cards
                                     .padding()
-                                    .background(Color(.systemGray6))
-                                    .cornerRadius(12)
-                                    .shadow(color: Color.black.opacity(0.1), radius: 5, x: 0, y: 2)
+                                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 12))
                                 }
                             }
                         }
@@ -82,6 +79,7 @@ struct ProgramComparisonView: View {
                 }
             }
             .navigationTitle("Compare Programs")
+            .appCanvasBackground()
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     if !selectedPrograms.isEmpty {
@@ -186,9 +184,7 @@ struct ComparisonCard: View {
         .padding()
         .frame(width: 250)
         .frame(height: cardHeight) // Fixed height instead of minHeight
-        .background(Color(.systemBackground))
-        .cornerRadius(12)
-        .shadow(color: Color.black.opacity(0.1), radius: 5, x: 0, y: 2)
+        .glassEffect(.regular, in: .rect(cornerRadius: 12))
     }
     
 }

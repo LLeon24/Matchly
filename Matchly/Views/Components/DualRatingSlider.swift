@@ -13,17 +13,18 @@ struct DualRatingSlider: View {
     @Binding var notes: String
     var isYesNo: Bool = false // For Section F red flags
     var isPositiveYesNo: Bool = false // For questions where "Yes" is positive (e.g., "could see yourself living in city")
+    var showLabels: Bool = false // Show "Poor" and "Excellent" labels on first question
     
     @State private var showNotes: Bool = false
     @FocusState private var isNotesFocused: Bool
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 6) {
             // Question text
             Text(question)
-                .font(.system(size: 15, weight: .medium))
+                .font(.arial(size: 15, weight: .medium))
                 .foregroundColor(.primary)
-                .lineSpacing(2)
+                .lineSpacing(1)
             
             if isYesNo {
                 // Yes/No toggle for red flags (or positive questions)
@@ -38,13 +39,17 @@ struct DualRatingSlider: View {
                         HStack {
                             Image(systemName: programRating == 1 ? "checkmark.circle.fill" : "circle")
                             Text("Yes")
-                                .font(.system(size: 14, weight: .medium))
+                                .font(.arial(size: 14, weight: .medium))
                         }
                         .foregroundColor(programRating == 1 ? (isPositiveYesNo ? .green : .red) : .secondary)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
-                        .background(programRating == 1 ? (isPositiveYesNo ? Color.green.opacity(0.1) : Color.red.opacity(0.1)) : Color(.systemGray6))
-                        .cornerRadius(8)
+                        .glassEffect(
+                            programRating == 1
+                                ? .regular.tint((isPositiveYesNo ? Color.green : Color.red).opacity(0.18)).interactive()
+                                : .regular.interactive(),
+                            in: .rect(cornerRadius: 8)
+                        )
                     }
                     .buttonStyle(.plain)
                     
@@ -58,13 +63,17 @@ struct DualRatingSlider: View {
                         HStack {
                             Image(systemName: programRating == 2 ? "checkmark.circle.fill" : "circle")
                             Text("No")
-                                .font(.system(size: 14, weight: .medium))
+                                .font(.arial(size: 14, weight: .medium))
                         }
                         .foregroundColor(programRating == 2 ? (isPositiveYesNo ? .red : .green) : .secondary)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
-                        .background(programRating == 2 ? (isPositiveYesNo ? Color.red.opacity(0.1) : Color.green.opacity(0.1)) : Color(.systemGray6))
-                        .cornerRadius(8)
+                        .glassEffect(
+                            programRating == 2
+                                ? .regular.tint((isPositiveYesNo ? Color.red : Color.green).opacity(0.18)).interactive()
+                                : .regular.interactive(),
+                            in: .rect(cornerRadius: 8)
+                        )
                     }
                     .buttonStyle(.plain)
                     
@@ -81,15 +90,15 @@ struct DualRatingSlider: View {
                         }) {
                             HStack(spacing: 4) {
                                 Image(systemName: showNotes ? "chevron.down" : "chevron.right")
-                                    .font(.system(size: 10, weight: .semibold))
+                                    .font(.arial(size: 10, weight: .semibold))
                                     .foregroundColor(.secondary)
-                                Text(notes.isEmpty ? "Add Notes" : "Notes (\(notes.count) chars)")
-                                    .font(.system(size: 12, weight: .medium))
+                                Text(notes.isEmpty ? "Add Notes" : "Notes")
+                                    .font(.arial(size: 12, weight: .medium))
                                     .foregroundColor(notes.isEmpty ? .secondary : .blue)
                                 if !notes.isEmpty {
                                     Spacer()
                                     Image(systemName: "text.bubble.fill")
-                                        .font(.system(size: 10))
+                                        .font(.arial(size: 10))
                                         .foregroundColor(.blue)
                                 }
                             }
@@ -105,42 +114,27 @@ struct DualRatingSlider: View {
                                 .transition(.opacity.combined(with: .move(edge: .top)))
                             
                             if isNotesFocused {
-                                Button(action: {
-                                    isNotesFocused = false
-                                }) {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundColor(.blue)
-                                        .font(.system(size: 20))
+                                VStack {
+                                    Button(action: {
+                                        isNotesFocused = false
+                                    }) {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundColor(.blue)
+                                            .font(.arial(size: 20))
+                                    }
+                                    .buttonStyle(.plain)
+                                    Spacer()
                                 }
-                                .buttonStyle(.plain)
+                                .frame(height: 44) // Match text field height for alignment
                             }
                         }
                     }
                     }
                 }
             } else {
-                // Program Rating for regular questions
-                VStack(spacing: 8) {
-                    // Program Rating header - cleaner
-                    HStack {
-                        Text("Rating")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Group {
-                            if programRating == 6 {
-                                Text("N/A")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundColor(.secondary)
-                            } else {
-                                Text(programRating > 0 ? "\(Int(programRating))" : "—")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundColor(programRating > 0 ? ratingColor(for: Int(programRating)) : .secondary)
-                            }
-                        }
-                        .frame(width: 30)
-                    }
-                    
+                // Program Rating for regular questions - properly aligned
+                VStack(alignment: .leading, spacing: 3) {
+                    // Rating buttons row - full width, evenly spaced
                     HStack(spacing: 6) {
                         ForEach(1...5, id: \.self) { rating in
                             Button(action: {
@@ -153,12 +147,10 @@ struct DualRatingSlider: View {
                                 let isSelected = programRating >= Double(rating) && programRating > 0 && programRating < 6
                                 let color = ratingColor(for: rating)
                                 
-                                // Determine text color for better legibility
                                 let textColor: Color = {
                                     if isSelected {
                                         return .white
                                     } else {
-                                        // Use dark text for lighter colors (2-4), light text for darker (1, 5)
                                         switch rating {
                                         case 2, 3, 4:
                                             return Color(white: 0.2)
@@ -169,23 +161,19 @@ struct DualRatingSlider: View {
                                 }()
                                 
                                 ZStack {
-                                    // Background with color and liquid glass effect
-                                    RoundedRectangle(cornerRadius: 8)
+                                    RoundedRectangle(cornerRadius: 6)
                                         .fill(isSelected ? color : color.opacity(0.15))
-                                        .shadow(color: isSelected ? color.opacity(0.4) : color.opacity(0.2), radius: isSelected ? 4 : 2, x: 0, y: 1)
-                                        .shadow(color: Color.white.opacity(0.25), radius: 2, x: 0, y: -0.5)
+                                        .shadow(color: isSelected ? color.opacity(0.3) : color.opacity(0.15), radius: isSelected ? 3 : 1, x: 0, y: 1)
                                     
-                                    // Glass overlay
-                                    RoundedRectangle(cornerRadius: 8)
+                                    RoundedRectangle(cornerRadius: 6)
                                         .fill(
                                             LinearGradient(
                                                 colors: isSelected ? [
-                                                    Color.white.opacity(0.35),
-                                                    Color.white.opacity(0.15),
-                                                    Color.white.opacity(0.05)
+                                                    Color.white.opacity(0.3),
+                                                    Color.white.opacity(0.1)
                                                 ] : [
-                                                    Color.white.opacity(0.4),
-                                                    Color.white.opacity(0.2),
+                                                    Color.white.opacity(0.3),
+                                                    Color.white.opacity(0.1),
                                                     Color.clear
                                                 ],
                                                 startPoint: .topLeading,
@@ -193,60 +181,55 @@ struct DualRatingSlider: View {
                                             )
                                         )
                                     
-                                // Text
-                                Text("\(rating)")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundColor(textColor)
-                                    .shadow(color: isSelected ? Color.black.opacity(0.3) : (rating <= 1 || rating >= 5 ? Color.clear : Color.white.opacity(0.8)), radius: isSelected ? 1 : 0.5, x: 0, y: 0.5)
-                            }
-                            .frame(width: 50, height: 40) // More square shape
-                            .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
+                                    Text("\(rating)")
+                                        .font(.arial(size: 11, weight: .semibold))
+                                        .foregroundColor(textColor)
+                                }
+                                .frame(height: 32)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
                                         .stroke(
                                             LinearGradient(
                                                 colors: isSelected ? [
-                                                    Color.white.opacity(0.5),
-                                                    Color.white.opacity(0.2)
-                                                ] : [
                                                     Color.white.opacity(0.4),
-                                                    Color.white.opacity(0.2)
+                                                    Color.white.opacity(0.15)
+                                                ] : [
+                                                    Color.white.opacity(0.3),
+                                                    Color.white.opacity(0.1)
                                                 ],
                                                 startPoint: .topLeading,
                                                 endPoint: .bottomTrailing
                                             ),
-                                            lineWidth: 0.8
+                                            lineWidth: 0.5
                                         )
                                 )
                             }
                             .buttonStyle(.plain)
+                            .frame(maxWidth: .infinity)
                         }
                         
-                        // N/A button
+                        // N/A button - same width as others
                         Button(action: {
                             if programRating == 6 {
                                 programRating = 0
                             } else {
-                                programRating = 6 // N/A
+                                programRating = 6
                             }
                         }) {
                             let isSelected = programRating == 6
                             
                             ZStack {
-                                // Background with liquid glass effect
-                                RoundedRectangle(cornerRadius: 8)
+                                RoundedRectangle(cornerRadius: 6)
                                     .fill(isSelected ? Color.secondary : Color(.tertiarySystemFill))
-                                    .shadow(color: isSelected ? Color.secondary.opacity(0.3) : Color.black.opacity(0.05), radius: isSelected ? 4 : 2, x: 0, y: 1)
-                                    .shadow(color: Color.white.opacity(0.2), radius: 2, x: 0, y: -0.5)
+                                    .shadow(color: isSelected ? Color.secondary.opacity(0.25) : Color.black.opacity(0.05), radius: isSelected ? 3 : 1, x: 0, y: 1)
                                 
-                                // Glass overlay when selected
                                 if isSelected {
-                                    RoundedRectangle(cornerRadius: 8)
+                                    RoundedRectangle(cornerRadius: 6)
                                         .fill(
                                             LinearGradient(
                                                 colors: [
-                                                    Color.white.opacity(0.35),
-                                                    Color.white.opacity(0.15),
-                                                    Color.white.opacity(0.05)
+                                                    Color.white.opacity(0.3),
+                                                    Color.white.opacity(0.1)
                                                 ],
                                                 startPoint: .topLeading,
                                                 endPoint: .bottomTrailing
@@ -254,20 +237,18 @@ struct DualRatingSlider: View {
                                         )
                                 }
                                 
-                                // Text
                                 Text("N/A")
-                                    .font(.system(size: 12, weight: .semibold))
+                                    .font(.arial(size: 10, weight: .semibold))
                                     .foregroundColor(isSelected ? .white : .secondary)
-                                    .shadow(color: isSelected ? Color.black.opacity(0.3) : Color.clear, radius: 1, x: 0, y: 0.5)
                             }
-                            .frame(width: 50, height: 40) // More square shape
+                            .frame(height: 32)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 8)
+                                RoundedRectangle(cornerRadius: 6)
                                     .stroke(
                                         LinearGradient(
                                             colors: isSelected ? [
-                                                Color.white.opacity(0.5),
-                                                Color.white.opacity(0.2)
+                                                Color.white.opacity(0.4),
+                                                Color.white.opacity(0.15)
                                             ] : [
                                                 Color.white.opacity(0.3),
                                                 Color.white.opacity(0.1)
@@ -275,11 +256,39 @@ struct DualRatingSlider: View {
                                             startPoint: .topLeading,
                                             endPoint: .bottomTrailing
                                         ),
-                                        lineWidth: 0.8
+                                        lineWidth: 0.5
                                     )
                             )
                         }
                         .buttonStyle(.plain)
+                        .frame(maxWidth: .infinity)
+                    }
+                    
+                    // Labels row - only shown on first question, properly aligned
+                    if showLabels {
+                        HStack(spacing: 6) {
+                            // Button 1 label - centered
+                            Text("Poor")
+                                .font(.arial(size: 8, weight: .medium))
+                                .foregroundColor(.secondary)
+                                .frame(maxWidth: .infinity)
+                            
+                            // Empty spaces for buttons 2, 3, 4
+                            ForEach(0..<3) { _ in
+                                Color.clear
+                                    .frame(maxWidth: .infinity)
+                            }
+                            
+                            // Button 5 label - centered
+                            Text("Excellent")
+                                .font(.arial(size: 8, weight: .medium))
+                                .foregroundColor(.secondary)
+                                .frame(maxWidth: .infinity)
+                            
+                            // Empty space for N/A button
+                            Color.clear
+                                .frame(maxWidth: .infinity)
+                        }
                     }
                 }
                 
@@ -292,15 +301,15 @@ struct DualRatingSlider: View {
                     }) {
                         HStack(spacing: 4) {
                             Image(systemName: showNotes ? "chevron.down" : "chevron.right")
-                                .font(.system(size: 10, weight: .semibold))
+                                .font(.arial(size: 10, weight: .semibold))
                                 .foregroundColor(.secondary)
                             Text(notes.isEmpty ? "Add Notes" : "Notes (\(notes.count) chars)")
-                                .font(.system(size: 12, weight: .medium))
+                                .font(.arial(size: 12, weight: .medium))
                                 .foregroundColor(notes.isEmpty ? .secondary : .blue)
                             if !notes.isEmpty {
                                 Spacer()
                                 Image(systemName: "text.bubble.fill")
-                                    .font(.system(size: 10))
+                                    .font(.arial(size: 10))
                                     .foregroundColor(.blue)
                             }
                         }
@@ -312,27 +321,32 @@ struct DualRatingSlider: View {
                             TextField("Notes...", text: $notes, axis: .vertical)
                                 .textFieldStyle(.roundedBorder)
                                 .lineLimit(2...4)
-                                .font(.system(size: 13))
+                                .font(.arial(size: 13))
                                 .focused($isNotesFocused)
                                 .transition(.opacity.combined(with: .move(edge: .top)))
                             
                             if isNotesFocused {
-                                Button(action: {
-                                    isNotesFocused = false
-                                }) {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundColor(.blue)
-                                        .font(.system(size: 20))
+                                VStack {
+                                    Button(action: {
+                                        isNotesFocused = false
+                                    }) {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundColor(.blue)
+                                            .font(.arial(size: 20))
+                                    }
+                                    .buttonStyle(.plain)
+                                    Spacer()
                                 }
-                                .buttonStyle(.plain)
+                                .frame(height: 44) // Match text field height for alignment
                             }
                         }
                     }
                 }
             }
         }
-        .padding(.vertical, 10)
-        .padding(.horizontal, 4)
+        .padding(.vertical, 4)
+        .padding(.horizontal, 0)
+        .glassPanelStyle(cornerRadius: 12)
         .onAppear {
             // Auto-expand notes if they already have content
             if !notes.isEmpty {

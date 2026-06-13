@@ -8,8 +8,8 @@
 import SwiftUI
 
 struct SplashView: View {
-    @StateObject private var authManager = AuthManager.shared
-    @StateObject private var dataManager = DataManager.shared
+    @ObservedObject private var authManager = AuthManager.shared
+    @ObservedObject private var dataManager = DataManager.shared
     @State private var showSplash = true
     @State private var scale: CGFloat = 0.8
     @State private var opacity: Double = 0
@@ -19,8 +19,7 @@ struct SplashView: View {
             if showSplash {
                 // Splash screen
                 ZStack {
-                    // Clean white background
-                    Color(.systemBackground)
+                    AppColors.dashboardCanvas
                         .ignoresSafeArea()
                     
                     VStack(spacing: 20) {
@@ -38,13 +37,13 @@ struct SplashView: View {
                         
                         // App name - clean, professional typography
                         Text("Matchly")
-                            .font(.system(size: 36, weight: .semibold, design: .default))
+                            .font(.arial(size: 36, weight: .semibold, design: .default))
                             .foregroundColor(.primary)
                             .opacity(opacity)
                         
                         // Tagline - subtle and professional
                         Text("Residency Match Management")
-                            .font(.system(size: 15, weight: .regular))
+                            .font(.arial(size: 15, weight: .regular))
                             .foregroundColor(.secondary)
                             .opacity(opacity)
                         

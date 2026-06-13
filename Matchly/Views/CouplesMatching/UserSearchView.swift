@@ -9,7 +9,7 @@ import SwiftUI
 
 struct UserSearchView: View {
     @EnvironmentObject var dataManager: DataManager
-    @StateObject private var authManager = AuthManager.shared
+    @ObservedObject private var authManager = AuthManager.shared
     @Environment(\.dismiss) var dismiss
     @State private var searchText = ""
     @State private var searchResults: [User] = []
@@ -37,6 +37,11 @@ struct UserSearchView: View {
                                 .padding(.leading, 8)
                         }
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .glassEffect(.regular, in: .capsule)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    .listRowBackground(Color.clear)
                 } header: {
                     Text("Find Partner")
                 } footer: {
@@ -70,18 +75,18 @@ struct UserSearchView: View {
                                         } else {
                                             Image(systemName: "person.fill")
                                                 .foregroundColor(.blue)
-                                                .font(.system(size: 20))
+                                                .font(.arial(size: 20))
                                         }
                                     }
                                     
                                     VStack(alignment: .leading, spacing: 4) {
                                         Text(user.displayName ?? user.email ?? "User")
-                                            .font(.system(size: 16, weight: .semibold))
+                                            .font(.arial(size: 16, weight: .semibold))
                                             .foregroundColor(.primary)
                                         
                                         if let email = user.email {
                                             Text(email)
-                                                .font(.system(size: 13))
+                                                .font(.arial(size: 13))
                                                 .foregroundColor(.secondary)
                                         }
                                     }
@@ -90,9 +95,10 @@ struct UserSearchView: View {
                                     
                                     Image(systemName: "person.badge.plus")
                                         .foregroundColor(.blue)
-                                        .font(.system(size: 18))
+                                        .font(.arial(size: 18))
                                 }
                                 .padding(.vertical, 4)
+                                .glassPanelStyle(cornerRadius: 12)
                             }
                             .buttonStyle(.plain)
                         }
@@ -108,6 +114,8 @@ struct UserSearchView: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .appCanvasBackground()
             .navigationTitle("Find Partner")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

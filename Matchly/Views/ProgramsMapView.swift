@@ -8,6 +8,9 @@
 import SwiftUI
 import MapKit
 import CoreLocation
+import OSLog
+
+private let programsMapLogger = Logger(subsystem: "com.matchly", category: "ProgramsMapView")
 
 struct ProgramsMapView: View {
     @EnvironmentObject var dataManager: DataManager
@@ -83,11 +86,10 @@ struct ProgramsMapView: View {
                             }
                         } label: {
                             Image(systemName: "map")
-                                .font(.system(size: 18))
+                                .font(.arial(size: 18))
                                 .foregroundColor(AppColors.primaryBlue)
                                 .padding(10)
-                                .background(.ultraThinMaterial)
-                                .clipShape(Circle())
+                                .glassCircleButtonStyle()
                         }
                         .padding()
                     }
@@ -191,13 +193,13 @@ struct ProgramMapPin: View {
                     // Signal indicator - star inside the pin
                     Image(systemName: program.signalType == .gold ? "star.fill" : "star")
                         .foregroundColor(.white)
-                        .font(.system(size: isSelected ? 18 : 16, weight: .bold))
+                        .font(.arial(size: isSelected ? 18 : 16, weight: .bold))
                         .shadow(color: .black.opacity(0.3), radius: 1, x: 0, y: 1)
                 } else {
                     // Regular pin icon when not signaled
                     Image(systemName: "mappin.circle.fill")
                         .foregroundColor(.white)
-                        .font(.system(size: isSelected ? 20 : 18, weight: .bold))
+                        .font(.arial(size: isSelected ? 20 : 18, weight: .bold))
                 }
             }
         }
@@ -226,7 +228,7 @@ struct ProgramMapCard: View {
                             // Hospital name with signal indicator
                             HStack(alignment: .top, spacing: 6) {
                                 Text(HospitalNameFormatter.format(program.hospital))
-                                    .font(.system(size: 18, weight: .bold))
+                                    .font(.arial(size: 18, weight: .bold))
                                     .foregroundColor(.primary)
                                     .lineLimit(nil)
                                     .fixedSize(horizontal: false, vertical: true)
@@ -234,7 +236,7 @@ struct ProgramMapCard: View {
                                 // Signal indicator - subtle
                                 if program.signalType != .none {
                                     Image(systemName: program.signalType == .gold ? "star.fill" : "star")
-                                        .font(.system(size: 14))
+                                        .font(.arial(size: 14))
                                         .foregroundColor(program.signalType == .gold ? .yellow : .gray)
                                         .padding(.top, 2) // Align with first line of text
                                 }
@@ -242,14 +244,14 @@ struct ProgramMapCard: View {
                             
                             if let address = program.address, !address.isEmpty {
                                 Text(address)
-                                    .font(.system(size: 13, weight: .medium))
+                                    .font(.arial(size: 13, weight: .medium))
                                     .foregroundColor(.primary)
                                 Text("\(program.city), \(program.state)")
-                                    .font(.system(size: 12))
+                                    .font(.arial(size: 12))
                                     .foregroundColor(.secondary)
                             } else {
                                 Text("\(program.city), \(program.state)")
-                                    .font(.system(size: 14))
+                                    .font(.arial(size: 14))
                                     .foregroundColor(.secondary)
                             }
                         }
@@ -258,7 +260,7 @@ struct ProgramMapCard: View {
                         
                         Button(action: onDismiss) {
                             Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 24))
+                                .font(.arial(size: 24))
                                 .foregroundColor(.secondary)
                         }
                     }
@@ -271,9 +273,9 @@ struct ProgramMapCard: View {
                             
                             HStack(spacing: 3) {
                                 Image(systemName: "stethoscope")
-                                    .font(.system(size: 10))
+                                    .font(.arial(size: 10))
                                 Text(specialtyAbbrev)
-                                    .font(.system(size: 12, weight: .semibold))
+                                    .font(.arial(size: 12, weight: .semibold))
                             }
                             .foregroundColor(specialtyColor)
                             .padding(.horizontal, 8)
@@ -285,10 +287,10 @@ struct ProgramMapCard: View {
                         // Score
                         HStack(spacing: 4) {
                             Image(systemName: "star.fill")
-                                .font(.system(size: 12))
+                                .font(.arial(size: 12))
                                 .foregroundColor(.orange)
                             Text(String(format: "%.1f", program.finalScore))
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.arial(size: 12, weight: .semibold))
                         }
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
@@ -303,15 +305,14 @@ struct ProgramMapCard: View {
                         }) {
                             HStack(spacing: 4) {
                                 Image(systemName: "map.fill")
-                                    .font(.system(size: 12))
+                                    .font(.arial(size: 12))
                                 Text("Directions")
-                                    .font(.system(size: 12, weight: .medium))
+                                    .font(.arial(size: 12, weight: .medium))
                             }
                             .foregroundColor(AppColors.primaryBlue)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
-                            .background(AppColors.primaryBlue.opacity(0.15))
-                            .cornerRadius(8)
+                            .glassChipStyle(tint: AppColors.primaryBlue)
                         }
                         .buttonStyle(.plain)
                     }
@@ -320,7 +321,7 @@ struct ProgramMapCard: View {
             }
             .buttonStyle(.plain)
         }
-        .background(.ultraThinMaterial)
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
         .cornerRadius(16, corners: [.topLeft, .topRight])
         .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: -5)
     }
@@ -347,7 +348,7 @@ struct ProgramMapCard: View {
                     MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving
                 ])
             } catch {
-                print("Geocoding error: \(error.localizedDescription)")
+                programsMapLogger.error("Geocoding error: \(error.localizedDescription, privacy: .public)")
                 // Fallback: use city/state coordinates from GeocodingHelper
                 let fallbackCoordinate = GeocodingHelper.coordinate(for: program.city, state: program.state)
                 let fallbackLocation = CLLocation(latitude: fallbackCoordinate.latitude, longitude: fallbackCoordinate.longitude)
@@ -363,26 +364,6 @@ struct ProgramMapCard: View {
     private func geocodeAddress(_ addressString: String) async throws -> CLLocation {
         // Use modern GeocodingHelper which uses MKLocalSearch (iOS 13+) or CLGeocoder fallback
         return try await GeocodingHelper.geocodeAddress(addressString)
-    }
-}
-
-extension View {
-    func cornerRadius(_ radius: CGFloat, corners: UIRectCorner) -> some View {
-        clipShape(RoundedCorner(radius: radius, corners: corners))
-    }
-}
-
-struct RoundedCorner: Shape {
-    var radius: CGFloat = .infinity
-    var corners: UIRectCorner = .allCorners
-
-    func path(in rect: CGRect) -> Path {
-        let path = UIBezierPath(
-            roundedRect: rect,
-            byRoundingCorners: corners,
-            cornerRadii: CGSize(width: radius, height: radius)
-        )
-        return Path(path.cgPath)
     }
 }
 

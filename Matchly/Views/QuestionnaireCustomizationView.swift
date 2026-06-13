@@ -269,6 +269,8 @@ struct QuestionnaireCustomizationView: View {
             }
         }
         .padding(.bottom, 90) // Space for custom tab bar
+        .scrollContentBackground(.hidden)
+        .appCanvasBackground()
         .navigationTitle("Customize Questionnaire")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
@@ -422,6 +424,11 @@ struct EditCustomSectionView: View {
         Form {
             Section("Section Title") {
                 TextField("Section Title", text: $sectionTitle)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .glassEffect(.regular, in: .capsule)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    .listRowBackground(Color.clear)
             }
             
             Section("Questions") {
@@ -461,8 +468,12 @@ struct EditCustomSectionView: View {
                     onSave(updatedSection)
                     dismiss()
                 }
+                .buttonStyle(.glassProminent)
+                .tint(AppColors.primaryBlue)
             }
         }
+        .scrollContentBackground(.hidden)
+        .appCanvasBackground()
         .alert("Add Question", isPresented: $showAddQuestion) {
             TextField("Question", text: $newQuestion)
             Button("Cancel", role: .cancel) {
@@ -499,8 +510,15 @@ struct EditQuestionView: View {
             Section("Question") {
                 TextField("Question", text: $question, axis: .vertical)
                     .lineLimit(3...6)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .glassEffect(.regular, in: .capsule)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    .listRowBackground(Color.clear)
             }
         }
+        .scrollContentBackground(.hidden)
+        .appCanvasBackground()
         .navigationTitle("Edit Question")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -511,6 +529,8 @@ struct EditQuestionView: View {
                     onSave(updatedItem)
                     dismiss()
                 }
+                .buttonStyle(.glassProminent)
+                .tint(AppColors.primaryBlue)
             }
         }
     }

@@ -12,69 +12,68 @@ struct LiquidGlassTabBar: View {
     @State private var pendingTab: Int? = nil
     
     var body: some View {
-        HStack(spacing: 0) {
-            TabBarButton(
-                icon: "house.fill",
-                title: "Dashboard",
-                isSelected: selectedTab == 0,
-                color: AppColors.primaryBlue
-            ) {
-                handleTabSelection(targetTab: 0)
+        // A single floating Liquid Glass capsule that hovers over the content.
+        // GlassEffectContainer lets the bar's glass blend/morph cohesively and
+        // is the correct host for any future glass siblings (e.g. a FAB).
+        GlassEffectContainer(spacing: 8) {
+            HStack(spacing: 0) {
+                TabBarButton(
+                    icon: "house.fill",
+                    title: "Dashboard",
+                    isSelected: selectedTab == 0,
+                    color: AppColors.primaryBlue
+                ) {
+                    handleTabSelection(targetTab: 0)
+                }
+
+                TabBarButton(
+                    icon: "list.bullet",
+                    title: "My Programs",
+                    isSelected: selectedTab == 1,
+                    color: AppColors.accentGreen
+                ) {
+                    handleTabSelection(targetTab: 1)
+                }
+
+                TabBarButton(
+                    icon: "chart.bar.fill",
+                    title: "Rank List",
+                    isSelected: selectedTab == 2,
+                    color: AppColors.accentPink
+                ) {
+                    handleTabSelection(targetTab: 2)
+                }
+
+                TabBarButton(
+                    icon: "map.fill",
+                    title: "Map",
+                    isSelected: selectedTab == 3,
+                    color: AppColors.accentTeal
+                ) {
+                    handleTabSelection(targetTab: 3)
+                }
+
+                TabBarButton(
+                    icon: "gearshape.fill",
+                    title: "Settings",
+                    isSelected: selectedTab == 4,
+                    color: AppColors.accentPurple
+                ) {
+                    handleTabSelection(targetTab: 4)
+                }
             }
-            
-            TabBarButton(
-                icon: "list.bullet",
-                title: "My Programs",
-                isSelected: selectedTab == 1,
-                color: AppColors.accentGreen
-            ) {
-                handleTabSelection(targetTab: 1)
-            }
-            
-            TabBarButton(
-                icon: "chart.bar.fill",
-                title: "Rank List",
-                isSelected: selectedTab == 2,
-                color: AppColors.accentPink
-            ) {
-                handleTabSelection(targetTab: 2)
-            }
-            
-            TabBarButton(
-                icon: "map.fill",
-                title: "Map",
-                isSelected: selectedTab == 3,
-                color: AppColors.accentTeal
-            ) {
-                handleTabSelection(targetTab: 3)
-            }
-            
-            TabBarButton(
-                icon: "gearshape.fill",
-                title: "Settings",
-                isSelected: selectedTab == 4,
-                color: AppColors.accentPurple
-            ) {
-                handleTabSelection(targetTab: 4)
-            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 10)
+            // The native Liquid Glass material: adapts automatically to light /
+            // dark and to the content scrolling beneath it. `.interactive()`
+            // gives the bar the subtle lensing/press response of system glass.
+            .glassEffect(.regular.interactive(), in: .capsule)
         }
-        .padding(.horizontal, 8)
-        // Comfortable vertical breathing room above/below the row. The bottom
-        // safe-area inset is handled by the host (MainTabView no longer forces
-        // the bar into the safe area), so the row stays clear of the home
-        // indicator while the material background still extends to the screen edge.
-        .padding(.top, 12)
-        .padding(.bottom, 8)
-        .frame(maxWidth: .infinity)
-        .background(
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .ignoresSafeArea(.container, edges: .bottom)
-        )
-        .overlay(alignment: .top) {
-            Divider()
-                .opacity(0.5)
-        }
+        // Inset from the screen edges + lifted above the home indicator so the
+        // capsule reads as a discrete pill floating over content (not chrome
+        // welded to the bottom edge).
+        .padding(.horizontal, 16)
+        .padding(.bottom, 4)
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ProceedWithTabNavigation"))) { _ in
             // Proceed with pending tab navigation after save/discard
             if let tab = pendingTab {

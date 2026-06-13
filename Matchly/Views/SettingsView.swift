@@ -11,15 +11,11 @@ import UIKit
 
 struct SettingsView: View {
     @EnvironmentObject var dataManager: DataManager
-    @StateObject private var authManager = AuthManager.shared
+    @ObservedObject private var authManager = AuthManager.shared
     @State private var showResetAlert = false
     @State private var showSignOutAlert = false
     @State private var showSpecialtyChange = false
     @State private var showWeights = false
-    @State private var showERASImport = false
-    @State private var showImportSuccess = false
-    @State private var showImportError = false
-    @State private var importErrorMessage = ""
     
     var body: some View {
         NavigationView {
@@ -45,8 +41,10 @@ struct SettingsView: View {
                         .foregroundColor(.secondary)
                 }
             }
+            .scrollContentBackground(.hidden)
             .padding(.bottom, 90) // Space for custom tab bar
             .navigationTitle("Settings")
+            .appCanvasBackground()
             .alert("Reset All Data", isPresented: $showResetAlert) {
                 Button("Cancel", role: .cancel) { }
                 Button("Reset", role: .destructive) {
@@ -65,23 +63,6 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showSpecialtyChange) {
                 SpecialtySelectionView()
-            }
-            .fileImporter(
-                isPresented: $showERASImport,
-                allowedContentTypes: [.json],
-                allowsMultipleSelection: false
-            ) { result in
-                handleERASImport(result: result)
-            }
-            .alert("Import Successful", isPresented: $showImportSuccess) {
-                Button("OK") { }
-            } message: {
-                Text("ERAS 2026 data has been imported successfully. The app will restart to load the new data.")
-            }
-            .alert("Import Error", isPresented: $showImportError) {
-                Button("OK") { }
-            } message: {
-                Text(importErrorMessage)
             }
         }
     }
@@ -111,7 +92,7 @@ struct SettingsView: View {
                                         .frame(width: 50, height: 50)
                                     
                                     Image(systemName: "person.fill")
-                                        .font(.system(size: 24))
+                                        .font(.arial(size: 24))
                                         .foregroundStyle(
                                             LinearGradient(
                                                 colors: [.blue, .purple],
@@ -124,16 +105,16 @@ struct SettingsView: View {
                             
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(dataManager.preferences.profile.name.isEmpty ? "Add Profile" : dataManager.preferences.profile.name)
-                                    .font(.system(size: 17, weight: .medium))
+                                    .font(.arial(size: 17, weight: .medium))
                                     .foregroundColor(.primary)
                                 
                                 if let aamcID = dataManager.preferences.profile.aamcID, !aamcID.isEmpty {
                                     Text("AAMC ID: \(aamcID)")
-                                        .font(.system(size: 13))
+                                        .font(.arial(size: 13))
                                         .foregroundColor(.secondary)
                                 } else {
                                     Text("Tap to edit profile")
-                                        .font(.system(size: 13))
+                                        .font(.arial(size: 13))
                                         .foregroundColor(.secondary)
                                 }
                             }
@@ -142,6 +123,12 @@ struct SettingsView: View {
                         }
                         .padding(.vertical, 4)
                     }
+                    .listRowBackground(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(.clear)
+                            .glassEffect(.regular, in: .rect(cornerRadius: 16))
+                            .padding(.vertical, 4)
+                    )
                 }
     }
     
@@ -173,7 +160,11 @@ struct SettingsView: View {
                         showSpecialtyChange = true
                     }) {
                         Text(dataManager.preferences.specialties.isEmpty ? "Change Specialty" : "Edit Specialties")
+                            .frame(maxWidth: .infinity)
                     }
+                    .buttonStyle(.glassProminent)
+                    .tint(AppColors.primaryBlue)
+                    .listRowBackground(Color.clear)
                 }
     }
     
@@ -187,9 +178,9 @@ struct SettingsView: View {
                                         .foregroundColor(.blue)
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text("Linked with \(couple.user2Name ?? "Partner")")
-                                            .font(.system(size: 15, weight: .medium))
+                                            .font(.arial(size: 15, weight: .medium))
                                         Text("Active")
-                                            .font(.system(size: 12))
+                                            .font(.arial(size: 12))
                                             .foregroundColor(.green)
                                     }
                                 }
@@ -201,9 +192,9 @@ struct SettingsView: View {
                                         .foregroundColor(.orange)
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text("Pending Link")
-                                            .font(.system(size: 15, weight: .medium))
+                                            .font(.arial(size: 15, weight: .medium))
                                         Text("Code: \(couple.coupleCode)")
-                                            .font(.system(size: 12))
+                                            .font(.arial(size: 12))
                                             .foregroundColor(.secondary)
                                     }
                                 }
@@ -255,10 +246,10 @@ struct SettingsView: View {
                                 Image(systemName: "exclamationmark.triangle.fill")
                                     .foregroundColor(.red)
                                 Text("Include Red Flagged Programs in Rank List")
-                                    .font(.system(size: 17, weight: .medium))
+                                    .font(.arial(size: 15, weight: .medium))
                             }
                             Text("When enabled, programs with red flags will appear at the bottom of your rank list")
-                                .font(.system(size: 13))
+                                .font(.arial(size: 13))
                                 .foregroundColor(.secondary)
                         }
                     }
@@ -279,10 +270,10 @@ struct SettingsView: View {
                                 Image(systemName: "calendar.badge.plus")
                                     .foregroundColor(.blue)
                                 Text("Sync Interviews to Calendar")
-                                    .font(.system(size: 17, weight: .medium))
+                                    .font(.arial(size: 15, weight: .medium))
                             }
                             Text("Automatically add interview dates to your device calendar")
-                                .font(.system(size: 13))
+                                .font(.arial(size: 13))
                                 .foregroundColor(.secondary)
                         }
                     }
@@ -303,22 +294,13 @@ struct SettingsView: View {
                         }
                     }
                     
-                    Button(action: {
-                        showERASImport = true
-                    }) {
-                        HStack {
-                            Text("Import ERAS 2026 Data")
-                            Spacer()
-                            Image(systemName: "square.and.arrow.down")
-                                .foregroundColor(.blue)
-                        }
-                    }
                     
                     Button(role: .destructive, action: {
                         showResetAlert = true
                     }) {
                         Text("Reset All Data")
                     }
+                    .buttonStyle(.glass)
                 }
     }
     
@@ -333,25 +315,25 @@ struct SettingsView: View {
                             // Prioritize displayName if available, then email, then phone
                             if let displayName = user.displayName, !displayName.isEmpty {
                                 Text(displayName)
-                                    .font(.system(size: 15, weight: .medium))
+                                    .font(.arial(size: 15, weight: .medium))
                                 if let email = user.email, !email.isEmpty {
                                     Text(email)
-                                        .font(.system(size: 13))
+                                        .font(.arial(size: 13))
                                         .foregroundColor(.secondary)
                                 } else if let phone = user.phoneNumber {
                                     Text(phone)
-                                        .font(.system(size: 13))
+                                        .font(.arial(size: 13))
                                         .foregroundColor(.secondary)
                                 }
                             } else if let email = user.email, !email.isEmpty {
                                 Text(email)
-                                    .font(.system(size: 15, weight: .medium))
+                                    .font(.arial(size: 15, weight: .medium))
                             } else if let phone = user.phoneNumber {
                                 Text(phone)
-                                    .font(.system(size: 15, weight: .medium))
+                                    .font(.arial(size: 15, weight: .medium))
                             } else {
                                 Text("User")
-                                    .font(.system(size: 15, weight: .medium))
+                                    .font(.arial(size: 15, weight: .medium))
                             }
                             
                             Text("via \(user.provider.rawValue.capitalized)")
@@ -369,31 +351,8 @@ struct SettingsView: View {
                             Text("Sign Out")
                         }
                     }
+                    .buttonStyle(.glass)
                 }
-    }
-    
-    private func handleERASImport(result: Result<[URL], Error>) {
-        switch result {
-        case .success(let urls):
-            guard let url = urls.first else { return }
-            
-            // Access the file
-            _ = url.startAccessingSecurityScopedResource()
-            defer { url.stopAccessingSecurityScopedResource() }
-            
-            do {
-                let data = try Data(contentsOf: url)
-                try ResidencyProgramDatabase.shared.replaceWithERASData(data: data)
-                showImportSuccess = true
-            } catch {
-                importErrorMessage = "Failed to import ERAS data: \(error.localizedDescription)"
-                showImportError = true
-            }
-            
-        case .failure(let error):
-            importErrorMessage = "Failed to access file: \(error.localizedDescription)"
-            showImportError = true
-        }
     }
     
     private func resetAllData() {

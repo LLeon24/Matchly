@@ -123,8 +123,7 @@ struct ProgramDetailView: View {
                     }
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(.systemGray6))
-                    .cornerRadius(12)
+                    .glassEffect(.regular, in: .rect(cornerRadius: 12))
                     .padding(.horizontal)
                 }
                 
@@ -139,8 +138,7 @@ struct ProgramDetailView: View {
                             .font(.arial(size: 15))
                             .padding()
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color(.systemGray6))
-                            .cornerRadius(12)
+                            .glassEffect(.regular, in: .rect(cornerRadius: 12))
                             .padding(.horizontal)
                     }
                 }
@@ -156,8 +154,7 @@ struct ProgramDetailView: View {
                             .font(.arial(size: 15))
                             .padding()
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color(.systemGray6))
-                            .cornerRadius(12)
+                            .glassEffect(.regular, in: .rect(cornerRadius: 12))
                             .padding(.horizontal)
                     }
                 }
@@ -165,6 +162,7 @@ struct ProgramDetailView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+        .appCanvasBackground()
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("Edit") {
@@ -234,8 +232,7 @@ struct CategoryScoreView: View {
             .frame(height: 8)
         }
         .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(12)
+        .glassEffect(.regular, in: .rect(cornerRadius: 12))
     }
 }
 

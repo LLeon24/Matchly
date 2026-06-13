@@ -107,8 +107,7 @@ struct ProgramEntryView: View {
                                 }
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 12)
-                                .background(Color(.systemGray6))
-                                .cornerRadius(10)
+                                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 10))
                             }
                             
                             TextField("Program Name", text: $name)
@@ -169,22 +168,7 @@ struct ProgramEntryView: View {
                             .padding(.horizontal, 20)
                             .padding(.vertical, 12)
                     }
-                    .background(
-                        ZStack {
-                            // Adaptive background for light/dark mode
-                            RoundedRectangle(cornerRadius: 16)
-                                .fill(Color(.systemBackground))
-                                .shadow(color: Color.black.opacity(0.06), radius: 12, x: 0, y: 4)
-                                .shadow(color: Color.black.opacity(0.04), radius: 4, x: 0, y: 1)
-                            
-                            // Subtle border - adaptive for dark mode
-                            RoundedRectangle(cornerRadius: 16)
-                                .stroke(
-                                    Color(.separator),
-                                    lineWidth: 0.5
-                                )
-                        }
-                    )
+                    .glassEffect(.regular, in: .rect(cornerRadius: 16))
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
                 }
@@ -271,7 +255,7 @@ struct ProgramEntryView: View {
             .padding(.bottom, 8)
         }
         .scrollDismissesKeyboard(.interactively)
-        .background(Color(.systemGroupedBackground).opacity(0.3))
+        .background(AppColors.dashboardCanvas)
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { notification in
             if let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
                 withAnimation {
@@ -337,8 +321,7 @@ struct ProgramEntryView: View {
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
-                    .background(Color(.systemGray6))
-                    .cornerRadius(10)
+                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 10))
                 }
                 .buttonStyle(.plain)
 
@@ -931,7 +914,7 @@ struct ProgramEntryView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal)
                     .padding(.vertical, 10)
-                    .background(Color(.systemGray6))
+                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 10))
                 }
                 
                 // Questionnaire with ScrollViewReader for auto-scrolling
@@ -984,17 +967,12 @@ struct ProgramEntryView: View {
                             .buttonStyle(.plain)
                         }
                         
-                        // Save button as blue pill
                         Button("Save") {
                             saveProgram()
                         }
                         .font(.arial(size: 16, weight: .medium))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.blue)
-                        .cornerRadius(8)
-                        .buttonStyle(.plain)
+                        .buttonStyle(.glassProminent)
+                        .tint(.blue)
                     }
                     .background(Color.clear)
                 }
@@ -1397,12 +1375,14 @@ struct ProgramEntryView: View {
                         }) {
                             Text("Gold")
                                 .font(.arial(size: 10, weight: .semibold))
-                                .foregroundColor(signalType == .gold ? .white : .secondary)
+                                .foregroundColor(signalType == .gold ? .yellow : .secondary)
                                 .fixedSize(horizontal: true, vertical: false)
                                 .padding(.horizontal, 7)
                                 .padding(.vertical, 3)
-                                .background(signalType == .gold ? Color.yellow : Color(.systemGray5))
-                                .cornerRadius(5)
+                                .glassChipStyle(
+                                    tint: signalType == .gold ? .yellow : nil,
+                                    interactive: true
+                                )
                         }
                         .buttonStyle(.plain)
                         
@@ -1422,12 +1402,14 @@ struct ProgramEntryView: View {
                         }) {
                             Text("Silver")
                                 .font(.arial(size: 10, weight: .semibold))
-                                .foregroundColor(signalType == .silver ? .white : .secondary)
+                                .foregroundColor(signalType == .silver ? .primary : .secondary)
                                 .fixedSize(horizontal: true, vertical: false)
                                 .padding(.horizontal, 7)
                                 .padding(.vertical, 3)
-                                .background(signalType == .silver ? Color.gray : Color(.systemGray5))
-                                .cornerRadius(5)
+                                .glassChipStyle(
+                                    tint: signalType == .silver ? .gray : nil,
+                                    interactive: true
+                                )
                         }
                         .buttonStyle(.plain)
                     }
@@ -1448,11 +1430,13 @@ struct ProgramEntryView: View {
                     }) {
                         Text("Signal")
                             .font(.arial(size: 10, weight: .semibold))
-                            .foregroundColor(signalType == .gold ? .white : .secondary)
+                            .foregroundColor(signalType == .gold ? AppColors.primaryBlue : .secondary)
                             .padding(.horizontal, 7)
                             .padding(.vertical, 3)
-                            .background(signalType == .gold ? Color.blue : Color(.systemGray5))
-                            .cornerRadius(5)
+                            .glassChipStyle(
+                                tint: signalType == .gold ? AppColors.primaryBlue : nil,
+                                interactive: true
+                            )
                     }
                     .buttonStyle(.plain)
                 }
@@ -1547,22 +1531,8 @@ extension ProgramEntryView {
     @ViewBuilder
     func whiteCardContainer<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         content()
-            .background(
-                ZStack {
-                    // Adaptive background for light/dark mode
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color(.systemBackground))
-                        .shadow(color: Color.black.opacity(0.06), radius: 12, x: 0, y: 4)
-                        .shadow(color: Color.black.opacity(0.04), radius: 4, x: 0, y: 1)
-                    
-                    // Subtle border - adaptive for dark mode
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(
-                            Color(.separator),
-                            lineWidth: 0.5
-                        )
-                }
-            )
+            .padding(.vertical, 4)
+            .glassEffect(.regular, in: .rect(cornerRadius: 16))
     }
     
     // Liquid glass questionnaire section - full width, beautiful design
@@ -1611,22 +1581,7 @@ extension ProgramEntryView {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .background(
-            ZStack {
-                // Adaptive background for light/dark mode
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Color(.systemBackground))
-                    .shadow(color: Color.black.opacity(0.06), radius: 12, x: 0, y: 4)
-                    .shadow(color: Color.black.opacity(0.04), radius: 4, x: 0, y: 1)
-                
-                // Subtle border - adaptive for dark mode
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(
-                        Color(.separator),
-                        lineWidth: 0.5
-                    )
-            }
-        )
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
     }
     
     private func programTypeIcon(_ type: String) -> String {

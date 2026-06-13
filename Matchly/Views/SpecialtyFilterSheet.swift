@@ -20,27 +20,28 @@ struct SpecialtyFilterSheet: View {
             List {
                 Section("Specialties") {
                     ForEach(allSpecialties, id: \.self) { specialty in
+                        let isSelected = selectedSpecialties.contains(specialty)
                         Button(action: {
                             if selectedSpecialties.contains(specialty) {
                                 selectedSpecialties.remove(specialty)
                             } else {
                                 selectedSpecialties.insert(specialty)
                             }
-                            showAll = selectedSpecialties.isEmpty // If nothing selected, show all
+                            showAll = selectedSpecialties.isEmpty
                         }) {
                             HStack {
                                 ZStack {
                                     Circle()
-                                        .fill(selectedSpecialties.contains(specialty) ? Color.blue : Color.clear)
+                                        .fill(isSelected ? Color.blue : Color.clear)
                                         .frame(width: 22, height: 22)
                                         .overlay(
                                             Circle()
-                                                .stroke(selectedSpecialties.contains(specialty) ? Color.blue : Color.secondary, lineWidth: 2)
+                                                .stroke(isSelected ? Color.blue : Color.secondary, lineWidth: 2)
                                         )
                                     
-                                    if selectedSpecialties.contains(specialty) {
+                                    if isSelected {
                                         Image(systemName: "checkmark")
-                                            .font(.system(size: 12, weight: .bold))
+                                            .font(.arial(size: 12, weight: .bold))
                                             .foregroundColor(.white)
                                     }
                                 }
@@ -51,11 +52,18 @@ struct SpecialtyFilterSheet: View {
                                 
                                 Spacer()
                             }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .glassChipStyle(tint: isSelected ? .blue : nil)
                         }
                         .buttonStyle(.plain)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                        .listRowBackground(Color.clear)
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .appCanvasBackground()
             .navigationTitle("Filter Specialties")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -71,9 +79,10 @@ struct SpecialtyFilterSheet: View {
                         onApply()
                     }
                     .fontWeight(.semibold)
+                    .buttonStyle(.glassProminent)
+                    .tint(AppColors.primaryBlue)
                 }
             }
         }
     }
 }
-

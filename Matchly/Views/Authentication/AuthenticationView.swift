@@ -21,8 +21,7 @@ struct AuthenticationView: View {
     
     var body: some View {
         ZStack {
-            // Background
-            Color(.systemBackground)
+            AppColors.dashboardCanvas
                 .ignoresSafeArea()
             
             ScrollView {
@@ -70,12 +69,11 @@ struct AuthenticationView: View {
                                         .font(.arial(size: 16, weight: .medium))
                                     Spacer()
                                 }
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 20)
+                                .frame(maxWidth: .infinity)
                                 .padding(.vertical, 16)
-                                .background(Color.blue)
-                                .cornerRadius(12)
                             }
+                            .buttonStyle(.glassProminent)
+                            .tint(.blue)
 
                             // Phone Number Sign In
                             Button(action: {
@@ -90,12 +88,11 @@ struct AuthenticationView: View {
                                         .font(.arial(size: 16, weight: .medium))
                                     Spacer()
                                 }
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 20)
+                                .frame(maxWidth: .infinity)
                                 .padding(.vertical, 16)
-                                .background(Color.green)
-                                .cornerRadius(12)
                             }
+                            .buttonStyle(.glassProminent)
+                            .tint(.green)
 
                             // Divider
                             HStack {
@@ -156,12 +153,11 @@ struct AuthenticationView: View {
                                     .font(.arial(size: 16, weight: .medium))
                                 Spacer()
                             }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 20)
+                            .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
-                            .background(Color.black)
-                            .cornerRadius(12)
                         }
+                        .buttonStyle(.glassProminent)
+                        .tint(.black)
                     }
                     .padding(.horizontal, 24)
                     

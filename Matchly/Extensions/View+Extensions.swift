@@ -8,33 +8,67 @@
 import SwiftUI
 import UIKit
 
-// MARK: - Dashboard Card Style
+// MARK: - Liquid Glass (iOS 26)
+
 extension View {
-    func dashboardCardStyle() -> some View {
-        modifier(DashboardCardStyle())
+    /// Primary elevated surface — dashboard cards, panels, map cards.
+    func glassCardStyle(cornerRadius: CGFloat = 24) -> some View {
+        modifier(GlassCardStyle(cornerRadius: cornerRadius))
+    }
+
+    /// Compact inset panel — search rows, form sections, list tiles.
+    func glassPanelStyle(cornerRadius: CGFloat = 16) -> some View {
+        padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
+    }
+
+    /// Circular icon control floating over content.
+    func glassCircleButtonStyle(interactive: Bool = true) -> some View {
+        let style: Glass = interactive ? .regular.interactive() : .regular
+        return glassEffect(style, in: .circle)
+    }
+
+    /// Capsule chip — filters, tags, segmented pills.
+    func glassChipStyle(tint: Color? = nil, interactive: Bool = true) -> some View {
+        let base: Glass = interactive ? .regular.interactive() : .regular
+        let style: Glass = {
+            if let tint {
+                return .regular.tint(tint.opacity(0.18)).interactive()
+            }
+            return base
+        }()
+        return glassEffect(style, in: .capsule)
+    }
+
+    /// Full-screen app canvas so glass chrome has content to refract.
+    func appCanvasBackground() -> some View {
+        background(AppColors.dashboardCanvas.ignoresSafeArea())
     }
 }
 
-struct DashboardCardStyle: ViewModifier {
+struct GlassCardStyle: ViewModifier {
+    var cornerRadius: CGFloat = 24
+
     func body(content: Content) -> some View {
         content
             .padding(.horizontal, 20)
             .padding(.vertical, 20)
-            .background(
-                // Elevated card surface that floats on the bright dashboard canvas:
-                // pure white in light mode, elevated dark gray in dark mode so
-                // sections stay clearly distinguishable against the bright canvas.
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(AppColors.dashboardCard)
-            )
-            // Ultra-subtle hairline so each card still reads distinctly even when
-            // the canvas is near-white (adaptive: faint dark in light, faint light in dark).
-            .overlay(
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.05), lineWidth: 0.5)
-            )
-            // Soft, diffuse shadow for a premium "floating card" feel.
-            .shadow(color: Color.black.opacity(0.09), radius: 18, x: 0, y: 8)
+            .glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
+    }
+}
+
+// MARK: - Dashboard Card Style (alias — uses native Liquid Glass)
+extension View {
+    func dashboardCardStyle() -> some View {
+        glassCardStyle(cornerRadius: 24)
+    }
+}
+
+// Legacy name kept for any call sites; routes to glass card.
+struct DashboardCardStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        content.modifier(GlassCardStyle(cornerRadius: 24))
     }
 }
 

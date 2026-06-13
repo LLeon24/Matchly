@@ -20,9 +20,9 @@ struct StateFilterSheet: View {
             List {
                 Section("States") {
                     ForEach(allStates, id: \.self) { state in
+                        let isSelected = (state == "All" && showAll) || (state != "All" && selectedStates.contains(state))
                         Button(action: {
                             if state == "All" {
-                                // Selecting "All" clears all selections
                                 selectedStates.removeAll()
                                 showAll = true
                             } else {
@@ -31,23 +31,22 @@ struct StateFilterSheet: View {
                                 } else {
                                     selectedStates.insert(state)
                                 }
-                                // If nothing selected, show all
                                 showAll = selectedStates.isEmpty
                             }
                         }) {
                             HStack {
                                 ZStack {
                                     Circle()
-                                        .fill((state == "All" && showAll) || (state != "All" && selectedStates.contains(state)) ? Color.blue : Color.clear)
+                                        .fill(isSelected ? Color.blue : Color.clear)
                                         .frame(width: 22, height: 22)
                                         .overlay(
                                             Circle()
-                                                .stroke((state == "All" && showAll) || (state != "All" && selectedStates.contains(state)) ? Color.blue : Color.secondary, lineWidth: 2)
+                                                .stroke(isSelected ? Color.blue : Color.secondary, lineWidth: 2)
                                         )
                                     
-                                    if (state == "All" && showAll) || (state != "All" && selectedStates.contains(state)) {
+                                    if isSelected {
                                         Image(systemName: "checkmark")
-                                            .font(.system(size: 12, weight: .bold))
+                                            .font(.arial(size: 12, weight: .bold))
                                             .foregroundColor(.white)
                                     }
                                 }
@@ -58,11 +57,18 @@ struct StateFilterSheet: View {
                                 
                                 Spacer()
                             }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .glassChipStyle(tint: isSelected ? .blue : nil)
                         }
                         .buttonStyle(.plain)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                        .listRowBackground(Color.clear)
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .appCanvasBackground()
             .navigationTitle("Filter States")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -78,9 +84,10 @@ struct StateFilterSheet: View {
                         onApply()
                     }
                     .fontWeight(.semibold)
+                    .buttonStyle(.glassProminent)
+                    .tint(AppColors.primaryBlue)
                 }
             }
         }
     }
 }
-

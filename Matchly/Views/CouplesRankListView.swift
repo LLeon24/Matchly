@@ -37,10 +37,10 @@ struct CouplesRankListView: View {
                 Section {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Couples Rank List")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.arial(size: 15, weight: .semibold))
                         
                         Text("Each rank must pair one of your programs with one of your partner's programs (or 'No Match'). Both lists must have the same number of ranks.")
-                            .font(.system(size: 12))
+                            .font(.arial(size: 12))
                             .foregroundColor(.secondary)
                     }
                     .padding(.vertical, 4)
@@ -52,14 +52,14 @@ struct CouplesRankListView: View {
                     Section {
                         VStack(spacing: 16) {
                             Image(systemName: "list.number")
-                                .font(.system(size: 40))
+                                .font(.arial(size: 40))
                                 .foregroundColor(.secondary)
                             
                             Text("No Rank Pairs Yet")
-                                .font(.system(size: 17, weight: .semibold))
+                                .font(.arial(size: 17, weight: .semibold))
                             
                             Text("Create your first rank pair to get started")
-                                .font(.system(size: 14))
+                                .font(.arial(size: 14))
                                 .foregroundColor(.secondary)
                                 .multilineTextAlignment(.center)
                             
@@ -67,13 +67,11 @@ struct CouplesRankListView: View {
                                 showAddPair = true
                             }) {
                                 Text("Add First Pair")
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 24)
-                                    .padding(.vertical, 12)
-                                    .background(Color.blue)
-                                    .cornerRadius(10)
+                                    .font(.arial(size: 16, weight: .semibold))
+                                    .frame(maxWidth: .infinity)
                             }
+                            .buttonStyle(.glassProminent)
+                            .tint(AppColors.primaryBlue)
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 40)
@@ -102,7 +100,7 @@ struct CouplesRankListView: View {
                                     validateRankList()
                                 }) {
                                     Text("Validate")
-                                        .font(.system(size: 12))
+                                        .font(.arial(size: 12))
                                 }
                             }
                         }
@@ -135,11 +133,13 @@ struct CouplesRankListView: View {
             } else {
                 Section {
                     Text("Please link with your partner first in Couples Matching settings.")
-                        .font(.system(size: 14))
+                        .font(.arial(size: 14))
                         .foregroundColor(.secondary)
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .appCanvasBackground()
         .navigationTitle("Couples Rank List")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -242,32 +242,32 @@ struct CouplesRankPairRow: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text("#\(pair.rank)")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.arial(size: 14, weight: .bold))
                         .foregroundColor(.blue)
                         .frame(width: 30)
                     
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
                             Text("You:")
-                                .font(.system(size: 12, weight: .medium))
+                                .font(.arial(size: 12, weight: .medium))
                                 .foregroundColor(.secondary)
                             Text(user1Program?.hospital ?? (pair.user1NoMatch ? "No Match" : "Not Set"))
-                                .font(.system(size: 14, weight: .medium))
+                                .font(.arial(size: 14, weight: .medium))
                         }
                         
                         HStack {
                             Text("Partner:")
-                                .font(.system(size: 12, weight: .medium))
+                                .font(.arial(size: 12, weight: .medium))
                                 .foregroundColor(.secondary)
                             Text(user2Program?.hospital ?? (pair.user2NoMatch ? "No Match" : "Not Set"))
-                                .font(.system(size: 14, weight: .medium))
+                                .font(.arial(size: 14, weight: .medium))
                         }
                     }
                     
                     Spacer()
                     
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 12))
+                        .font(.arial(size: 12))
                         .foregroundColor(.secondary)
                 }
             }
@@ -398,7 +398,7 @@ struct CouplesPreferencesView: View {
                     
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Maximum Distance: \(Int(distanceTolerance)) miles")
-                            .font(.system(size: 15, weight: .medium))
+                            .font(.arial(size: 15, weight: .medium))
                         
                         Slider(value: $distanceTolerance, in: 0...500, step: 10)
                     }
@@ -431,6 +431,8 @@ struct CouplesPreferencesView: View {
                         savePreferences()
                     }
                     .fontWeight(.semibold)
+                    .buttonStyle(.glassProminent)
+                    .tint(AppColors.primaryBlue)
                 }
             }
         }

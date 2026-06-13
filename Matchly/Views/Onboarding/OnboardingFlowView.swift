@@ -9,7 +9,7 @@ import SwiftUI
 import PhotosUI
 
 struct OnboardingFlowView: View {
-    @StateObject private var dataManager = DataManager.shared
+    @ObservedObject private var dataManager = DataManager.shared
     @State private var currentStep: OnboardingStep = .welcome
     @State private var profile = UserProfile()
     @State private var selectedSpecialties: Set<String> = []
@@ -51,13 +51,8 @@ struct OnboardingFlowView: View {
     
     var body: some View {
         ZStack {
-            // Background gradient
-            LinearGradient(
-                colors: [Color.blue.opacity(0.05), Color.purple.opacity(0.05)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            AppColors.dashboardCanvas
+                .ignoresSafeArea()
             
             VStack(spacing: 0) {
                 // Progress indicator
@@ -151,11 +146,11 @@ struct OnboardingFlowView: View {
                 // Welcome text with animation
                 VStack(spacing: 16) {
                     Text("Welcome to Matchly")
-                        .font(.system(size: 36, weight: .bold))
+                        .font(.arial(size: 36, weight: .bold))
                         .foregroundColor(.primary)
                     
                     Text("Your Residency Match Companion")
-                        .font(.system(size: 18, weight: .medium))
+                        .font(.arial(size: 18, weight: .medium))
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 20)
@@ -181,25 +176,16 @@ struct OnboardingFlowView: View {
             }) {
                 HStack(spacing: 8) {
                     Text("Get Started")
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.arial(size: 18, weight: .semibold))
                     Image(systemName: "arrow.right")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.arial(size: 16, weight: .semibold))
                 }
-                .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 18)
-                .background(
-                    LinearGradient(
-                        colors: [AppColors.primaryBlue, AppColors.accentPink],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .cornerRadius(16)
-                .shadow(color: AppColors.primaryBlue.opacity(0.4), radius: 12, x: 0, y: 6)
             }
-            .buttonStyle(.plain)
-            .contentShape(Rectangle())
+            // Hero CTA → prominent Liquid Glass over the soft gradient backdrop.
+            .buttonStyle(.glassProminent)
+            .tint(AppColors.primaryBlue)
             .padding(.horizontal, 32)
             .padding(.bottom, 50)
         }
@@ -213,12 +199,12 @@ struct OnboardingFlowView: View {
         var body: some View {
             HStack(spacing: 12) {
                 Image(systemName: icon)
-                    .font(.system(size: 18))
+                    .font(.arial(size: 18))
                     .foregroundColor(AppColors.primaryBlue)
                     .frame(width: 28)
                 
                 Text(text)
-                    .font(.system(size: 16, weight: .medium))
+                    .font(.arial(size: 16, weight: .medium))
                     .foregroundColor(.primary)
                 
                 Spacer()
@@ -235,10 +221,9 @@ struct OnboardingFlowView: View {
             content: {
                 VStack(spacing: 24) {
                     TextField("Enter your name", text: $profile.name)
-                        .font(.system(size: 18))
+                        .font(.arial(size: 18))
                         .padding()
-                        .background(Color(.systemGray6))
-                        .cornerRadius(12)
+                        .glassEffect(.regular, in: .rect(cornerRadius: 12))
                         .autocapitalization(.words)
                         .disableAutocorrection(true)
                     
@@ -270,16 +255,15 @@ struct OnboardingFlowView: View {
                         get: { profile.aamcID ?? "" },
                         set: { profile.aamcID = $0.isEmpty ? nil : $0 }
                     ))
-                    .font(.system(size: 18))
+                    .font(.arial(size: 18))
                     .padding()
-                    .background(Color(.systemGray6))
-                    .cornerRadius(12)
+                    .glassEffect(.regular, in: .rect(cornerRadius: 12))
                     .keyboardType(.default)
                     .autocapitalization(.none)
                     .disableAutocorrection(true)
                     
                     Text("You can skip this step if you don't have an AAMC ID")
-                        .font(.system(size: 14))
+                        .font(.arial(size: 14))
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                     
@@ -318,8 +302,9 @@ struct OnboardingFlowView: View {
                     PhotosPicker(selection: $selectedPhoto, matching: .images) {
                         ZStack {
                             Circle()
-                                .fill(Color(.systemGray5))
+                                .fill(.clear)
                                 .frame(width: 140, height: 140)
+                                .glassEffect(.regular.interactive(), in: .circle)
                             
                             if let photoData = profile.photoData,
                                let uiImage = UIImage(data: photoData) {
@@ -331,10 +316,10 @@ struct OnboardingFlowView: View {
                             } else {
                                 VStack(spacing: 12) {
                                     Image(systemName: "camera.fill")
-                                        .font(.system(size: 40))
+                                        .font(.arial(size: 40))
                                         .foregroundColor(.blue)
                                     Text("Add Photo")
-                                        .font(.system(size: 16, weight: .medium))
+                                        .font(.arial(size: 16, weight: .medium))
                                         .foregroundColor(.blue)
                                 }
                             }
@@ -346,7 +331,7 @@ struct OnboardingFlowView: View {
                                     .frame(width: 140, height: 140)
                                 
                                 Image(systemName: "pencil.circle.fill")
-                                    .font(.system(size: 32))
+                                    .font(.arial(size: 32))
                                     .foregroundColor(.white)
                             }
                         }
@@ -358,7 +343,7 @@ struct OnboardingFlowView: View {
                             selectedPhoto = nil
                         }) {
                             Text("Remove Photo")
-                                .font(.system(size: 15))
+                                .font(.arial(size: 15))
                                 .foregroundColor(.red)
                         }
                     }
@@ -398,15 +383,15 @@ struct OnboardingFlowView: View {
                     
                     VStack(spacing: 24) {
                         Image(systemName: "calendar.badge.plus")
-                            .font(.system(size: 80))
+                            .font(.arial(size: 80))
                             .foregroundColor(.blue)
                         
                         VStack(spacing: 12) {
                             Text("Sync Interviews to Calendar")
-                                .font(.system(size: 22, weight: .semibold))
+                                .font(.arial(size: 22, weight: .semibold))
                             
                             Text("Automatically add your interview dates to your device calendar with reminders and all program details.")
-                                .font(.system(size: 15))
+                                .font(.arial(size: 15))
                                 .foregroundColor(.secondary)
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal, 20)
@@ -415,16 +400,15 @@ struct OnboardingFlowView: View {
                         Toggle(isOn: $enableCalendarSync) {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Enable Calendar Sync")
-                                    .font(.system(size: 17, weight: .medium))
+                                    .font(.arial(size: 17, weight: .medium))
                                 Text("You can change this anytime in Settings")
-                                    .font(.system(size: 13))
+                                    .font(.arial(size: 13))
                                     .foregroundColor(.secondary)
                             }
                         }
                         .padding(.horizontal, 20)
                         .padding(.vertical, 16)
-                        .background(Color(.systemGray6))
-                        .cornerRadius(12)
+                        .glassEffect(.regular, in: .rect(cornerRadius: 12))
                     }
                     
                     Spacer()
@@ -499,6 +483,21 @@ struct OnboardingFlowView: View {
         dataManager.preferences.hasCompletedOnboarding = true
         dataManager.savePreferences()
         
+        // If the user opted into calendar sync, actually request permission now.
+        // If access is denied, turn the preference back off so the stored state
+        // matches reality.
+        if enableCalendarSync {
+            Task {
+                let granted = await CalendarManager.shared.requestAccess()
+                if !granted {
+                    await MainActor.run {
+                        dataManager.preferences.enableCalendarSync = false
+                        dataManager.savePreferences()
+                    }
+                }
+            }
+        }
+        
         showMainApp = true
     }
 }
@@ -520,11 +519,11 @@ struct OnboardingStepView<Content: View>: View {
             // Header
             VStack(spacing: 8) {
                 Text(title)
-                    .font(.system(size: 28, weight: .bold))
+                    .font(.arial(size: 28, weight: .bold))
                     .multilineTextAlignment(.center)
                 
                 Text(subtitle)
-                    .font(.system(size: 16))
+                    .font(.arial(size: 16))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
             }
@@ -541,46 +540,31 @@ struct OnboardingStepView<Content: View>: View {
             // Footer buttons
             VStack(spacing: 12) {
                 HStack(spacing: 12) {
-                    // Back button (if available)
+                    // Back button (if available) → neutral Liquid Glass.
                     if let onBack = onBack {
                         Button(action: onBack) {
                             HStack(spacing: 6) {
                                 Image(systemName: "chevron.left")
-                                    .font(.system(size: 14, weight: .semibold))
+                                    .font(.arial(size: 14, weight: .semibold))
                                 Text("Back")
-                                    .font(.system(size: 17, weight: .medium))
+                                    .font(.arial(size: 17, weight: .medium))
                             }
                             .foregroundColor(.primary)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
-                            .background(Color(.systemGray6))
-                            .cornerRadius(12)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.glass)
                     }
-                    
-                    // Continue button
+
+                    // Continue button → prominent Liquid Glass, brand-tinted.
                     Button(action: onNext) {
                         Text(buttonText)
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundColor(.white)
+                            .font(.arial(size: 17, weight: .semibold))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
-                            .background(
-                                canContinue
-                                    ? LinearGradient(
-                                        colors: [AppColors.primaryBlue, AppColors.accentPink],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                    : LinearGradient(
-                                        colors: [.gray, .gray],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                            )
-                            .cornerRadius(12)
                     }
+                    .buttonStyle(.glassProminent)
+                    .tint(canContinue ? AppColors.primaryBlue : Color.gray)
                     .disabled(!canContinue)
                 }
                 .padding(.horizontal, 24)
@@ -588,7 +572,7 @@ struct OnboardingStepView<Content: View>: View {
                 if showSkip, let onSkip = onSkip {
                     Button(action: onSkip) {
                         Text("Skip")
-                            .font(.system(size: 16, weight: .medium))
+                            .font(.arial(size: 16, weight: .medium))
                             .foregroundColor(.secondary)
                     }
                     .padding(.bottom, 20)
@@ -603,16 +587,7 @@ struct SpecialtySelectionContentView: View {
     @Binding var selectedSpecialties: Set<String>
     @State private var searchText = ""
     
-    let specialties = [
-        "Internal Medicine", "Family Medicine", "Emergency Medicine", "Pediatrics",
-        "General Surgery", "OB/GYN", "Psychiatry", "Neurology", "Anesthesiology",
-        "Radiology", "Pathology", "Orthopedics", "ENT", "Urology", "PM&R",
-        "Dermatology", "Neurosurgery", "Child Neurology", "Nuclear Medicine",
-        "Radiation Oncology", "Plastic Surgery", "Ophthalmology", "Interventional Radiology - Integrated",
-        "Thoracic Surgery - Integrated", "Vascular Surgery - Integrated", "Transitional Year",
-        "Aerospace Medicine", "Occupational and Environmental Medicine",
-        "Public Health and General Preventive Medicine", "Osteopathic Neuromusculoskeletal Medicine"
-    ]
+    let specialties = SpecialtyFormatter.commonSpecialties
     
     var filteredSpecialties: [String] {
         if searchText.isEmpty {
@@ -630,8 +605,7 @@ struct SpecialtySelectionContentView: View {
                 TextField("Search specialties...", text: $searchText)
             }
             .padding()
-            .background(Color(.systemGray6))
-            .cornerRadius(10)
+            .glassEffect(.regular, in: .rect(cornerRadius: 10))
             
             // Specialty list
             ScrollView {

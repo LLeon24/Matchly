@@ -34,10 +34,13 @@ struct DashboardSectionTabBar: View {
                 tab(index)
             }
         }
-        // Subtle full-width baseline the active underline rests on.
+        .padding(.top, 6)
+        .padding(.bottom, 4)
+        // No full-width glass pill — `.regular` glass on a flat canvas reads as a
+        // heavy gray slab. Keep this control airy: hairline + sliding underline only.
         .background(alignment: .bottom) {
             Rectangle()
-                .fill(Color(.separator).opacity(0.35))
+                .fill(Color(.separator).opacity(0.25))
                 .frame(height: 1)
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: selection)

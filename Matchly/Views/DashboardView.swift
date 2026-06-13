@@ -157,13 +157,18 @@ struct DashboardView: View {
 
             Spacer(minLength: 8)
 
+            // Floating chrome → Liquid Glass. `.interactive()` gives the press
+            // lensing; the circular glass capsule reads as an elevated control
+            // hovering over the dashboard canvas.
             Button(action: { showCustomization = true }) {
                 Image(systemName: "slider.horizontal.3")
                     .font(.arial(size: 18, weight: .medium))
-                    .foregroundColor(.secondary)
-                    .frame(width: 36, height: 36)
-                    .contentShape(Rectangle())
+                    .foregroundColor(.primary)
+                    .frame(width: 40, height: 40)
+                    .contentShape(Circle())
             }
+            .buttonStyle(.plain)
+            .glassEffect(.clear.interactive(), in: .circle)
             .accessibilityLabel("Customize dashboard")
         }
         .padding(.horizontal, 20)
@@ -193,15 +198,17 @@ struct DashboardView: View {
                     .font(.arial(size: 19, weight: .semibold))
                     .foregroundColor(.white)
             }
+            .frame(width: size, height: size)
         } else {
             ZStack {
                 Circle()
-                    .fill(AppColors.primaryBlue.opacity(0.15))
+                    .glassEffect(.clear.interactive(), in: .circle)
                     .frame(width: size, height: size)
                 Image(systemName: "person.fill")
                     .font(.arial(size: 20, weight: .medium))
-                    .foregroundColor(AppColors.primaryBlue)
+                    .foregroundStyle(AppColors.primaryBlue)
             }
+            .frame(width: size, height: size)
         }
     }
 
@@ -1117,13 +1124,13 @@ struct DashboardView: View {
                     Text("Add Your First Program")
                         .font(.arial(size: 17, weight: .semibold))
                 }
-                .foregroundColor(.white)
                 .padding(.horizontal, 32)
                 .padding(.vertical, 15)
-                .background(Color(.label))
-                .cornerRadius(12)
-                .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
             }
+            // Primary call-to-action → prominent Liquid Glass, tinted with the
+            // brand blue. The glass + tint replaces the flat label-color pill.
+            .buttonStyle(.glassProminent)
+            .tint(AppColors.primaryBlue)
         }
         .padding(.vertical, 50)
     }
@@ -1360,14 +1367,9 @@ struct DashboardView: View {
                     }
                     .padding(.vertical, 10)
                     .padding(.horizontal, 12)
-                    .background(
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(.ultraThinMaterial)
-                            
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(Color.orange.opacity(totalSignalCount > 0 ? 0.08 : 0.04))
-                        }
+                    .glassEffect(
+                        .regular.tint(Color.orange.opacity(totalSignalCount > 0 ? 0.12 : 0.06)).interactive(),
+                        in: .rect(cornerRadius: 8)
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
@@ -1945,11 +1947,7 @@ struct StatCard: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 14)
         .frame(maxWidth: .infinity, minHeight: 110, maxHeight: 110, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 14)
-                .fill(Color(.systemBackground))
-        )
-        .shadow(color: Color.black.opacity(0.04), radius: 8, x: 0, y: 2)
+        .glassEffect(.regular, in: .rect(cornerRadius: 14))
         .contentShape(Rectangle()) // Makes entire card tappable
     }
 }
@@ -1991,11 +1989,7 @@ struct QuickActionContent: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 18)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(AppColors.dashboardCard)
-        )
-        .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 3)
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
     }
 }
 

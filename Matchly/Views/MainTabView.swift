@@ -16,8 +16,8 @@ struct MainTabView: View {
     
     var body: some View {
         ZStack(alignment: .bottom) {
-            // Background color to prevent black screen
-            Color(.systemBackground)
+            // Canvas behind all tabs so Liquid Glass chrome refracts content.
+            AppColors.dashboardCanvas
                 .ignoresSafeArea()
             
             // Content views

@@ -11,7 +11,7 @@ import UniformTypeIdentifiers
 struct DataBackupView: View {
     @EnvironmentObject var dataManager: DataManager
     @Environment(\.dismiss) var dismiss
-    @StateObject private var cloudSync = CloudSyncManager.shared
+    @ObservedObject private var cloudSync = CloudSyncManager.shared
     @State private var showExportSheet = false
     @State private var showImportPicker = false
     @State private var showImportSuccess = false
@@ -29,33 +29,33 @@ struct DataBackupView: View {
                             Image(systemName: cloudSync.isCloudAvailable ? "icloud.fill" : "icloud.slash")
                                 .foregroundColor(cloudSync.isCloudAvailable ? .blue : .gray)
                             Text("iCloud Sync")
-                                .font(.system(size: 17, weight: .medium))
+                                .font(.arial(size: 17, weight: .medium))
                         }
                         
                         if cloudSync.isCloudAvailable {
                             if let lastSync = cloudSync.lastSyncDate {
                                 Text("Last synced: \(lastSync, style: .relative)")
-                                    .font(.system(size: 13))
+                                    .font(.arial(size: 13))
                                     .foregroundColor(.secondary)
                             } else {
                                 Text("Not yet synced")
-                                    .font(.system(size: 13))
+                                    .font(.arial(size: 13))
                                     .foregroundColor(.secondary)
                             }
                             
                             if let error = cloudSync.syncError {
                                 Text(error)
-                                    .font(.system(size: 12))
+                                    .font(.arial(size: 12))
                                     .foregroundColor(.red)
                                     .lineLimit(3)
                             }
                         } else {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("iCloud not available")
-                                    .font(.system(size: 13))
+                                    .font(.arial(size: 13))
                                     .foregroundColor(.secondary)
                                 Text("Sign in to iCloud in Settings")
-                                    .font(.system(size: 12))
+                                    .font(.arial(size: 12))
                                     .foregroundColor(.secondary)
                             }
                         }
@@ -72,7 +72,7 @@ struct DataBackupView: View {
                                     .scaleEffect(0.8)
                             } else {
                                 Text("Sync Now")
-                                    .font(.system(size: 15, weight: .medium))
+                                    .font(.arial(size: 15, weight: .medium))
                                     .foregroundColor(.blue)
                             }
                         }
@@ -80,6 +80,9 @@ struct DataBackupView: View {
                     }
                 }
                 .padding(.vertical, 4)
+                .glassPanelStyle(cornerRadius: 14)
+                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                .listRowBackground(Color.clear)
             } header: {
                 Text("Cloud Backup")
             } footer: {
@@ -147,7 +150,10 @@ struct DataBackupView: View {
                             .foregroundColor(.secondary)
                     }
                 }
-                .font(.system(size: 15))
+                .font(.arial(size: 15))
+                .glassPanelStyle(cornerRadius: 14)
+                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                .listRowBackground(Color.clear)
             } header: {
                 Text("Data Summary")
             }
@@ -175,6 +181,8 @@ struct DataBackupView: View {
                 Text("If sync isn't working, check the diagnostics above. Common issues: not signed into iCloud, data too large (>1MB), or iCloud Drive disabled.")
             }
         }
+        .scrollContentBackground(.hidden)
+        .appCanvasBackground()
         .navigationTitle("Backup & Sync")
         .navigationBarTitleDisplayMode(.inline)
         .fileExporter(

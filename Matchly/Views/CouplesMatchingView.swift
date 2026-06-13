@@ -101,8 +101,7 @@ struct CouplesMatchingView: View {
                                     .foregroundColor(.blue)
                                     .padding()
                                     .frame(maxWidth: .infinity)
-                                    .background(Color.blue.opacity(0.1))
-                                    .cornerRadius(10)
+                                    .glassEffect(.regular.tint(Color.blue.opacity(0.12)), in: .rect(cornerRadius: 10))
                                 
                                 Button(action: {
                                     UIPasteboard.general.string = couple.coupleCode
@@ -110,10 +109,11 @@ struct CouplesMatchingView: View {
                                     Image(systemName: "doc.on.doc")
                                         .font(.arial(size: 18))
                                         .foregroundColor(.blue)
-                                        .padding()
-                                        .background(Color.blue.opacity(0.1))
-                                        .cornerRadius(10)
+                                        .frame(width: 44, height: 44)
+                                        .contentShape(Rectangle())
                                 }
+                                .buttonStyle(.plain)
+                                .glassCircleButtonStyle()
                             }
                             
                             Text("Your partner should enter this code in their app to link accounts.")
@@ -141,8 +141,7 @@ struct CouplesMatchingView: View {
                                         .truncationMode(.middle)
                                         .padding()
                                         .frame(maxWidth: .infinity)
-                                        .background(Color.blue.opacity(0.1))
-                                        .cornerRadius(10)
+                                        .glassEffect(.regular.tint(Color.blue.opacity(0.12)), in: .rect(cornerRadius: 10))
                                     
                                     Button(action: {
                                         UIPasteboard.general.string = inviteLink
@@ -150,19 +149,21 @@ struct CouplesMatchingView: View {
                                         Image(systemName: "doc.on.doc")
                                             .font(.arial(size: 18))
                                             .foregroundColor(.blue)
-                                            .padding()
-                                            .background(Color.blue.opacity(0.1))
-                                            .cornerRadius(10)
+                                            .frame(width: 44, height: 44)
+                                            .contentShape(Rectangle())
                                     }
+                                    .buttonStyle(.plain)
+                                    .glassCircleButtonStyle()
                                     
                                     ShareLink(item: inviteLink) {
                                         Image(systemName: "square.and.arrow.up")
                                             .font(.arial(size: 18))
                                             .foregroundColor(.blue)
-                                            .padding()
-                                            .background(Color.blue.opacity(0.1))
-                                            .cornerRadius(10)
+                                            .frame(width: 44, height: 44)
+                                            .contentShape(Rectangle())
                                     }
+                                    .buttonStyle(.plain)
+                                    .glassCircleButtonStyle()
                                 }
                                 
                                 Text("Your partner can tap this link or enter the code below.")
@@ -228,11 +229,14 @@ struct CouplesMatchingView: View {
                         createCouple()
                     }) {
                         HStack {
+                            Spacer()
                             Image(systemName: "plus.circle.fill")
-                                .foregroundColor(.blue)
                             Text("Create Couple Code")
+                            Spacer()
                         }
                     }
+                    .buttonStyle(.glassProminent)
+                    .tint(AppColors.primaryBlue)
                     
                     Button(action: {
                         showLinkPartner = true
@@ -280,6 +284,8 @@ struct CouplesMatchingView: View {
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .appCanvasBackground()
         .navigationTitle("Couples Matching")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showLinkPartner) {
@@ -359,10 +365,14 @@ struct LinkPartnerView: View {
                 if useLink {
                     Section {
                         TextField("Paste invite link", text: $inviteLink)
-                            .textFieldStyle(.roundedBorder)
                             .autocapitalization(.none)
                             .disableAutocorrection(true)
                             .keyboardType(.URL)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            .glassEffect(.regular, in: .capsule)
+                            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                            .listRowBackground(Color.clear)
                     } header: {
                         Text("Invite Link")
                     } footer: {
@@ -371,10 +381,14 @@ struct LinkPartnerView: View {
                 } else {
                     Section {
                         TextField("Enter Partner Code", text: $partnerCode)
-                            .textFieldStyle(.roundedBorder)
                             .autocapitalization(.allCharacters)
                             .disableAutocorrection(true)
                             .font(.arial(size: 18, weight: .medium, design: .monospaced))
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            .glassEffect(.regular, in: .capsule)
+                            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                            .listRowBackground(Color.clear)
                     } header: {
                         Text("Partner Code")
                     } footer: {
@@ -386,12 +400,21 @@ struct LinkPartnerView: View {
                     Button(action: {
                         linkPartner()
                     }) {
-                        Text("Link Accounts")
-                            .frame(maxWidth: .infinity)
+                        HStack {
+                            Spacer()
+                            Text("Link Accounts")
+                            Spacer()
+                        }
                     }
+                    .buttonStyle(.glassProminent)
+                    .tint(AppColors.primaryBlue)
                     .disabled(useLink ? inviteLink.isEmpty : partnerCode.count != 6)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    .listRowBackground(Color.clear)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .appCanvasBackground()
             .navigationTitle("Link Partner")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

@@ -9,7 +9,7 @@ import SwiftUI
 
 struct EmailLoginView: View {
     @Environment(\.dismiss) var dismiss
-    @StateObject private var authManager = AuthManager.shared
+    @ObservedObject private var authManager = AuthManager.shared
     @State private var email = ""
     @State private var password = ""
     @State private var isLoading = false
@@ -21,13 +21,23 @@ struct EmailLoginView: View {
         NavigationView {
             Form {
                 Section {
-                    TextField("Email", text: $email)
-                        .textContentType(.emailAddress)
-                        .autocapitalization(.none)
-                        .keyboardType(.emailAddress)
-                    
-                    SecureField("Password", text: $password)
-                        .textContentType(.password)
+                    VStack(spacing: 12) {
+                        TextField("Email", text: $email)
+                            .textContentType(.emailAddress)
+                            .autocapitalization(.none)
+                            .keyboardType(.emailAddress)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            .glassEffect(.regular, in: .capsule)
+                        
+                        SecureField("Password", text: $password)
+                            .textContentType(.password)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            .glassEffect(.regular, in: .capsule)
+                    }
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    .listRowBackground(Color.clear)
                 } header: {
                     Text("Sign In")
                 } footer: {
@@ -55,7 +65,11 @@ struct EmailLoginView: View {
                             Spacer()
                         }
                     }
+                    .buttonStyle(.glassProminent)
+                    .tint(AppColors.primaryBlue)
                     .disabled(isLoading || email.isEmpty || password.isEmpty)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    .listRowBackground(Color.clear)
                     
                     Button(action: {
                         showForgotPassword = true
@@ -69,20 +83,21 @@ struct EmailLoginView: View {
                     HStack {
                         Spacer()
                         Text("Don't have an account?")
-                            .font(.system(size: 14))
+                            .font(.arial(size: 14))
                             .foregroundColor(.secondary)
                         Button(action: {
-                            dismiss()
                             showSignUp = true
                         }) {
                             Text("Sign Up")
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.arial(size: 14, weight: .semibold))
                                 .foregroundColor(.blue)
                         }
                         Spacer()
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .appCanvasBackground()
             .navigationTitle("Sign In")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -138,5 +153,4 @@ struct EmailLoginView: View {
 #Preview {
     EmailLoginView()
 }
-
 

@@ -163,12 +163,12 @@ struct ProgramSearchView: View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .foregroundColor(.blue)
-                .font(.system(size: 16))
+                .font(.arial(size: 16))
             TextField("Search programs...", text: $searchText)
                 .textFieldStyle(.plain)
                 .autocapitalization(.none)
                 .disableAutocorrection(true)
-                .font(.system(size: 16))
+                .font(.arial(size: 16))
             
             if !searchText.isEmpty {
                 Button(action: {
@@ -176,22 +176,20 @@ struct ProgramSearchView: View {
                 }) {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundColor(.secondary.opacity(0.6))
-                        .font(.system(size: 16))
+                        .font(.arial(size: 16))
                 }
             }
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(Color(.systemBackground))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Color(.systemGray4), lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.03), radius: 1, x: 0, y: 1)
+        // Floating search field → Liquid Glass capsule. The native material
+        // adapts to light/dark and to whatever scrolls beneath it.
+        .glassEffect(.regular, in: .capsule)
     }
     
     private var filtersView: some View {
         ScrollView(.horizontal, showsIndicators: false) {
+                    GlassEffectContainer(spacing: 10) {
                         HStack(spacing: 10) {
                             // Specialty filter - sheet-based like program types
                             Button(action: {
@@ -204,7 +202,7 @@ struct ProgramSearchView: View {
                             }) {
                                 HStack(spacing: 6) {
                                     Image(systemName: "stethoscope")
-                                        .font(.system(size: 13))
+                                        .font(.arial(size: 13))
                                         .foregroundColor(.blue)
                                     
                                     let displayText: String = {
@@ -220,23 +218,22 @@ struct ProgramSearchView: View {
                                     }()
                                     
                                     Text(displayText)
-                                        .font(.system(size: 12, weight: .medium))
+                                        .font(.arial(size: 12, weight: .medium))
                                         .lineLimit(1)
                                         .minimumScaleFactor(0.8)
                                     
                                     Image(systemName: "chevron.down")
-                                        .font(.system(size: 9))
+                                        .font(.arial(size: 9))
                                         .foregroundColor(.secondary)
                                 }
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background({
-                                    let hasSelection = !showAllSpecialties && (!selectedSpecialties.isEmpty || !dataManager.preferences.specialties.isEmpty)
-                                    return hasSelection 
-                                        ? Color.blue.opacity(0.12) 
-                                        : Color(.systemGray5)
-                                }())
-                                .cornerRadius(7)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .glassEffect(
+                                    (!showAllSpecialties && (!selectedSpecialties.isEmpty || !dataManager.preferences.specialties.isEmpty))
+                                        ? .regular.tint(Color.blue.opacity(0.25)).interactive()
+                                        : .regular.interactive(),
+                                    in: .capsule
+                                )
                             }
                             .sheet(isPresented: $showSpecialtyFilter) {
                                 SpecialtyFilterSheet(
@@ -264,7 +261,7 @@ struct ProgramSearchView: View {
                         }) {
                             HStack(spacing: 6) {
                                 Image(systemName: "map.fill")
-                                    .font(.system(size: 13))
+                                    .font(.arial(size: 13))
                                     .foregroundColor(.green)
                                 
                                 let displayText: String = {
@@ -278,23 +275,22 @@ struct ProgramSearchView: View {
                                 }()
                                 
                                 Text(displayText)
-                                    .font(.system(size: 12, weight: .medium))
+                                    .font(.arial(size: 12, weight: .medium))
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.8)
                                 
                                 Image(systemName: "chevron.down")
-                                    .font(.system(size: 9))
+                                    .font(.arial(size: 9))
                                     .foregroundColor(.secondary)
                             }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background({
-                                let hasSelection = !showAllStates && !selectedStates.isEmpty
-                                return hasSelection 
-                                    ? Color.green.opacity(0.12) 
-                                    : Color(.systemGray5)
-                            }())
-                            .cornerRadius(7)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .glassEffect(
+                                (!showAllStates && !selectedStates.isEmpty)
+                                    ? .regular.tint(Color.green.opacity(0.25)).interactive()
+                                    : .regular.interactive(),
+                                in: .capsule
+                            )
                         }
                         .sheet(isPresented: $showStateFilter) {
                             StateFilterSheet(
@@ -322,7 +318,7 @@ struct ProgramSearchView: View {
                         }) {
                             HStack(spacing: 6) {
                                 Image(systemName: "building.2.fill")
-                                    .font(.system(size: 13))
+                                    .font(.arial(size: 13))
                                     .foregroundColor(.orange)
                                 
                                 let displayText: String = {
@@ -336,23 +332,22 @@ struct ProgramSearchView: View {
                                 }()
                                 
                                 Text(displayText)
-                                    .font(.system(size: 12, weight: .medium))
+                                    .font(.arial(size: 12, weight: .medium))
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.8)
                                 
                                 Image(systemName: "chevron.down")
-                                    .font(.system(size: 9))
+                                    .font(.arial(size: 9))
                                     .foregroundColor(.secondary)
                             }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background({
-                                let hasSelection = !showAllProgramTypes && !selectedProgramTypes.isEmpty
-                                return hasSelection 
-                                    ? Color.orange.opacity(0.12) 
-                                    : Color(.systemGray5)
-                            }())
-                            .cornerRadius(7)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .glassEffect(
+                                (!showAllProgramTypes && !selectedProgramTypes.isEmpty)
+                                    ? .regular.tint(Color.orange.opacity(0.25)).interactive()
+                                    : .regular.interactive(),
+                                in: .capsule
+                            )
                         }
                         .sheet(isPresented: $showProgramTypeFilter) {
                             ProgramTypeFilterSheet(
@@ -387,19 +382,19 @@ struct ProgramSearchView: View {
                             }) {
                                 HStack(spacing: 4) {
                                     Image(systemName: "xmark.circle.fill")
-                                        .font(.system(size: 10))
+                                        .font(.arial(size: 10))
                                     Text("Clear")
-                                        .font(.system(size: 12, weight: .medium))
+                                        .font(.arial(size: 12, weight: .medium))
                                 }
                                 .foregroundColor(.blue)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(Color.blue.opacity(0.1))
-                                .cornerRadius(7)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .glassEffect(.regular.tint(Color.blue.opacity(0.18)).interactive(), in: .capsule)
                             }
                         }
                         }
                         .padding(.horizontal, 4)
+                    }
         }
     }
     
@@ -433,7 +428,7 @@ struct ProgramSearchView: View {
     private var emptyResultsView: some View {
         VStack(spacing: 20) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 50))
+                .font(.arial(size: 50))
                 .foregroundColor(.secondary)
             Text("No programs found")
                 .font(.headline)
@@ -462,7 +457,7 @@ struct ProgramSearchView: View {
                                 ForEach(sortedKeys, id: \.self) { key in
                                     Section(header: 
                                         Text(key)
-                                            .font(.system(size: 13, weight: .semibold))
+                                            .font(.arial(size: 13, weight: .semibold))
                                             .foregroundColor(.secondary)
                                             .textCase(.none)
                                     ) {
@@ -512,7 +507,7 @@ struct ProgramSearchView: View {
                     }
                 }) {
                     Text(key)
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.arial(size: 11, weight: .medium))
                         .foregroundColor(.blue)
                         .frame(width: 20)
                 }
@@ -529,16 +524,16 @@ struct ProgramSearchView: View {
                 Spacer()
                 HStack(spacing: 5) {
                     Image(systemName: "list.bullet")
-                        .font(.system(size: 11))
+                        .font(.arial(size: 11))
                         .foregroundColor(.secondary.opacity(0.7))
                     Text("\(count) program\(count == 1 ? "" : "s")")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.arial(size: 12, weight: .medium))
                         .foregroundColor(.secondary)
                 }
                 .padding(.vertical, 8)
                 Spacer()
             }
-            .background(Color(.systemGray6).opacity(0.5))
+            .glassEffect(.regular, in: .rect(cornerRadius: 0))
         }
     }
     
@@ -565,16 +560,16 @@ struct ProgramSearchView: View {
                 HStack {
                     Spacer()
                     Text("Add \(selectedPrograms.count) Program\(selectedPrograms.count == 1 ? "" : "s")")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(.white)
+                        .font(.arial(size: 17, weight: .semibold))
                         .padding(.vertical, 14)
                     Spacer()
                 }
-                .background(Color.blue)
-                .cornerRadius(12)
             }
+            // Primary confirm action → prominent Liquid Glass tinted brand blue.
+            .buttonStyle(.glassProminent)
+            .tint(.blue)
             .padding()
-            .background(Color(.systemBackground))
+            .glassEffect(.regular, in: .rect(cornerRadius: 0))
         }
     }
     
