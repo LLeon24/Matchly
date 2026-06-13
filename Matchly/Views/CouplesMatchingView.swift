@@ -9,7 +9,7 @@ import SwiftUI
 
 struct CouplesMatchingView: View {
     @EnvironmentObject var dataManager: DataManager
-    @StateObject private var authManager = AuthManager.shared
+    @ObservedObject private var authManager = AuthManager.shared
     @Environment(\.dismiss) var dismiss
     @State private var showLinkPartner = false
     @State private var showUserSearch = false
@@ -27,26 +27,26 @@ struct CouplesMatchingView: View {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("You")
-                                    .font(.system(size: 12, weight: .medium))
+                                    .font(.arial(size: 12, weight: .medium))
                                     .foregroundColor(.secondary)
                                 Text(couple.user1Name)
-                                    .font(.system(size: 16, weight: .semibold))
+                                    .font(.arial(size: 16, weight: .semibold))
                             }
                             
                             Spacer()
                             
                             Image(systemName: "heart.fill")
                                 .foregroundColor(.pink)
-                                .font(.system(size: 20))
+                                .font(.arial(size: 20))
                             
                             Spacer()
                             
                             VStack(alignment: .trailing, spacing: 4) {
                                 Text("Partner")
-                                    .font(.system(size: 12, weight: .medium))
+                                    .font(.arial(size: 12, weight: .medium))
                                     .foregroundColor(.secondary)
                                 Text(couple.user2Name ?? "Unknown")
-                                    .font(.system(size: 16, weight: .semibold))
+                                    .font(.arial(size: 16, weight: .semibold))
                             }
                         }
                         .padding(.vertical, 8)
@@ -63,7 +63,7 @@ struct CouplesMatchingView: View {
                                 Spacer()
                                 if !dataManager.preferences.couplesRankPairs.isEmpty {
                                     Text("\(dataManager.preferences.couplesRankPairs.count) pairs")
-                                        .font(.system(size: 13))
+                                        .font(.arial(size: 13))
                                         .foregroundColor(.secondary)
                                 }
                             }
@@ -92,12 +92,12 @@ struct CouplesMatchingView: View {
                     Section {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Share this code with your partner:")
-                                .font(.system(size: 14))
+                                .font(.arial(size: 14))
                                 .foregroundColor(.secondary)
                             
                             HStack {
                                 Text(couple.coupleCode)
-                                    .font(.system(size: 24, weight: .bold, design: .monospaced))
+                                    .font(.arial(size: 24, weight: .bold, design: .monospaced))
                                     .foregroundColor(.blue)
                                     .padding()
                                     .frame(maxWidth: .infinity)
@@ -108,7 +108,7 @@ struct CouplesMatchingView: View {
                                     UIPasteboard.general.string = couple.coupleCode
                                 }) {
                                     Image(systemName: "doc.on.doc")
-                                        .font(.system(size: 18))
+                                        .font(.arial(size: 18))
                                         .foregroundColor(.blue)
                                         .padding()
                                         .background(Color.blue.opacity(0.1))
@@ -117,7 +117,7 @@ struct CouplesMatchingView: View {
                             }
                             
                             Text("Your partner should enter this code in their app to link accounts.")
-                                .font(.system(size: 12))
+                                .font(.arial(size: 12))
                                 .foregroundColor(.secondary)
                         }
                         .padding(.vertical, 8)
@@ -130,12 +130,12 @@ struct CouplesMatchingView: View {
                         if let inviteLink = couple.inviteLink {
                             VStack(alignment: .leading, spacing: 12) {
                                 Text("Share this link with your partner:")
-                                    .font(.system(size: 14))
+                                    .font(.arial(size: 14))
                                     .foregroundColor(.secondary)
                                 
                                 HStack {
                                     Text(inviteLink)
-                                        .font(.system(size: 12, design: .monospaced))
+                                        .font(.arial(size: 12, design: .monospaced))
                                         .foregroundColor(.blue)
                                         .lineLimit(1)
                                         .truncationMode(.middle)
@@ -148,7 +148,7 @@ struct CouplesMatchingView: View {
                                         UIPasteboard.general.string = inviteLink
                                     }) {
                                         Image(systemName: "doc.on.doc")
-                                            .font(.system(size: 18))
+                                            .font(.arial(size: 18))
                                             .foregroundColor(.blue)
                                             .padding()
                                             .background(Color.blue.opacity(0.1))
@@ -157,7 +157,7 @@ struct CouplesMatchingView: View {
                                     
                                     ShareLink(item: inviteLink) {
                                         Image(systemName: "square.and.arrow.up")
-                                            .font(.system(size: 18))
+                                            .font(.arial(size: 18))
                                             .foregroundColor(.blue)
                                             .padding()
                                             .background(Color.blue.opacity(0.1))
@@ -166,7 +166,7 @@ struct CouplesMatchingView: View {
                                 }
                                 
                                 Text("Your partner can tap this link or enter the code below.")
-                                    .font(.system(size: 12))
+                                    .font(.arial(size: 12))
                                     .foregroundColor(.secondary)
                             }
                             .padding(.vertical, 8)
@@ -190,11 +190,11 @@ struct CouplesMatchingView: View {
                 Section {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Couples Matching allows you and your partner to create synchronized rank lists for the NRMP Match.")
-                            .font(.system(size: 14))
+                            .font(.arial(size: 14))
                             .foregroundColor(.secondary)
                         
                         Text("Key Features:")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.arial(size: 15, weight: .semibold))
                             .padding(.top, 8)
                         
                         VStack(alignment: .leading, spacing: 8) {
@@ -219,7 +219,7 @@ struct CouplesMatchingView: View {
                             Text("Find Partner by Account")
                             Spacer()
                             Image(systemName: "chevron.right")
-                                .font(.system(size: 12))
+                                .font(.arial(size: 12))
                                 .foregroundColor(.secondary)
                         }
                     }
@@ -261,7 +261,7 @@ struct CouplesMatchingView: View {
                                 let pendingCount = dataManager.preferences.receivedInvites.filter { $0.status == .pending && !$0.isExpired }.count
                                 if pendingCount > 0 {
                                     Text("\(pendingCount)")
-                                        .font(.system(size: 13, weight: .semibold))
+                                        .font(.arial(size: 13, weight: .semibold))
                                         .foregroundColor(.white)
                                         .padding(.horizontal, 8)
                                         .padding(.vertical, 4)
@@ -270,7 +270,7 @@ struct CouplesMatchingView: View {
                                 }
                                 
                                 Image(systemName: "chevron.right")
-                                    .font(.system(size: 12))
+                                    .font(.arial(size: 12))
                                     .foregroundColor(.secondary)
                             }
                         }
@@ -297,8 +297,14 @@ struct CouplesMatchingView: View {
     }
     
     private func createCouple() {
+        // Use the stable CloudKit user record name as the canonical identity when available
+        // (per the couples plan), falling back to the Apple login id / local id only until
+        // CloudKit resolves. We never mint a throwaway UUID for the user here.
+        let ownerID = authManager.cloudKitUserRecordName
+            ?? authManager.currentUser?.id
+            ?? dataManager.preferences.userID
         let newCouple = Couple(
-            user1ID: authManager.currentUser?.id ?? dataManager.preferences.userID,
+            user1ID: ownerID,
             user1Name: authManager.currentUser?.displayName ?? (dataManager.preferences.profile.name.isEmpty ? "You" : dataManager.preferences.profile.name),
             user1Email: authManager.currentUser?.email
         )
@@ -320,18 +326,18 @@ struct FeatureRow: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 14))
+                .font(.arial(size: 14))
                 .foregroundColor(.blue)
                 .frame(width: 20)
             Text(text)
-                .font(.system(size: 14))
+                .font(.arial(size: 14))
         }
     }
 }
 
 struct LinkPartnerView: View {
     @EnvironmentObject var dataManager: DataManager
-    @StateObject private var authManager = AuthManager.shared
+    @ObservedObject private var authManager = AuthManager.shared
     @Environment(\.dismiss) var dismiss
     @State private var partnerCode = ""
     @State private var inviteLink = ""
@@ -368,7 +374,7 @@ struct LinkPartnerView: View {
                             .textFieldStyle(.roundedBorder)
                             .autocapitalization(.allCharacters)
                             .disableAutocorrection(true)
-                            .font(.system(size: 18, weight: .medium, design: .monospaced))
+                            .font(.arial(size: 18, weight: .medium, design: .monospaced))
                     } header: {
                         Text("Partner Code")
                     } footer: {
@@ -433,39 +439,14 @@ struct LinkPartnerView: View {
             }
         }
         
-        // Check if there's a pending invite for this code
-        if let invite = dataManager.preferences.receivedInvites.first(where: { $0.coupleCode.uppercased() == codeToUse && $0.status == .pending }) {
-            // Accept the invite
-            acceptInviteFromCode(invite)
-            return
-        }
-        
-        // Create or update couple
-        if let couple = dataManager.preferences.couple {
-            // Update existing couple
-            var updatedCouple = couple
-            updatedCouple.user2ID = UUID().uuidString // In real app, this would come from server
-            updatedCouple.user2Name = "Partner" // In real app, this would come from server
-            updatedCouple.status = .linked
-            updatedCouple.linkedAt = Date()
-            dataManager.preferences.couple = updatedCouple
-        } else {
-            // Create new couple (user is linking to someone else's code)
-            var newCouple = Couple(
-                user1ID: authManager.currentUser?.id ?? dataManager.preferences.userID,
-                user1Name: authManager.currentUser?.displayName ?? (dataManager.preferences.profile.name.isEmpty ? "You" : dataManager.preferences.profile.name),
-                user1Email: authManager.currentUser?.email,
-                coupleCode: codeToUse,
-                status: .linked
-            )
-            newCouple.user2ID = UUID().uuidString // In real app, from server
-            newCouple.user2Name = "Partner" // In real app, from server
-            newCouple.linkedAt = Date()
-            dataManager.preferences.couple = newCouple
-        }
-        
-        dataManager.savePreferences()
-        dismiss()
+        // NOTE (Phase 1): Real partner linking is not built yet. It requires CloudKit sharing
+        // (CKShare invite/accept across two iCloud accounts), which lands in a later phase.
+        // Previously this method faked a link by assigning `user2ID = UUID()` and
+        // `user2Name = "Partner"`, which only ever existed on this one device. We no longer do
+        // that — we never fabricate a partner identity. Surface an honest "coming soon" message
+        // instead of masquerading as a real link.
+        errorMessage = "Partner linking is coming soon. It will use secure iCloud sharing so both of you see the same list. For now you can set up your own side."
+        showError = true
     }
     
     private func acceptInviteFromCode(_ invite: CoupleInvite) {

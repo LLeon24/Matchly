@@ -25,9 +25,44 @@ class DataManager: ObservableObject {
     private var savePreferencesWorkItem: DispatchWorkItem?
     private let saveQueue = DispatchQueue(label: "com.matchly.save", qos: .utility)
     
-    // Cache for score calculations
+    // Cache for score calculations.
+    // Accessed from the main thread and background queues, so all reads/writes
+    // must go through `cacheLock` to avoid a data race.
     private var scoreCache: [String: Double] = [:]
     private var lastPreferencesHash: Int = 0
+    private let cacheLock = NSLock()
+    
+    // MARK: - Thread-safe score cache helpers
+    private func cachedScore(forKey key: String) -> Double? {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        return scoreCache[key]
+    }
+    
+    private func setCachedScore(_ value: Double, forKey key: String) {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        scoreCache[key] = value
+    }
+    
+    private func clearScoreCache() {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        scoreCache.removeAll()
+    }
+    
+    /// Clears the cache if the preferences hash changed. Returns the current hash.
+    @discardableResult
+    private func invalidateCacheIfPreferencesChanged() -> Int {
+        let currentHash = preferences.hashValue
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        if currentHash != lastPreferencesHash {
+            scoreCache.removeAll()
+            lastPreferencesHash = currentHash
+        }
+        return currentHash
+    }
     
     init() {
         loadData()
@@ -111,8 +146,7 @@ class DataManager: ObservableObject {
                 UserDefaults.standard.set(encoded, forKey: self.preferencesKey)
                 
                 // Invalidate score cache when preferences change
-                self.scoreCache.removeAll()
-                self.lastPreferencesHash = self.preferences.hashValue
+                self.clearScoreCache()
                 
                 // Auto-sync to iCloud if available (async to avoid blocking)
                 if self.cloudSync.isCloudAvailable {
@@ -171,7 +205,7 @@ class DataManager: ObservableObject {
     
     func addProgram(_ program: Program) {
         var newProgram = program
-        newProgram.finalScore = newProgram.questionnaire.totalWeightedScore(preferences: preferences)
+        newProgram.finalScore = newProgram.questionnaire.totalWeightedScore(preferences: preferences, programEMR: newProgram.emr)
         
         // Update immediately - @Published will automatically notify observers
         programs.append(newProgram)
@@ -185,12 +219,20 @@ class DataManager: ObservableObject {
         guard let index = programs.firstIndex(where: { $0.id == program.id }) else { return }
         
         var updatedProgram = program
-        // Calculate score synchronously to ensure immediate update
-        updatedProgram.finalScore = updatedProgram.questionnaire.totalWeightedScore(preferences: preferences)
         
-        // Invalidate cache for this program to ensure fresh calculation
-        let cacheKey = "\(updatedProgram.id)-\(preferences.hashValue)"
-        scoreCache.removeValue(forKey: cacheKey)
+        // Check cache first for score calculation
+        // EMR is part of the key so changing a program's EMR recomputes its score.
+        let cacheKey = "\(updatedProgram.id)-\(updatedProgram.emr ?? "")-\(preferences.hashValue)"
+        let newScore: Double
+        if let cachedScore = cachedScore(forKey: cacheKey) {
+            newScore = cachedScore
+        } else {
+            // Calculate score - use background thread for expensive calculations if not critical
+            newScore = updatedProgram.questionnaire.totalWeightedScore(preferences: preferences, programEMR: updatedProgram.emr)
+            setCachedScore(newScore, forKey: cacheKey)
+        }
+        
+        updatedProgram.finalScore = newScore
         
         // Ensure we're on main thread for UI updates
         if Thread.isMainThread {
@@ -214,12 +256,8 @@ class DataManager: ObservableObject {
     }
     
     func recalculateAllScores() {
-        // Check if preferences changed (invalidate cache)
-        let currentHash = preferences.hashValue
-        if currentHash != lastPreferencesHash {
-            scoreCache.removeAll()
-            lastPreferencesHash = currentHash
-        }
+        // Check if preferences changed (invalidate cache) - thread-safe
+        let currentHash = invalidateCacheIfPreferencesChanged()
         
         // Perform score calculation on background thread for better performance
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -230,14 +268,14 @@ class DataManager: ObservableObject {
             for index in updatedPrograms.indices {
                 let program = updatedPrograms[index]
                 
-                // Check cache first
-                let cacheKey = "\(program.id)-\(currentHash)"
+                // Check cache first (EMR included so EMR edits recompute)
+                let cacheKey = "\(program.id)-\(program.emr ?? "")-\(currentHash)"
                 let newScore: Double
-                if let cachedScore = self.scoreCache[cacheKey] {
+                if let cachedScore = self.cachedScore(forKey: cacheKey) {
                     newScore = cachedScore
                 } else {
-                    newScore = program.questionnaire.totalWeightedScore(preferences: self.preferences)
-                    self.scoreCache[cacheKey] = newScore
+                    newScore = program.questionnaire.totalWeightedScore(preferences: self.preferences, programEMR: program.emr)
+                    self.setCachedScore(newScore, forKey: cacheKey)
                 }
                 
                 if program.finalScore != newScore {

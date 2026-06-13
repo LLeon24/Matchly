@@ -22,11 +22,11 @@ struct ProgramComparisonView: View {
                 if selectedPrograms.isEmpty {
                     VStack(spacing: 20) {
                         Image(systemName: "square.grid.2x2")
-                            .font(.system(size: 60))
+                            .font(.arial(size: 60))
                             .foregroundColor(.secondary)
                         
                         Text("Compare Programs")
-                            .font(.system(size: 24, weight: .semibold))
+                            .font(.arial(size: 24, weight: .semibold))
                         
                         Text("Select 2-4 programs to compare side-by-side")
                             .font(.subheadline)
@@ -38,7 +38,7 @@ struct ProgramComparisonView: View {
                             showProgramPicker = true
                         }) {
                             Text("Select Programs")
-                                .font(.system(size: 18, weight: .semibold))
+                                .font(.arial(size: 18, weight: .semibold))
                                 .foregroundColor(.white)
                                 .padding(.horizontal, 30)
                                 .padding(.vertical, 12)
@@ -55,22 +55,25 @@ struct ProgramComparisonView: View {
                                 })
                             }
                             
-                            // Add more button
+                            // Add more button - same size as comparison cards
                             if comparisonPrograms.count < 4 {
                                 Button(action: {
                                     showProgramPicker = true
                                 }) {
                                     VStack(spacing: 12) {
                                         Image(systemName: "plus.circle.fill")
-                                            .font(.system(size: 40))
+                                            .font(.arial(size: 40))
                                             .foregroundColor(.blue)
                                         Text("Add Program")
                                             .font(.caption)
                                             .foregroundColor(.secondary)
                                     }
-                                    .frame(width: 200, height: 300)
+                                    .frame(width: 250)
+                                    .frame(height: 400) // Match the fixed height of comparison cards
+                                    .padding()
                                     .background(Color(.systemGray6))
                                     .cornerRadius(12)
+                                    .shadow(color: Color.black.opacity(0.1), radius: 5, x: 0, y: 2)
                                 }
                             }
                         }
@@ -114,13 +117,16 @@ struct ComparisonCard: View {
     let program: Program
     let onRemove: () -> Void
     
+    // Fixed height to ensure all cards are the same size
+    private let cardHeight: CGFloat = 400
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             // Header
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text(HospitalNameFormatter.format(program.hospital))
-                        .font(.system(size: 18, weight: .bold))
+                        .font(.arial(size: 18, weight: .bold))
                         .lineLimit(2)
                     
                     Spacer()
@@ -150,38 +156,41 @@ struct ComparisonCard: View {
                 ComparisonRow(label: "Location", value: String(format: "%.1f", program.location.average()), color: .green)
                 ComparisonRow(label: "Logistics", value: String(format: "%.1f", program.logistics.average()), color: .orange)
                 ComparisonRow(label: "Career Alignment", value: String(format: "%.1f", program.careerAlignment.average()), color: .pink)
+                ComparisonRow(label: "EMR", value: program.emr ?? "Not set", color: program.emr == nil ? .secondary : .primary)
                 
                 if program.redFlags.total() > 0 {
                     ComparisonRow(label: "Red Flags", value: String(format: "%.1f", program.redFlags.total()), color: .red)
                 }
             }
             
-            // Interview date
-            if let date = program.interviewDate {
-                Divider()
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Interview Date")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+            // Spacer to push interview date to bottom
+            Spacer()
+            
+            // Interview date - always reserve space, show if exists
+            Divider()
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Interview Date")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                if let date = program.interviewDate {
                     Text(date, style: .date)
                         .font(.subheadline)
                         .fontWeight(.medium)
+                } else {
+                    Text("Not set")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
                 }
             }
         }
         .padding()
         .frame(width: 250)
+        .frame(height: cardHeight) // Fixed height instead of minHeight
         .background(Color(.systemBackground))
         .cornerRadius(12)
         .shadow(color: Color.black.opacity(0.1), radius: 5, x: 0, y: 2)
     }
     
-    private func scoreColor(_ score: Double) -> Color {
-        if score >= 80 { return .green }
-        if score >= 60 { return .blue }
-        if score >= 40 { return .orange }
-        return .red
-    }
 }
 
 struct ComparisonRow: View {
@@ -199,6 +208,9 @@ struct ComparisonRow: View {
                 .font(.subheadline)
                 .fontWeight(.semibold)
                 .foregroundColor(color)
+                .multilineTextAlignment(.trailing)
+                .lineLimit(2)
+                .minimumScaleFactor(0.7)
         }
     }
 }
@@ -233,7 +245,7 @@ struct ProgramComparisonPickerView: View {
                             
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(HospitalNameFormatter.format(program.hospital))
-                                    .font(.system(size: 16, weight: .semibold))
+                                    .font(.arial(size: 16, weight: .semibold))
                                     .foregroundColor(.primary)
                                 Text("\(program.city), \(program.state)")
                                     .font(.caption)

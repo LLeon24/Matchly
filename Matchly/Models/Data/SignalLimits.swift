@@ -33,6 +33,16 @@ enum SignalType: String, Codable, CaseIterable {
     }
 }
 
+// MARK: - Resilient decoding
+// Unknown or missing raw values fall back to `.none` so decoding never throws.
+extension SignalType {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try? container.decode(String.self)
+        self = raw.flatMap(SignalType.init(rawValue:)) ?? .none
+    }
+}
+
 struct SignalLimits {
     // Default ERAS signaling limits (these may vary by specialty and year)
     // Most specialties: 5 gold + 30 silver signals

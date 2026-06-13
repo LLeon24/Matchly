@@ -59,34 +59,22 @@ struct LiquidGlassTabBar: View {
             }
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 10)
+        // Comfortable vertical breathing room above/below the row. The bottom
+        // safe-area inset is handled by the host (MainTabView no longer forces
+        // the bar into the safe area), so the row stays clear of the home
+        // indicator while the material background still extends to the screen edge.
+        .padding(.top, 12)
+        .padding(.bottom, 8)
+        .frame(maxWidth: .infinity)
         .background(
-            ZStack {
-                // Glass effect background with blur
-                RoundedRectangle(cornerRadius: 28)
-                    .fill(.ultraThinMaterial)
-                    .shadow(color: Color.black.opacity(0.15), radius: 20, x: 0, y: -5)
-                    .shadow(color: Color.white.opacity(0.1), radius: 10, x: 0, y: 2)
-                
-                // Subtle gradient border
-                RoundedRectangle(cornerRadius: 28)
-                    .stroke(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.4),
-                                Color.white.opacity(0.15),
-                                Color.white.opacity(0.05)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1.5
-                    )
-            }
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .ignoresSafeArea(.container, edges: .bottom)
         )
-        .padding(.horizontal, 12)
-        .padding(.top, 8)
-        .padding(.bottom, 0) // No bottom padding - at absolute bottom
+        .overlay(alignment: .top) {
+            Divider()
+                .opacity(0.5)
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ProceedWithTabNavigation"))) { _ in
             // Proceed with pending tab navigation after save/discard
             if let tab = pendingTab {
@@ -136,56 +124,24 @@ struct TabBarButton: View {
     var body: some View {
         Button(action: action) {
             VStack(spacing: 4) {
-                ZStack {
-                    // Glass background for selected state
-                    if isSelected {
-                        RoundedRectangle(cornerRadius: 18)
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        color.opacity(0.25),
-                                        color.opacity(0.15),
-                                        color.opacity(0.1)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .background(.ultraThinMaterial)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 18)
-                                    .stroke(
-                                        LinearGradient(
-                                            colors: [
-                                                color.opacity(0.5),
-                                                color.opacity(0.3),
-                                                color.opacity(0.2)
-                                            ],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        ),
-                                        lineWidth: 1.5
-                                    )
-                            )
-                            .shadow(color: color.opacity(0.3), radius: 12, x: 0, y: 4)
-                            .shadow(color: Color.white.opacity(0.2), radius: 6, x: 0, y: -2)
-                    }
-                    
-                    Image(systemName: icon)
-                        .font(.system(size: isSelected ? 22 : 20, weight: isSelected ? .semibold : .medium))
-                        .foregroundColor(isSelected ? color : .secondary)
-                        .scaleEffect(isSelected ? 1.1 : 1.0)
-                }
-                .frame(width: 52, height: 52)
+                // No background shape on selection — only tint/weight change.
+                Image(systemName: icon)
+                    .font(.arial(size: 22, weight: isSelected ? .semibold : .regular))
+                    .foregroundColor(isSelected ? color : .secondary)
+                    .frame(height: 28)
                 
                 Text(title)
-                    .font(.system(size: 10, weight: isSelected ? .semibold : .regular))
+                    .font(.arial(size: 10, weight: isSelected ? .semibold : .regular))
                     .foregroundColor(isSelected ? color : .secondary)
             }
             .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
+        .animation(.easeInOut(duration: 0.2), value: isSelected)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 }
 

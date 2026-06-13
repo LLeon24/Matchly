@@ -34,7 +34,7 @@ struct QuestionnaireWeightsView: View {
         }
         allSections.append(contentsOf: customSections)
         
-        return allSections.filter { item in
+        var filtered = allSections.filter { item in
             let section = item.section
             // Check if section is enabled (empty set = all enabled)
             // For standard sections, check by title; for custom, check by ID
@@ -60,6 +60,15 @@ struct QuestionnaireWeightsView: View {
             }
             return true
         }
+        
+        // EMR is a weighted factor too — surface it as a row so its importance is
+        // set with the exact same slider/percentage UX and stored in sectionWeights.
+        filtered.append((
+            section: QuestionnaireSection(id: EMRScoring.weightKey, title: EMRScoring.weightKey, items: []),
+            stableId: EMRScoring.weightKey
+        ))
+        
+        return filtered
     }
     
     // Calculate total weight percentage
@@ -70,12 +79,33 @@ struct QuestionnaireWeightsView: View {
     var body: some View {
         Form {
             Section {
+                Picker("Your preferred EMR", selection: Binding(
+                    get: { dataManager.preferences.preferredEMR ?? "" },
+                    set: { newValue in
+                        dataManager.preferences.preferredEMR = newValue.isEmpty ? nil : newValue
+                        dataManager.savePreferences()
+                        dataManager.recalculateAllScores()
+                    }
+                )) {
+                    Text("Not set").tag("")
+                    ForEach(EMRSystem.allCases) { system in
+                        Text(system.displayName).tag(system.rawValue)
+                    }
+                }
+                .pickerStyle(.menu)
+            } header: {
+                Text("Electronic Medical Record (EMR)")
+            } footer: {
+                Text("Pick the EMR you know best. Programs that use this EMR score higher on the EMR factor; programs that use a different EMR score lower. \"Other\" / \"Not sure\" on either side is treated as neutral and isn't scored. Set how much EMR matters with the \"\(EMRScoring.weightKey)\" weight below.")
+            }
+            
+            Section {
                 HStack {
                     Text("Total Weight")
-                        .font(.system(size: 15, weight: .medium))
+                        .font(.arial(size: 15, weight: .medium))
                     Spacer()
                     Text("\(Int(totalWeight * 100))%")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.arial(size: 15, weight: .semibold))
                         .foregroundColor(totalWeight == 1.0 ? .green : .orange)
                 }
                 
@@ -99,7 +129,7 @@ struct QuestionnaireWeightsView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Text(section.title)
-                                .font(.system(size: 15, weight: .medium))
+                                .font(.arial(size: 15, weight: .medium))
                             Spacer()
                             
                             // Text field for direct percentage input
@@ -117,7 +147,7 @@ struct QuestionnaireWeightsView: View {
                                 .multilineTextAlignment(.center)
                                 
                                 Text("%")
-                                    .font(.system(size: 15, weight: .semibold))
+                                    .font(.arial(size: 15, weight: .semibold))
                                     .foregroundColor(.blue)
                             }
                         }
@@ -162,9 +192,6 @@ struct QuestionnaireWeightsView: View {
         }
         .onAppear {
             loadWeights()
-            print("📊 Loaded weights: \(tempWeights)")
-            print("📊 Total weight: \(totalWeight)")
-            print("📊 Enabled sections: \(enabledSections.map { $0.section.title })")
         }
         .onChange(of: enabledSections.count) { oldCount, newCount in
             // Reload weights if section count changes

@@ -40,7 +40,7 @@ class IMGFriendlyHelper {
         }
         
         var friendlyIndicators = 0
-        var unfriendlyIndicators = 0
+        let unfriendlyIndicators = 0
         
         // Check hospital name patterns
         let hospitalLower = program.hospital.lowercased()
@@ -51,13 +51,12 @@ class IMGFriendlyHelper {
             }
         }
         
-        // Check program type (Community programs are often more IMG-friendly)
+        // Check program type (Community programs are often more IMG-friendly).
+        // Academic programs are not penalized here: in practice many academic
+        // programs are still IMG-friendly, so we treat type as a positive-only
+        // signal and let the other indicators decide.
         if program.type == "Community" {
             friendlyIndicators += 1
-        } else if program.type == "Academic" {
-            // Academic programs can be less IMG-friendly, but not always
-            // Use 0 instead of 0.5 since we're using Int
-            unfriendlyIndicators += 0
         }
         
         // Check state

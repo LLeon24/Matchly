@@ -18,11 +18,11 @@ struct ProgramDetailView: View {
                 // Header
                 VStack(alignment: .leading, spacing: 8) {
                     Text(program.name.isEmpty ? "Unnamed Program" : program.name)
-                        .font(.system(size: 28, weight: .bold))
+                        .font(.arial(size: 28, weight: .bold))
                     
                     if !program.hospital.isEmpty {
                         Text(HospitalNameFormatter.format(program.hospital))
-                            .font(.system(size: 18))
+                            .font(.arial(size: 18))
                             .foregroundColor(.secondary)
                     }
                     
@@ -47,7 +47,7 @@ struct ProgramDetailView: View {
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                             Text(String(format: "%.1f", program.finalScore))
-                                .font(.system(size: 32, weight: .bold))
+                                .font(.arial(size: 32, weight: .bold))
                                 .foregroundColor(scoreColor(program.finalScore))
                         }
                     }
@@ -91,9 +91,9 @@ struct ProgramDetailView: View {
                     if program.redFlags.total() > 0 {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Red Flags")
-                                .font(.system(size: 16, weight: .semibold))
+                                .font(.arial(size: 16, weight: .semibold))
                             Text(String(format: "Total: %.1f", program.redFlags.total()))
-                                .font(.system(size: 18, weight: .bold))
+                                .font(.arial(size: 18, weight: .bold))
                                 .foregroundColor(.red)
                         }
                         .padding()
@@ -104,15 +104,39 @@ struct ProgramDetailView: View {
                 }
                 .padding()
                 
+                // Electronic Medical Record (EMR)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Electronic Medical Record (EMR)")
+                        .font(.arial(size: 18, weight: .semibold))
+                        .padding(.horizontal)
+                    
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(program.emr ?? "Not specified")
+                            .font(.arial(size: 15, weight: program.emr == nil ? .regular : .semibold))
+                            .foregroundColor(program.emr == nil ? .secondary : .primary)
+                        
+                        if let indicator = emrMatchIndicator {
+                            Label(indicator.text, systemImage: indicator.systemImage)
+                                .font(.arial(size: 12, weight: .medium))
+                                .foregroundColor(indicator.color)
+                        }
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(12)
+                    .padding(.horizontal)
+                }
+                
                 // Notes
                 if !program.notes.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Notes")
-                            .font(.system(size: 18, weight: .semibold))
+                            .font(.arial(size: 18, weight: .semibold))
                             .padding(.horizontal)
                         
                         Text(program.notes)
-                            .font(.system(size: 15))
+                            .font(.arial(size: 15))
                             .padding()
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(Color(.systemGray6))
@@ -125,11 +149,11 @@ struct ProgramDetailView: View {
                 if let date = program.interviewDate {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Interview Date")
-                            .font(.system(size: 18, weight: .semibold))
+                            .font(.arial(size: 18, weight: .semibold))
                             .padding(.horizontal)
                         
                         Text(date, style: .date)
-                            .font(.system(size: 15))
+                            .font(.arial(size: 15))
                             .padding()
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(Color(.systemGray6))
@@ -138,17 +162,6 @@ struct ProgramDetailView: View {
                     }
                 }
                 
-                // Voice Memo
-                if program.voiceMemoURL != nil {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Voice Memo")
-                            .font(.system(size: 18, weight: .semibold))
-                            .padding(.horizontal)
-                        
-                        VoiceMemoPlayer(voiceMemoURL: program.voiceMemoURL)
-                            .padding(.horizontal)
-                    }
-                }
             }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -164,12 +177,29 @@ struct ProgramDetailView: View {
         }
     }
     
-    private func scoreColor(_ score: Double) -> Color {
-        if score >= 80 { return .green }
-        if score >= 60 { return .blue }
-        if score >= 40 { return .orange }
-        return .red
+    // Match/mismatch indicator relative to the applicant's preferred EMR.
+    // Returns nil when no preferred EMR is set (nothing to compare against).
+    private var emrMatchIndicator: (text: String, systemImage: String, color: Color)? {
+        guard let preferredRaw = dataManager.preferences.preferredEMR,
+              let preferred = EMRSystem(rawValue: preferredRaw),
+              preferred.isSpecific else {
+            return nil
+        }
+        
+        guard let programRaw = program.emr,
+              let programSystem = EMRSystem(rawValue: programRaw),
+              programSystem.isSpecific else {
+            // Program EMR unknown / "Other" / "Not sure" -> neutral, not scored.
+            return ("Not scored — EMR unknown for this program", "minus.circle", .secondary)
+        }
+        
+        if programSystem == preferred {
+            return ("Matches your preferred EMR", "checkmark.circle.fill", .green)
+        } else {
+            return ("Different from your preferred EMR (\(preferred.displayName))", "exclamationmark.circle", .orange)
+        }
     }
+    
 }
 
 struct CategoryScoreView: View {
@@ -181,10 +211,10 @@ struct CategoryScoreView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(title)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.arial(size: 16, weight: .semibold))
                 Spacer()
                 Text(String(format: "%.1f", score))
-                    .font(.system(size: 18, weight: .bold))
+                    .font(.arial(size: 18, weight: .bold))
                     .foregroundColor(color)
             }
             

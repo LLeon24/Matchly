@@ -68,10 +68,62 @@ struct AppColors {
             endPoint: .bottomTrailing
         )
     }
+
+    // MARK: - Score-driven gradients (Apple Activity-ring style)
+
+    /// A vibrant 2-stop gradient whose hue family reflects the score quality.
+    /// Empty/zero scores fall back to a calm brand sweep so the hero still
+    /// reads as intentional and colorful (never empty/gloomy).
+    static func scoreGradientColors(for score: Double) -> [Color] {
+        if score >= 80 { return [accentTeal, accentGreen] }
+        if score >= 60 { return [primaryBlue, accentTeal] }
+        if score >= 40 { return [accentYellow, accentOrange] }
+        if score > 0   { return [accentOrange, accentPink] }
+        return [primaryBlue, accentTeal] // 0 / no data: calm brand sweep
+    }
+
+    /// Angular gradient for an Activity-ring style progress arc.
+    static func scoreRingGradient(for score: Double) -> AngularGradient {
+        AngularGradient(
+            gradient: Gradient(colors: scoreGradientColors(for: score)),
+            center: .center,
+            startAngle: .degrees(-90),
+            endAngle: .degrees(270)
+        )
+    }
+
+    /// Linear gradient (top-leading → bottom-trailing) for tinting hero numbers.
+    static func scoreLinearGradient(for score: Double) -> LinearGradient {
+        LinearGradient(
+            colors: scoreGradientColors(for: score),
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    /// The representative solid tint for a score (the gradient's end color).
+    static func scoreTint(for score: Double) -> Color {
+        scoreGradientColors(for: score).last ?? primaryBlue
+    }
     
     // Card backgrounds - semantic colors that adapt automatically
     static let cardBackground = Color(.systemBackground)
     static let cardBackgroundAccent = Color(.secondarySystemBackground)
+
+    // Warm, bright dashboard canvas (Monarch-style).
+    // Light: very light warm off-white/cream (~#FAF8F5) so white cards still pop.
+    // Dark: a proper near-black warm dark so elevated cards stand out clearly.
+    static let dashboardCanvas = Color(
+        light: Color(red: 0.980, green: 0.972, blue: 0.960),
+        dark: Color(red: 0.071, green: 0.071, blue: 0.078)
+    )
+
+    // Elevated card surface that floats on `dashboardCanvas`.
+    // Light: pure white. Dark: elevated dark gray (matches grouped surfaces).
+    static let dashboardCard = Color(
+        light: Color(red: 1.0, green: 1.0, blue: 1.0),
+        dark: Color(red: 0.110, green: 0.110, blue: 0.118)
+    )
     
     // Text colors - semantic
     static let primaryText = Color(.label)

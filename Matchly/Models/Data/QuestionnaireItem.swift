@@ -131,7 +131,10 @@ struct Questionnaire: Codable, Equatable {
     }
     
     // Calculate total weighted score (0-100) - weighted average of all enabled sections
-    func totalWeightedScore(preferences: UserPreferences) -> Double {
+    // `programEMR` is the program's selected EMR (an EMRSystem.rawValue). When the
+    // applicant has set a preferred EMR, the EMR match is folded in as one more
+    // weighted factor, exactly like a questionnaire section.
+    func totalWeightedScore(preferences: UserPreferences, programEMR: String? = nil) -> Double {
         var sectionScores: [(sectionId: String, averageScore: Double, weight: Double)] = []
         
         // Get all enabled sections (standard + custom, excluding red flags)
@@ -198,6 +201,23 @@ struct Questionnaire: Codable, Equatable {
             sectionScores.append((sectionId: stableId, averageScore: averageScore, weight: weight))
         }
         
+        // EMR factor — treated as one more weighted "section". Scored only when the
+        // match can be objectively determined (preferred EMR set + program EMR known
+        // + neither side is "Other"/"Not sure"); otherwise it drops out like an
+        // unrated section.
+        if let emrRating = EMRScoring.rating(programEMR: programEMR, preferredEMR: preferences.preferredEMR) {
+            // Default to an equal share (matching the per-section default) so the EMR
+            // factor weighs the same as each section until the user customizes weights.
+            let defaultWeight = enabledSections.isEmpty ? 1.0 : (1.0 / Double(enabledSections.count))
+            let emrWeight: Double
+            if preferences.sectionWeights.isEmpty {
+                emrWeight = defaultWeight
+            } else {
+                emrWeight = preferences.sectionWeights[EMRScoring.weightKey] ?? defaultWeight
+            }
+            sectionScores.append((sectionId: EMRScoring.weightKey, averageScore: emrRating, weight: emrWeight))
+        }
+        
         guard !sectionScores.isEmpty else { return 0 }
         
         // Normalize weights to sum to 1.0
@@ -222,13 +242,24 @@ struct Questionnaire: Codable, Equatable {
             if preferences.enabledSectionIds.isEmpty {
                 return true
             }
-            return !preferences.enabledSectionIds.contains(section.id)
+            // If set is not empty, only return sections that ARE in the enabled set
+            return preferences.enabledSectionIds.contains(section.id)
         }
     }
     
-    // Get enabled items for a section based on preferences
+    // Get enabled items for a section based on preferences (includes custom questions added to standard sections)
     func enabledItems(for section: QuestionnaireSection, preferences: UserPreferences) -> [QuestionnaireItem] {
-        return section.items.filter { item in
+        var allItems = section.items
+        
+        // Add custom questions that were added to this standard section
+        if let customQuestions = preferences.customQuestionsInSections[section.id] {
+            let customQuestionnaireItems = customQuestions.map { customItem in
+                QuestionnaireItem(id: customItem.id, question: customItem.question)
+            }
+            allItems.append(contentsOf: customQuestionnaireItems)
+        }
+        
+        return allItems.filter { item in
             // Empty set means all enabled
             if preferences.enabledQuestionIds.isEmpty {
                 return true
@@ -242,6 +273,38 @@ struct Questionnaire: Codable, Equatable {
         let ratings = section.items.compactMap { $0.programRating > 0 ? $0.programRating : nil }
         guard !ratings.isEmpty else { return 0 }
         return ratings.reduce(0, +) / Double(ratings.count)
+    }
+}
+
+// MARK: - Resilient decoding
+// Missing keys fall back to defaults so decoding never throws (see Program.swift).
+
+extension QuestionnaireItem {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
+        self.question = try container.decodeIfPresent(String.self, forKey: .question) ?? ""
+        self.programRating = try container.decodeIfPresent(Double.self, forKey: .programRating) ?? 0
+        self.notes = try container.decodeIfPresent(String.self, forKey: .notes) ?? ""
+    }
+}
+
+extension QuestionnaireSection {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
+        self.title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+        self.items = try container.decodeIfPresent([QuestionnaireItem].self, forKey: .items) ?? []
+    }
+}
+
+extension Questionnaire {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        // `sections` has no stored default; its default is the standard set built
+        // by `Questionnaire()`. Fall back to that if the key is missing.
+        self.sections = try container.decodeIfPresent([QuestionnaireSection].self, forKey: .sections) ?? Questionnaire().sections
+        self.customSections = try container.decodeIfPresent([QuestionnaireSection].self, forKey: .customSections) ?? []
     }
 }
 

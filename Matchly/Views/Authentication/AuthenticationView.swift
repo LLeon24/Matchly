@@ -7,9 +7,12 @@
 
 import SwiftUI
 import AuthenticationServices
+import OSLog
+
+private let authViewLogger = Logger(subsystem: "com.matchly", category: "AuthenticationView")
 
 struct AuthenticationView: View {
-    @StateObject private var authManager = AuthManager.shared
+    @ObservedObject private var authManager = AuthManager.shared
     @State private var showSignUp = false
     @State private var showEmailLogin = false
     @State private var showPhoneLogin = false
@@ -38,81 +41,87 @@ struct AuthenticationView: View {
                             .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
                         
                         Text("Matchly")
-                            .font(.system(size: 32, weight: .bold))
+                            .font(.arial(size: 32, weight: .bold))
                             .foregroundColor(.primary)
                         
                         Text("Residency Match Management")
-                            .font(.system(size: 14))
+                            .font(.arial(size: 14))
                             .foregroundColor(.secondary)
                     }
                     .padding(.bottom, 20)
                     
                     // Sign In Options
                     VStack(spacing: 16) {
-                        // Email/Password Sign In
-                        Button(action: {
-                            showEmailLogin = true
-                        }) {
-                            HStack {
-                                Spacer()
-                                Image(systemName: "envelope.fill")
-                                    .font(.system(size: 16))
-                                    .frame(width: 24)
-                                Text("Continue with Email")
-                                    .font(.system(size: 16, weight: .medium))
-                                Spacer()
+                        // v1 ships Apple Sign In ONLY. The email/phone entry points below are
+                        // hidden (not deleted) behind `AuthManager.allowsNonAppleProviders` so
+                        // they remain reversible. Couples Match requires iCloud, which Apple
+                        // Sign In + CloudKit provide.
+                        if AuthManager.allowsNonAppleProviders {
+                            // Email/Password Sign In
+                            Button(action: {
+                                showEmailLogin = true
+                            }) {
+                                HStack {
+                                    Spacer()
+                                    Image(systemName: "envelope.fill")
+                                        .font(.arial(size: 16))
+                                        .frame(width: 24)
+                                    Text("Continue with Email")
+                                        .font(.arial(size: 16, weight: .medium))
+                                    Spacer()
+                                }
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 16)
+                                .background(Color.blue)
+                                .cornerRadius(12)
                             }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 16)
-                            .background(Color.blue)
-                            .cornerRadius(12)
-                        }
-                        
-                        // Phone Number Sign In
-                        Button(action: {
-                            showPhoneLogin = true
-                        }) {
-                            HStack {
-                                Spacer()
-                                Image(systemName: "phone.fill")
-                                    .font(.system(size: 16))
-                                    .frame(width: 24)
-                                Text("Continue with Phone")
-                                    .font(.system(size: 16, weight: .medium))
-                                Spacer()
+
+                            // Phone Number Sign In
+                            Button(action: {
+                                showPhoneLogin = true
+                            }) {
+                                HStack {
+                                    Spacer()
+                                    Image(systemName: "phone.fill")
+                                        .font(.arial(size: 16))
+                                        .frame(width: 24)
+                                    Text("Continue with Phone")
+                                        .font(.arial(size: 16, weight: .medium))
+                                    Spacer()
+                                }
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 16)
+                                .background(Color.green)
+                                .cornerRadius(12)
                             }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 16)
-                            .background(Color.green)
-                            .cornerRadius(12)
+
+                            // Divider
+                            HStack {
+                                Rectangle()
+                                    .fill(Color.secondary.opacity(0.3))
+                                    .frame(height: 1)
+                                Text("OR")
+                                    .font(.arial(size: 12, weight: .medium))
+                                    .foregroundColor(.secondary)
+                                    .padding(.horizontal, 12)
+                                Rectangle()
+                                    .fill(Color.secondary.opacity(0.3))
+                                    .frame(height: 1)
+                            }
+                            .padding(.vertical, 8)
                         }
-                        
-                        // Divider
-                        HStack {
-                            Rectangle()
-                                .fill(Color.secondary.opacity(0.3))
-                                .frame(height: 1)
-                            Text("OR")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(.secondary)
-                                .padding(.horizontal, 12)
-                            Rectangle()
-                                .fill(Color.secondary.opacity(0.3))
-                                .frame(height: 1)
-                        }
-                        .padding(.vertical, 8)
-                        
+
                         // Apple Sign In
                         Button(action: {
                             Task { @MainActor in
                                 do {
-                                    print("🍎 Starting Apple Sign In...")
+                                    authViewLogger.info("Starting Apple Sign In")
                                     try await authManager.signInWithApple()
-                                    print("🍎 Apple Sign In completed successfully")
+                                    authViewLogger.info("Apple Sign In completed successfully")
                                 } catch {
-                                    print("🍎 Apple Sign In error: \(error)")
+                                    authViewLogger.error("Apple Sign In error: \(error.localizedDescription, privacy: .public)")
                                     // Provide helpful error message for Apple Sign In
                                     if let authError = error as? AuthError {
                                         errorMessage = authError.errorDescription ?? "Sign in failed"
@@ -141,10 +150,10 @@ struct AuthenticationView: View {
                             HStack {
                                 Spacer()
                                 Image(systemName: "applelogo")
-                                    .font(.system(size: 16))
+                                    .font(.arial(size: 16))
                                     .frame(width: 24)
                                 Text("Continue with Apple")
-                                    .font(.system(size: 16, weight: .medium))
+                                    .font(.arial(size: 16, weight: .medium))
                                 Spacer()
                             }
                             .foregroundColor(.white)
@@ -156,20 +165,28 @@ struct AuthenticationView: View {
                     }
                     .padding(.horizontal, 24)
                     
-                    // Sign Up Link
-                    HStack(spacing: 4) {
-                        Text("Don't have an account?")
-                            .font(.system(size: 14))
-                            .foregroundColor(.secondary)
-                        Button(action: {
-                            showSignUp = true
-                        }) {
-                            Text("Sign Up")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(.blue)
+                    // Sign Up Link (email-based; hidden in the Apple-only v1)
+                    if AuthManager.allowsNonAppleProviders {
+                        HStack(spacing: 4) {
+                            Text("Don't have an account?")
+                                .font(.arial(size: 14))
+                                .foregroundColor(.secondary)
+                            Button(action: {
+                                showSignUp = true
+                            }) {
+                                Text("Sign Up")
+                                    .font(.arial(size: 14, weight: .semibold))
+                                    .foregroundColor(.blue)
+                            }
                         }
+                        .padding(.top, 8)
+                    } else {
+                        Text("Sign in with your Apple ID to get started.")
+                            .font(.arial(size: 13))
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.top, 8)
                     }
-                    .padding(.top, 8)
                     
                     Spacer()
                         .frame(height: 40)

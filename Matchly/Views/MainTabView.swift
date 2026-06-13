@@ -6,14 +6,20 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct MainTabView: View {
-    @StateObject private var dataManager = DataManager.shared
+    @ObservedObject private var dataManager = DataManager.shared
     @State private var selectedTab: Int = 0
     @State private var dashboardRefreshKey: UUID = UUID()
+    @State private var isKeyboardVisible: Bool = false
     
     var body: some View {
         ZStack(alignment: .bottom) {
+            // Background color to prevent black screen
+            Color(.systemBackground)
+                .ignoresSafeArea()
+            
             // Content views
             Group {
                 if selectedTab == 0 {
@@ -34,14 +40,26 @@ struct MainTabView: View {
                 }
             }
             
-            // Custom liquid glass tab bar at bottom - positioned at the absolute bottom
-            LiquidGlassTabBar(selectedTab: $selectedTab)
-                .ignoresSafeArea(.container, edges: .bottom)
+            // Custom liquid glass tab bar at bottom - hide when keyboard is visible
+            if !isKeyboardVisible {
+                LiquidGlassTabBar(selectedTab: $selectedTab)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
         .environmentObject(dataManager)
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("PopToRoot"))) { _ in
             // Refresh Dashboard view to pop any navigation stacks
             dashboardRefreshKey = UUID()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            withAnimation(.easeInOut(duration: 0.25)) {
+                isKeyboardVisible = true
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            withAnimation(.easeInOut(duration: 0.25)) {
+                isKeyboardVisible = false
+            }
         }
     }
 }
