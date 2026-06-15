@@ -233,17 +233,19 @@ struct DashboardView: View {
 
     // MARK: - Section Pages
 
-    /// 1) Overview — Average Score hero + Needs Attention to-dos + funnel + quick actions.
+    /// 1) Overview — application snapshot hero + Needs Attention to-dos + funnel + quick actions.
     private var overviewPage: some View {
         ScrollView {
             VStack(spacing: 14) {
-                DashboardRingHero(
-                    score: averageScore,
-                    progress: matchProgress,
-                    bigNumber: String(format: "%.0f", averageScore),
-                    unit: "/ 100",
-                    title: "Average Score",
-                    subtitle: averageScoreSubtitle
+                DashboardSnapshotHero(
+                    progress: overviewHeroProgress,
+                    progressCaption: overviewHeroProgressCaption,
+                    bigNumber: overviewHeroBigNumber,
+                    unit: overviewHeroUnit,
+                    title: "Your Interview Season",
+                    subtitle: overviewHeroSubtitle,
+                    stats: overviewHeroStats,
+                    accentTint: overviewHeroAccentTint
                 )
                 .dashboardCardStyle()
 
@@ -251,7 +253,7 @@ struct DashboardView: View {
 
                 VStack(alignment: .leading, spacing: 14) {
                     DashboardSectionHeader(
-                        title: "Application Funnel",
+                        title: "Interview Pipeline",
                         icon: "line.3.horizontal.decrease",
                         tint: AppColors.primaryBlue
                     )
@@ -393,6 +395,185 @@ struct DashboardView: View {
 
     // MARK: - Overview: Needs Attention
 
+    /// Contextual one-liner under the hero title — tuned for post-invite workflow.
+    private var overviewHeroSubtitle: String {
+        let programCount = dataManager.programs.count
+        guard programCount > 0 else {
+            return "Add each program you've been invited to interview at"
+        }
+
+        if let next = upcomingInterviews.first, let date = next.interviewDate {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "MMM d"
+            let name = HospitalNameFormatter.format(next.hospital.isEmpty ? next.name : next.hospital)
+            if Calendar.current.isDateInToday(date) {
+                return "Today: \(name)"
+            }
+            if Calendar.current.isDateInTomorrow(date) {
+                return "Tomorrow: \(name)"
+            }
+            return "Next: \(name) · \(formatter.string(from: date))"
+        }
+
+        if programsNeedingInterviewDateCount > 0 {
+            return "Log interview dates so you can prep and score after each visit"
+        }
+
+        if postInterviewNeedingScoreCount > 0 {
+            return "\(postInterviewNeedingScoreCount) completed interview\(postInterviewNeedingScoreCount == 1 ? "" : "s") ready to score for your rank list"
+        }
+
+        if interviewCount > 0 && upcomingInterviews.isEmpty {
+            return "All interviews done — finish scoring to finalize your rank list"
+        }
+
+        let ranked = dataManager.programs.filter { $0.finalScore > 0 }.count
+        if ranked > 0 {
+            return "\(ranked) program\(ranked == 1 ? "" : "s") scored and on your rank list"
+        }
+
+        return "Score each program after its interview to build your rank list"
+    }
+
+    /// Hero center: upcoming interviews first; otherwise invites still needing a date.
+    private var overviewHeroBigNumber: String {
+        if !upcomingInterviews.isEmpty {
+            return "\(upcomingInterviews.count)"
+        }
+        if programsNeedingInterviewDateCount > 0 {
+            return "\(programsNeedingInterviewDateCount)"
+        }
+        return "0"
+    }
+
+    private var overviewHeroUnit: String {
+        if !upcomingInterviews.isEmpty {
+            return "upcoming"
+        }
+        if programsNeedingInterviewDateCount > 0 {
+            return programsNeedingInterviewDateCount == 1 ? "need date" : "need dates"
+        }
+        return "upcoming"
+    }
+
+    /// Ring: interview completion when dates exist; otherwise rank-list readiness.
+    private var overviewHeroProgress: Double {
+        let total = dataManager.programs.count
+        guard total > 0 else { return 0 }
+
+        if interviewCount > 0 {
+            return min(max(Double(completedInterviewsCount) / Double(interviewCount), 0), 1)
+        }
+
+        let ranked = dataManager.programs.filter { $0.finalScore > 0 }.count
+        return min(max(Double(ranked) / Double(total), 0), 1)
+    }
+
+    private var overviewHeroProgressCaption: String {
+        let total = dataManager.programs.count
+        if total == 0 {
+            return "No invites logged yet"
+        }
+
+        if interviewCount > 0 {
+            return "\(completedInterviewsCount) of \(interviewCount) interviews completed"
+        }
+
+        if programsNeedingInterviewDateCount > 0 {
+            return "\(programsNeedingInterviewDateCount) of \(total) invite\(total == 1 ? "" : "s") need a date"
+        }
+
+        let ranked = dataManager.programs.filter { $0.finalScore > 0 }.count
+        return "\(ranked) of \(total) scored for your rank list"
+    }
+
+    private var overviewHeroAccentTint: Color {
+        if !upcomingInterviews.isEmpty { return AppColors.accentGreen }
+        if programsNeedingInterviewDateCount > 0 { return AppColors.accentOrange }
+        return AppColors.primaryBlue
+    }
+
+    private var overviewHeroStats: [DashboardSnapshotStat] {
+        let programCount = dataManager.programs.count
+        guard programCount > 0 else { return [] }
+
+        let ranked = dataManager.programs.filter { $0.finalScore > 0 }.count
+
+        return [
+            DashboardSnapshotStat(
+                id: "needDate",
+                value: "\(programsNeedingInterviewDateCount)",
+                label: "Need Date",
+                tint: AppColors.accentOrange
+            ),
+            DashboardSnapshotStat(
+                id: "upcoming",
+                value: "\(upcomingInterviews.count)",
+                label: "Upcoming",
+                tint: AppColors.accentGreen
+            ),
+            DashboardSnapshotStat(
+                id: "toScore",
+                value: "\(programsNeedingScoringCount)",
+                label: "To Score",
+                tint: AppColors.primaryBlue
+            ),
+            DashboardSnapshotStat(
+                id: "ranked",
+                value: "\(ranked)",
+                label: "Ranked",
+                tint: AppColors.accentPurple
+            )
+        ]
+    }
+
+    private var programsNeedingInterviewDateCount: Int {
+        dataManager.programs.filter { $0.interviewDate == nil }.count
+    }
+
+    /// Invites with a past interview date but an incomplete questionnaire.
+    private var postInterviewNeedingScoreCount: Int {
+        let now = Date()
+        return dataManager.programs.filter { program in
+            guard let date = program.interviewDate, date < now else { return false }
+            return programQuestionnaireCompletion(program) < 1.0
+        }.count
+    }
+
+    /// Invites whose questionnaire isn't fully scored yet.
+    private var programsNeedingScoringCount: Int {
+        dataManager.programs.filter { programQuestionnaireCompletion($0) < 1.0 }.count
+    }
+
+    private func programQuestionnaireCompletion(_ program: Program) -> Double {
+        var total = 0
+        var answered = 0
+        for section in program.questionnaire.sections {
+            if section.title.contains("Red flags") { continue }
+            for item in section.items {
+                total += 1
+                if item.programRating > 0 && item.programRating < 6 {
+                    answered += 1
+                }
+            }
+        }
+        guard total > 0 else { return 0 }
+        return Double(answered) / Double(total)
+    }
+
+    /// Ring fill: share of enabled questionnaire questions answered across all programs.
+    private var overallQuestionnaireProgress: Double {
+        min(max(completionPercentage / 100.0, 0), 1)
+    }
+
+    private var completedInterviewsCount: Int {
+        let now = Date()
+        return dataManager.programs.filter { program in
+            guard let date = program.interviewDate else { return false }
+            return date < now
+        }.count
+    }
+
     /// Honest subtitle for the Average Score hero.
     private var averageScoreSubtitle: String {
         let count = dataManager.programs.count
@@ -497,13 +678,13 @@ struct DashboardView: View {
     private var funnelStages: [FunnelStage] {
         let programs = dataManager.programs
         let total = programs.count
-        let reviewed = programs.filter { $0.isReviewed }.count
         let scheduled = programs.filter { $0.interviewDate != nil }.count
+        let interviewed = completedInterviewsCount
         let ranked = programs.filter { $0.finalScore > 0 }.count
         return [
-            FunnelStage(label: "Total", count: total, color: AppColors.primaryBlue),
-            FunnelStage(label: "Reviewed", count: reviewed, color: AppColors.accentTeal),
-            FunnelStage(label: "Interviews", count: scheduled, color: AppColors.accentGreen),
+            FunnelStage(label: "Invites", count: total, color: AppColors.primaryBlue),
+            FunnelStage(label: "Scheduled", count: scheduled, color: AppColors.accentTeal),
+            FunnelStage(label: "Interviewed", count: interviewed, color: AppColors.accentGreen),
             FunnelStage(label: "Ranked", count: ranked, color: AppColors.accentPurple)
         ]
     }
@@ -1651,30 +1832,60 @@ struct DashboardView: View {
     // MARK: - Helper Methods for Next Steps
     private func getNextSteps() -> [NextStep] {
         var steps: [NextStep] = []
-        
-        // Programs needing review (pending questionnaires)
-        if programsNeedingReview > 0 {
+
+        // Invites missing an interview date — the most common first step after adding a program.
+        let programsWithoutInterviews = dataManager.programs.filter { $0.interviewDate == nil }
+        if !programsWithoutInterviews.isEmpty {
+            steps.append(NextStep(
+                title: programsWithoutInterviews.count == 1 ? "Set interview date" : "Set interview dates",
+                subtitle: "\(programsWithoutInterviews.count) invite\(programsWithoutInterviews.count == 1 ? "" : "s") missing a date",
+                icon: "calendar.badge.plus",
+                color: AppColors.accentOrange,
+                destination: AnyView(InterviewsView())
+            ))
+        }
+
+        // Scoring to-dos — post-interview first, then partial, then never started.
+        if postInterviewNeedingScoreCount > 0 {
+            steps.append(NextStep(
+                title: "Score \(postInterviewNeedingScoreCount) interview\(postInterviewNeedingScoreCount == 1 ? "" : "s")",
+                subtitle: "Complete questionnaires after your visit",
+                icon: "list.star",
+                color: AppColors.primaryBlue,
+                destination: AnyView(ProgramsNeedingReviewView())
+            ))
+        } else if programsNeedingScoringCount > 0 {
+            steps.append(NextStep(
+                title: "Finish scoring \(programsNeedingScoringCount) program\(programsNeedingScoringCount == 1 ? "" : "s")",
+                subtitle: "Complete questionnaires for your rank list",
+                icon: "square.and.pencil",
+                color: AppColors.primaryBlue,
+                destination: AnyView(ProgramsNeedingReviewView())
+            ))
+        } else if programsNeedingReview > 0 {
             steps.append(NextStep(
                 title: "Review \(programsNeedingReview) program\(programsNeedingReview == 1 ? "" : "s")",
                 subtitle: "Complete questionnaire data",
                 icon: "square.and.pencil",
-                color: AppColors.accentOrange,
+                color: AppColors.accentTeal,
                 destination: AnyView(ProgramsNeedingReviewView())
             ))
         }
-        
-        // Programs without interview dates
-        let programsWithoutInterviews = dataManager.programs.filter { $0.interviewDate == nil }
-        if !programsWithoutInterviews.isEmpty && programsWithoutInterviews.count < dataManager.programs.count {
+
+        // Upcoming interview within the next week.
+        if let soon = upcomingInterviewsThisWeek.first, let date = soon.interviewDate {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "MMM d"
+            let name = HospitalNameFormatter.format(soon.hospital.isEmpty ? soon.name : soon.hospital)
             steps.append(NextStep(
-                title: "Add interview dates",
-                subtitle: "\(programsWithoutInterviews.count) program\(programsWithoutInterviews.count == 1 ? "" : "s") missing dates",
-                icon: "calendar.badge.plus",
-                color: AppColors.primaryBlue,
-                destination: AnyView(InterviewsView())
+                title: "Prep for \(name)",
+                subtitle: "Interview \(Calendar.current.isDateInToday(date) ? "today" : "on \(formatter.string(from: date))")",
+                icon: "calendar.badge.clock",
+                color: AppColors.accentGreen,
+                destination: AnyView(ProgramEntryView(program: soon))
             ))
         }
-        
+
         // Red flags (genuine warning — keep red)
         if redFlaggedProgramsCount > 0 {
             steps.append(NextStep(
@@ -1685,8 +1896,19 @@ struct DashboardView: View {
                 destination: AnyView(RedFlaggedProgramsView())
             ))
         }
-        
+
         return steps
+    }
+
+    private var upcomingInterviewsThisWeek: [Program] {
+        let now = Date()
+        guard let weekOut = Calendar.current.date(byAdding: .day, value: 7, to: now) else {
+            return upcomingInterviews
+        }
+        return upcomingInterviews.filter { program in
+            guard let date = program.interviewDate else { return false }
+            return date <= weekOut
+        }
     }
     
     private func getRecentPrograms() -> [Program] {

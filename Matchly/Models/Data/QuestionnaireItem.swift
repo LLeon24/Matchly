@@ -254,14 +254,13 @@ struct Questionnaire: Codable, Equatable {
             // Get weight for this section (default to equal weight if not set)
             let weight: Double
             if preferences.sectionWeights.isEmpty {
-                // Equal weights for all sections
-                weight = 1.0 / Double(enabledSections.count)
+                weight = 1.0 // Rebalanced across scored sections below
             } else {
                 // Use custom weight, or equal weight if not specified
                 // Try both stableId and section.id for backward compatibility
                 weight = preferences.sectionWeights[stableId] ?? 
                          preferences.sectionWeights[section.id] ?? 
-                         (1.0 / Double(enabledSections.count))
+                         (1.0 / Double(max(sectionScores.count + 1, enabledSections.count)))
             }
             
             sectionScores.append((sectionId: stableId, averageScore: averageScore, weight: weight))
@@ -285,6 +284,12 @@ struct Questionnaire: Codable, Equatable {
         }
         
         guard !sectionScores.isEmpty else { return 0 }
+
+        // Equal weights apply only to sections that actually have ratings.
+        if preferences.sectionWeights.isEmpty {
+            let equalWeight = 1.0 / Double(sectionScores.count)
+            sectionScores = sectionScores.map { ($0.sectionId, $0.averageScore, equalWeight) }
+        }
         
         // Normalize weights to sum to 1.0
         let totalWeight = sectionScores.reduce(0) { $0 + $1.weight }
@@ -296,8 +301,32 @@ struct Questionnaire: Codable, Equatable {
             return sum + (score.averageScore * normalizedWeight)
         }
         
-        // Scale from 0-5 to 0-100
-        return weightedSum * 20
+        // Scale from 0-5 to 0-100, then factor in how much of the questionnaire is answered
+        // so a partially rated program can't max out at 100.
+        let completion = questionnaireCompletionRatio(preferences: preferences)
+        return weightedSum * 20 * completion
+    }
+
+    /// Share of enabled, scorable questions that have a 1–5 rating (excludes N/A and red flags).
+    private func questionnaireCompletionRatio(preferences: UserPreferences) -> Double {
+        var answered = 0
+        var total = 0
+        let allSections = sections + customSections
+
+        for section in allSections {
+            if section.title.contains("Red flags") { continue }
+            guard sectionIsEnabled(section, preferences: preferences, allSections: allSections) else { continue }
+
+            for item in enabledItems(for: section, preferences: preferences) {
+                total += 1
+                if item.programRating > 0 && item.programRating < 6 {
+                    answered += 1
+                }
+            }
+        }
+
+        guard total > 0 else { return 0 }
+        return Double(answered) / Double(total)
     }
     
     // Get enabled sections based on preferences (standard + custom)

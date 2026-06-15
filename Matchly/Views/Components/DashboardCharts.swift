@@ -85,16 +85,47 @@ struct DashboardSectionTabBar: View {
 
 /// The Overview hero: a large number wrapped in a circular progress ring.
 /// `progress` is 0...1; `bigNumber` is the formatted headline value.
+/// Pass `accentTint` for non-score metrics (program counts, completion, etc.).
 struct DashboardRingHero: View {
-    let score: Double
+    var score: Double = 0
     let progress: Double
     let bigNumber: String
     let unit: String
     let title: String
     let subtitle: String
+    var accentTint: Color? = nil
 
-    private var gradientColors: [Color] { AppColors.scoreGradientColors(for: score) }
-    private var tint: Color { AppColors.scoreTint(for: score) }
+    private var gradientColors: [Color] {
+        if let accentTint {
+            return [accentTint, accentTint.opacity(0.65)]
+        }
+        return AppColors.scoreGradientColors(for: score)
+    }
+
+    private var tint: Color { accentTint ?? AppColors.scoreTint(for: score) }
+
+    private var ringGradient: AngularGradient {
+        if accentTint != nil {
+            return AngularGradient(
+                gradient: Gradient(colors: gradientColors),
+                center: .center,
+                startAngle: .degrees(-90),
+                endAngle: .degrees(270)
+            )
+        }
+        return AppColors.scoreRingGradient(for: score)
+    }
+
+    private var numberGradient: LinearGradient {
+        if accentTint != nil {
+            return LinearGradient(
+                colors: gradientColors,
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+        return AppColors.scoreLinearGradient(for: score)
+    }
 
     var body: some View {
         VStack(spacing: 14) {
@@ -108,7 +139,7 @@ struct DashboardRingHero: View {
                 Circle()
                     .trim(from: 0, to: min(max(progress, 0), 1))
                     .stroke(
-                        AppColors.scoreRingGradient(for: score),
+                        ringGradient,
                         style: StrokeStyle(lineWidth: 16, lineCap: .round)
                     )
                     .frame(width: 210, height: 210)
@@ -118,13 +149,15 @@ struct DashboardRingHero: View {
                 VStack(spacing: 0) {
                     Text(bigNumber)
                         .font(.arial(size: 80, weight: .bold))
-                        .foregroundStyle(AppColors.scoreLinearGradient(for: score))
+                        .foregroundStyle(numberGradient)
                         .minimumScaleFactor(0.5)
                         .lineLimit(1)
-                    Text(unit)
-                        .font(.arial(size: 13, weight: .semibold))
-                        .foregroundColor(tint.opacity(0.9))
-                        .textCase(.uppercase)
+                    if !unit.isEmpty {
+                        Text(unit)
+                            .font(.arial(size: 13, weight: .semibold))
+                            .foregroundColor(tint.opacity(0.9))
+                            .textCase(.uppercase)
+                    }
                 }
             }
 
@@ -137,6 +170,120 @@ struct DashboardRingHero: View {
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 2)
+    }
+}
+
+/// One metric in the Overview snapshot stat row.
+struct DashboardSnapshotStat: Identifiable {
+    let id: String
+    let value: String
+    let label: String
+    let tint: Color
+}
+
+/// Overview hero: upcoming interviews front-and-center, ring shows season progress,
+/// and a four-up stat row for programs, rank list, completed interviews, and scoring.
+struct DashboardSnapshotHero: View {
+    let progress: Double
+    let progressCaption: String
+    let bigNumber: String
+    let unit: String
+    let title: String
+    let subtitle: String
+    let stats: [DashboardSnapshotStat]
+    var accentTint: Color = AppColors.accentGreen
+
+    private var gradientColors: [Color] {
+        [accentTint, accentTint.opacity(0.65)]
+    }
+
+    private var ringGradient: AngularGradient {
+        AngularGradient(
+            gradient: Gradient(colors: gradientColors),
+            center: .center,
+            startAngle: .degrees(-90),
+            endAngle: .degrees(270)
+        )
+    }
+
+    var body: some View {
+        VStack(spacing: 14) {
+            VStack(spacing: 8) {
+                ZStack {
+                    Circle()
+                        .stroke(gradientColors[0].opacity(0.16), lineWidth: 16)
+                        .frame(width: 210, height: 210)
+
+                    Circle()
+                        .trim(from: 0, to: min(max(progress, 0), 1))
+                        .stroke(
+                            ringGradient,
+                            style: StrokeStyle(lineWidth: 16, lineCap: .round)
+                        )
+                        .frame(width: 210, height: 210)
+                        .rotationEffect(.degrees(-90))
+                        .animation(.spring(response: 0.7, dampingFraction: 0.85), value: progress)
+
+                    VStack(spacing: 0) {
+                        Text(bigNumber)
+                            .font(.arial(size: 80, weight: .bold))
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: gradientColors,
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .minimumScaleFactor(0.5)
+                            .lineLimit(1)
+                        if !unit.isEmpty {
+                            Text(unit)
+                                .font(.arial(size: 13, weight: .semibold))
+                                .foregroundColor(accentTint.opacity(0.9))
+                                .textCase(.uppercase)
+                        }
+                    }
+                }
+
+                Text(progressCaption)
+                    .font(.arial(size: 12, weight: .medium))
+                    .foregroundColor(.secondary)
+            }
+
+            VStack(spacing: 5) {
+                Text(title)
+                    .font(.arial(size: 24, weight: .bold))
+                    .foregroundColor(.primary)
+                Text(subtitle)
+                    .font(.arial(size: 14))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if !stats.isEmpty {
+                HStack(spacing: 0) {
+                    ForEach(stats) { stat in
+                        VStack(spacing: 4) {
+                            Text(stat.value)
+                                .font(.arial(size: 20, weight: .bold))
+                                .foregroundColor(stat.tint)
+                                .minimumScaleFactor(0.7)
+                                .lineLimit(1)
+                            Text(stat.label)
+                                .font(.arial(size: 11, weight: .medium))
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+                .padding(.top, 4)
             }
         }
         .frame(maxWidth: .infinity)
