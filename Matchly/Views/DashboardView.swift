@@ -1841,7 +1841,7 @@ struct DashboardView: View {
                 subtitle: "\(programsWithoutInterviews.count) invite\(programsWithoutInterviews.count == 1 ? "" : "s") missing a date",
                 icon: "calendar.badge.plus",
                 color: AppColors.accentOrange,
-                destination: AnyView(InterviewsView())
+                destination: AnyView(SetInterviewDatesView())
             ))
         }
 

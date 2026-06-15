@@ -25,6 +25,10 @@ struct InterviewsView: View {
         case list, calendar
     }
     
+    var programsNeedingDates: [Program] {
+        dataManager.programs.filter { $0.interviewDate == nil }
+    }
+    
     var allInterviews: [Program] {
         dataManager.programs.filter { $0.interviewDate != nil }
             .sorted { ($0.interviewDate ?? Date.distantPast) < ($1.interviewDate ?? Date.distantPast) }
@@ -64,21 +68,29 @@ struct InterviewsView: View {
         .appCanvasBackground()
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: {
-                    Task {
-                        await createCalendarEvents()
-                    }
-                }) {
-                    if isCreatingEvents {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                    } else {
+                if allInterviews.isEmpty && !programsNeedingDates.isEmpty {
+                    NavigationLink(destination: SetInterviewDatesView()) {
                         Image(systemName: "calendar.badge.plus")
                             .font(.arial(size: 16))
                     }
+                    .accessibilityLabel("Set interview dates")
+                } else {
+                    Button(action: {
+                        Task {
+                            await createCalendarEvents()
+                        }
+                    }) {
+                        if isCreatingEvents {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                        } else {
+                            Image(systemName: "calendar.badge.plus")
+                                .font(.arial(size: 16))
+                        }
+                    }
+                    .disabled(isCreatingEvents || allInterviews.isEmpty)
+                    .accessibilityLabel("Add interviews to calendar")
                 }
-                .disabled(isCreatingEvents || allInterviews.isEmpty)
-                .accessibilityLabel("Add interviews to calendar")
             }
         }
         .alert("Calendar Access Required", isPresented: $showCalendarPermissionAlert) {
@@ -219,7 +231,24 @@ struct InterviewsView: View {
                 }
             }
             
+            if !programsNeedingDates.isEmpty {
+                Section {
+                    ForEach(programsNeedingDates) { program in
+                        NavigationLink(destination: ProgramEntryView(program: program)) {
+                            ProgramNeedingInterviewDateRow(program: program)
+                        }
+                    }
+                } header: {
+                    Text("Needs a Date (\(programsNeedingDates.count))")
+                        .font(.arial(size: 13, weight: .semibold))
+                        .foregroundColor(.secondary)
+                } footer: {
+                    Text("Tap a program to add its interview date and time.")
+                }
+            }
+            
             if upcomingInterviews.isEmpty && pastInterviews.isEmpty {
+                if programsNeedingDates.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "calendar.badge.exclamationmark")
                         .font(.arial(size: 60))
@@ -236,6 +265,7 @@ struct InterviewsView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 40)
                 .listRowSeparator(.hidden)
+                }
             } else {
                 
                 // Upcoming Interviews
