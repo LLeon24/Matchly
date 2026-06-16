@@ -55,6 +55,7 @@ struct ProgramEntryView: View {
     @State private var contactEmail: String = ""
     @State private var contactPhone: String = ""
     @State private var programCoordinator: String = ""
+    @State private var programDirector: String = ""
     
     // IMG-friendly status
     @State private var isIMGFriendly: Bool? = nil
@@ -489,29 +490,21 @@ struct ProgramEntryView: View {
         contentWithAlerts
         .sheet(isPresented: $showProgramSearch) {
             ProgramSearchView(onSelect: { programInfo in
-                specialty = programInfo.specialty
-                name = programInfo.name
-                hospital = HospitalNameFormatter.format(programInfo.hospital)
-                city = programInfo.city
-                state = programInfo.state
-                address = programInfo.address ?? ""
-                accreditationID = programInfo.accreditationID
-                type = programInfo.type
-                // Auto-populate contact information from ERAS
-                if let website = programInfo.websiteURL {
-                    websiteURL = website
-                }
-                if let email = programInfo.contactEmail {
-                    contactEmail = email
-                }
-                if let phone = programInfo.contactPhone {
-                    contactPhone = phone
-                }
-                if let coordinator = programInfo.programCoordinator {
-                    programCoordinator = coordinator
-                }
-                // Set IMG-friendly status from program info
-                isIMGFriendly = programInfo.isIMGFriendly
+                let mapped = CatalogProgramMapper.toSavedProgram(programInfo)
+                specialty = mapped.specialty
+                name = mapped.name
+                hospital = mapped.hospital
+                city = mapped.city
+                state = mapped.state
+                address = mapped.address ?? ""
+                accreditationID = mapped.accreditationID
+                type = mapped.type
+                websiteURL = mapped.websiteURL ?? ""
+                contactEmail = mapped.contactEmail ?? ""
+                contactPhone = mapped.contactPhone ?? ""
+                programCoordinator = mapped.programCoordinator ?? ""
+                programDirector = mapped.programDirector ?? ""
+                isIMGFriendly = mapped.isIMGFriendly
                 showProgramSearch = false
             })
         }
@@ -752,12 +745,29 @@ struct ProgramEntryView: View {
                                     .foregroundColor(.primary)
                                     .lineLimit(3)
                                     .fixedSize(horizontal: false, vertical: true)
-                                
-                                // Address (below name)
-                                if !address.isEmpty {
-                                    Text(address)
+
+                                if !programDirector.isEmpty {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "person.fill")
+                                            .font(.arial(size: 10))
+                                        Text("Program Director: \(programDirector)")
+                                            .font(.arial(size: 13, weight: .medium))
+                                    }
+                                    .foregroundColor(.secondary)
+                                }
+
+                                let streetLine = AddressFormatter.resolved(
+                                    hospital: hospital,
+                                    address: address.isEmpty ? nil : address,
+                                    city: city,
+                                    state: state,
+                                    accreditationID: accreditationID
+                                ).street
+                                if !streetLine.isEmpty {
+                                    Text(streetLine)
                                         .font(.arial(size: 13, weight: .medium))
                                         .foregroundColor(.primary)
+                                        .fixedSize(horizontal: false, vertical: true)
                                 }
                                 
                                 // Location and Accreditation ID
@@ -841,28 +851,27 @@ struct ProgramEntryView: View {
                                 .foregroundColor(programTypeColor(type))
                             }
                             
-                            // IMG-Friendly
-                            let imgStatus = isIMGFriendly ?? IMGFriendlyHelper.shared.assessIMGFriendlinessForProgram(
+                            let imgDisplay = IMGStatusDisplay.forSavedProgram(
                                 Program(
                                     specialty: specialty,
                                     name: name,
                                     hospital: hospital,
                                     city: city,
                                     state: state,
-                                    address: address,
+                                    address: address.isEmpty ? nil : address,
                                     type: type,
                                     accreditationID: accreditationID,
                                     isIMGFriendly: isIMGFriendly
                                 )
                             )
-                            if imgStatus == true {
+                            if imgDisplay != .none {
                                 HStack(spacing: 3) {
                                     Image(systemName: "globe.americas.fill")
                                         .font(.arial(size: 10))
-                                    Text("IMG")
+                                    Text(imgDisplay.label)
                                         .font(.arial(size: 12, weight: .medium))
                                 }
-                                .foregroundColor(.purple)
+                                .foregroundColor(imgDisplay.color)
                             }
                         }
                         
@@ -1007,6 +1016,7 @@ struct ProgramEntryView: View {
         contactEmail = program.contactEmail ?? ""
         contactPhone = program.contactPhone ?? ""
         programCoordinator = program.programCoordinator ?? ""
+        programDirector = program.programDirector ?? ""
         
         // Load IMG-friendly status
         isIMGFriendly = program.isIMGFriendly
@@ -1023,24 +1033,13 @@ struct ProgramEntryView: View {
     }
     
     private func saveProgram() {
-        // Use stored specialty, or program's specialty if editing, otherwise use first preference specialty, or "Unknown"
-        let finalSpecialty: String
-        if !specialty.isEmpty {
-            finalSpecialty = specialty
-        } else if let existingProgram = program {
-            finalSpecialty = existingProgram.specialty
-        } else if let firstSpecialty = dataManager.preferences.specialties.first {
-            finalSpecialty = firstSpecialty
-        } else {
-            finalSpecialty = dataManager.preferences.specialty ?? "Unknown"
-        }
-        
-        // Calculate final score from questionnaire using enabled sections/questions
-        let finalScore = questionnaire.totalWeightedScore(preferences: dataManager.preferences, programEMR: emr)
+        let normalizedSpecialty = SpecialtyFormatter.normalizedUserSpecialty(
+            !specialty.isEmpty ? specialty : (program?.specialty ?? dataManager.preferences.specialties.first ?? dataManager.preferences.specialty ?? "Unknown")
+        )
         
         let newProgram = Program(
             id: program?.id ?? UUID().uuidString,
-            specialty: finalSpecialty,
+            specialty: normalizedSpecialty,
             name: name,
             hospital: hospital,
             city: city,
@@ -1062,10 +1061,11 @@ struct ProgramEntryView: View {
             contactEmail: contactEmail.isEmpty ? nil : contactEmail,
             contactPhone: contactPhone.isEmpty ? nil : contactPhone,
             programCoordinator: programCoordinator.isEmpty ? nil : programCoordinator,
+            programDirector: programDirector.isEmpty ? nil : programDirector,
             isIMGFriendly: isIMGFriendly,
             emr: emr,
             signalType: signalType,
-            finalScore: finalScore
+            finalScore: questionnaire.totalWeightedScore(preferences: dataManager.preferences, programEMR: emr)
         )
         
         // Update or add program - this calculates score and updates immediately
@@ -1485,17 +1485,15 @@ struct ProgramEntryView: View {
     }
     
     private func openInMaps() {
-        // Use full address if available, otherwise use hospital + city + state
-        let addressString: String
-        if !address.isEmpty {
-            addressString = "\(address), \(city), \(state)"
-        } else if !hospital.isEmpty {
-            addressString = "\(hospital), \(city), \(state)"
-        } else if !name.isEmpty {
-            addressString = "\(name), \(city), \(state)"
-        } else {
-            addressString = "\(city), \(state)"
-        }
+        let draft = Program(
+            specialty: specialty,
+            hospital: hospital,
+            city: city,
+            state: state,
+            address: address.isEmpty ? nil : address,
+            accreditationID: accreditationID
+        )
+        let addressString = AddressFormatter.geocodingQuery(for: draft)
         
         Task { @MainActor in
             do {

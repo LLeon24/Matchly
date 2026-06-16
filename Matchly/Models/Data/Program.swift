@@ -37,6 +37,7 @@ struct Program: Identifiable, Codable {
     var contactEmail: String?
     var contactPhone: String?
     var programCoordinator: String?
+    var programDirector: String?
     
     // IMG-friendly status
     var isIMGFriendly: Bool?
@@ -152,6 +153,7 @@ struct Program: Identifiable, Codable {
         contactEmail: String? = nil,
         contactPhone: String? = nil,
         programCoordinator: String? = nil,
+        programDirector: String? = nil,
         isIMGFriendly: Bool? = nil,
         emr: String? = nil,
         signalType: SignalType = .none,
@@ -180,6 +182,7 @@ struct Program: Identifiable, Codable {
         self.contactEmail = contactEmail
         self.contactPhone = contactPhone
         self.programCoordinator = programCoordinator
+        self.programDirector = programDirector
         self.isIMGFriendly = isIMGFriendly
         self.emr = emr
         self.signalType = signalType
@@ -318,6 +321,7 @@ extension Program {
         self.contactEmail = try container.decodeIfPresent(String.self, forKey: .contactEmail)
         self.contactPhone = try container.decodeIfPresent(String.self, forKey: .contactPhone)
         self.programCoordinator = try container.decodeIfPresent(String.self, forKey: .programCoordinator)
+        self.programDirector = try container.decodeIfPresent(String.self, forKey: .programDirector)
         self.isIMGFriendly = try container.decodeIfPresent(Bool.self, forKey: .isIMGFriendly)
         self.emr = try container.decodeIfPresent(String.self, forKey: .emr)
         self.signalType = try container.decodeIfPresent(SignalType.self, forKey: .signalType) ?? .none

@@ -29,7 +29,9 @@ struct ProgramsListView: View {
                     EmptyProgramsView(showAddProgram: $showAddProgram)
                 } else {
                     // Group programs by specialty
-                    let groupedPrograms = Dictionary(grouping: sortedPrograms) { $0.specialty }
+                    let groupedPrograms = Dictionary(grouping: sortedPrograms) {
+                        SpecialtyFormatter.normalizedUserSpecialty($0.specialty)
+                    }
                     let sortedSpecialties = groupedPrograms.keys.sorted()
                     
                     List {
@@ -165,19 +167,7 @@ struct ProgramsListView: View {
             .sheet(isPresented: $showAddProgram) {
                 ProgramSearchView(
                     onSelect: { programInfo in
-                        // Create Program from ResidencyProgramInfo and add it
-                        let newProgram = Program(
-                            specialty: programInfo.specialty,
-                            name: programInfo.name,
-                            hospital: HospitalNameFormatter.format(programInfo.hospital),
-                            city: programInfo.city,
-                            state: programInfo.state,
-                            address: programInfo.address,
-                            type: programInfo.type,
-                            accreditationID: programInfo.accreditationID,
-                            isIMGFriendly: programInfo.isIMGFriendly
-                        )
-                        dataManager.addProgram(newProgram)
+                        dataManager.addProgram(CatalogProgramMapper.toSavedProgram(programInfo))
                     },
                     allowMultiSelect: true
                 )
@@ -360,17 +350,15 @@ struct CompactProgramRowView: View {
                         .foregroundColor(programTypeColor(program.type))
                     }
                     
-                    // IMG-Friendly - same style as Program Type (text with icon, no badge) - matching search
-                    // Check both explicit status and assess if nil
-                    let imgStatus = program.isIMGFriendly ?? IMGFriendlyHelper.shared.assessIMGFriendlinessForProgram(program)
-                    if imgStatus == true {
+                    let imgDisplay = IMGStatusDisplay.forSavedProgram(program)
+                    if imgDisplay != .none {
                         HStack(spacing: 3) {
                             Image(systemName: "globe.americas.fill")
                                 .font(.arial(size: 8))
-                            Text("IMG")
+                            Text(imgDisplay.label)
                                 .font(.arial(size: 10, weight: .medium))
                         }
-                        .foregroundColor(.purple)
+                        .foregroundColor(imgDisplay.color)
                     }
                 }
                 

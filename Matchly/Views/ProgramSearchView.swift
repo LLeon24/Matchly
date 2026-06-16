@@ -778,18 +778,7 @@ struct ProgramSearchView: View {
             Divider()
             Button(action: {
                 for program in searchResults where selectedPrograms.contains(program.id) {
-                    let newProgram = Program(
-                        specialty: program.specialty,
-                        name: program.name,
-                        hospital: HospitalNameFormatter.format(program.hospital),
-                        city: program.city,
-                        state: program.state,
-                        address: program.address,
-                        type: program.type,
-                        accreditationID: program.accreditationID,
-                        isIMGFriendly: program.isIMGFriendly
-                    )
-                    dataManager.addProgram(newProgram)
+                    dataManager.addProgram(CatalogProgramMapper.toSavedProgram(program))
                 }
                 dismiss()
             }) {

@@ -25,24 +25,32 @@ struct HospitalNameFormatter {
         "with", "by", "from", "as", "a", "an"
     ]
     
+    // Compiled once and reused. Built from a constant literal pattern, so it will
+    // never realistically fail, but we avoid `try!` (and per-call recompilation)
+    // so a future pattern change can't crash the app.
+    private static let parenthesesRegex: NSRegularExpression? = {
+        try? NSRegularExpression(pattern: "\\(([^)]+)\\)", options: [])
+    }()
+    
     static func format(_ name: String) -> String {
         guard !name.isEmpty else { return name }
         
         var result = name
         
         // Handle parentheses - format content inside parentheses
-        let regex = try! NSRegularExpression(pattern: "\\(([^)]+)\\)", options: [])
-        let nsString = result as NSString
-        let matches = regex.matches(in: result, options: [], range: NSRange(location: 0, length: nsString.length))
-        
-        // Process matches in reverse order to preserve indices
-        for match in matches.reversed() {
-            if match.numberOfRanges >= 2 {
-                let fullRange = match.range(at: 0)
-                let contentRange = match.range(at: 1)
-                let content = nsString.substring(with: contentRange)
-                let formatted = formatPart(content)
-                result = (result as NSString).replacingCharacters(in: fullRange, with: "(\(formatted))")
+        if let regex = parenthesesRegex {
+            let nsString = result as NSString
+            let matches = regex.matches(in: result, options: [], range: NSRange(location: 0, length: nsString.length))
+            
+            // Process matches in reverse order to preserve indices
+            for match in matches.reversed() {
+                if match.numberOfRanges >= 2 {
+                    let fullRange = match.range(at: 0)
+                    let contentRange = match.range(at: 1)
+                    let content = nsString.substring(with: contentRange)
+                    let formatted = formatPart(content)
+                    result = (result as NSString).replacingCharacters(in: fullRange, with: "(\(formatted))")
+                }
             }
         }
         
@@ -93,7 +101,7 @@ struct HospitalNameFormatter {
             }
         }
         
-        return result
+        return DisplayNameFormatter.titleCaseParentheticals(in: result)
     }
     
     private static func formatPart(_ part: String) -> String {

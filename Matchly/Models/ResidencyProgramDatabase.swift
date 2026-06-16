@@ -22,6 +22,7 @@ struct ResidencyProgramInfo: Identifiable, Codable {
     let contactEmail: String? // Contact email
     let contactPhone: String? // Contact phone
     let programCoordinator: String? // Program coordinator name
+    let programDirector: String? // Program director from ACGME
     var isIMGFriendly: Bool? // IMG-friendly status (nil = unknown, true = friendly, false = not friendly)
     
     var displayName: String {
@@ -47,7 +48,7 @@ struct ResidencyProgramInfo: Identifiable, Codable {
     }
     
     // Convenience initializer for backward compatibility
-    init(id: String, name: String, hospital: String, city: String, state: String, specialty: String, type: String, accreditationID: String? = nil, websiteURL: String? = nil, contactEmail: String? = nil, contactPhone: String? = nil, programCoordinator: String? = nil, address: String? = nil, isIMGFriendly: Bool? = nil) {
+    init(id: String, name: String, hospital: String, city: String, state: String, specialty: String, type: String, accreditationID: String? = nil, websiteURL: String? = nil, contactEmail: String? = nil, contactPhone: String? = nil, programCoordinator: String? = nil, programDirector: String? = nil, address: String? = nil, isIMGFriendly: Bool? = nil) {
         self.id = id
         self.name = name
         self.hospital = hospital
@@ -60,6 +61,7 @@ struct ResidencyProgramInfo: Identifiable, Codable {
         self.contactEmail = contactEmail
         self.contactPhone = contactPhone
         self.programCoordinator = programCoordinator
+        self.programDirector = programDirector
         self.address = address
         self.isIMGFriendly = isIMGFriendly
     }

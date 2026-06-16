@@ -149,10 +149,18 @@ struct SpecialtyFormatter {
 
     /// Full specialty label for search rows — never truncated.
     static func rowSpecialtyLabel(for program: ResidencyProgramInfo) -> String {
+        let raw: String
         if let erasName = ERASTrainingLevel.erasSpecialtyName(for: program) {
-            return erasName
+            raw = erasName
+        } else {
+            raw = catalogDisplayName(program.specialty)
         }
-        return catalogDisplayName(program.specialty)
+        return DisplayNameFormatter.titleCaseParentheticals(in: raw)
+    }
+
+    /// Normalized specialty for storage and grouping (no ACGME code suffix).
+    static func normalizedUserSpecialty(_ specialty: String) -> String {
+        catalogDisplayName(specialty)
     }
 
     /// Parent line under fellowship rows; hides non-actionable "Multidisciplinary" parent.

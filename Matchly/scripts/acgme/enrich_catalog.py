@@ -232,6 +232,83 @@ def specialty_program_name(specialty: str) -> str:
     return re.sub(r"\s*\(\d{3}\)\s*$", "", specialty).strip()
 
 
+STREET_LINE_RE = re.compile(
+    r"(\d{1,5}[^,]*?(?:Street|St|Boulevard|Blvd|Avenue|Ave|Road|Rd|Drive|Dr|Way|Lane|Ln|Circle|Cir|Court|Ct|Highway|Hwy|Parkway|Pkwy)(?:[^,]*?)?)\s*,\s*"
+    r"([A-Za-z][A-Za-z .'\-]+?)\s*,\s*([A-Z]{2})\s+\d{5}",
+    re.I,
+)
+
+CAMPUS_OVERRIDES_BY_ID = {
+    "1101100194": {
+        "address": "7300 W Oak St",
+        "city": "Kissimmee",
+        "state": "FL",
+    },
+}
+
+
+def looks_like_garbage_address(raw: str) -> bool:
+    lower = raw.lower()
+    return any(
+        token in lower
+        for token in ("accreditation", "md accreditation", "healthcare (greater program")
+    )
+
+
+def parse_street_from_raw(raw: str) -> tuple[str, str, str] | None:
+    if not raw:
+        return None
+    matches = list(STREET_LINE_RE.finditer(raw))
+    if not matches:
+        return None
+    match = matches[-1]
+    city = match.group(2).strip()
+    if not city or any(ch.isdigit() for ch in city):
+        return None
+    if any(token in city.lower() for token in ("program", "accreditation", "healthcare")):
+        return None
+    return match.group(1).strip(), city, match.group(3).strip()
+
+
+def resolve_mailing_address(program: dict) -> dict:
+    hospital = (program.get("hospital") or "").lower()
+    raw = program.get("address") or ""
+    acc_id = program.get("accreditationID") or program.get("id")
+
+    if acc_id in CAMPUS_OVERRIDES_BY_ID:
+        return dict(CAMPUS_OVERRIDES_BY_ID[acc_id])
+
+    if ("central florida" in hospital and "hca" in hospital) or ("ucf" in hospital and "hca" in hospital):
+        if "osceola" in hospital and "lake nona" not in hospital:
+            parsed = parse_street_from_raw(raw)
+            if parsed and parsed[1].lower() == "kissimmee":
+                return {"address": parsed[0], "city": parsed[1], "state": parsed[2]}
+            return {"address": "7300 W Oak St", "city": "Kissimmee", "state": "FL"}
+        if "lake nona" in hospital or "lake nona" in raw.lower() or "6850" in raw:
+            return {"address": "6850 Lake Nona Blvd", "city": "Orlando", "state": "FL"}
+
+    if looks_like_garbage_address(raw):
+        parsed = parse_street_from_raw(raw)
+        if parsed:
+            return {"address": parsed[0], "city": parsed[1], "state": parsed[2]}
+        return {"address": ""}
+
+    return {"address": raw.strip()}
+
+
+def clean_program_director(raw: Optional[str]) -> Optional[str]:
+    if not raw:
+        return None
+    text = raw.strip()
+    m = re.search(r"([A-Z][a-z]+(?:\s+[A-Z]\.?)?\s+[A-Z][a-z]+),?\s+MD\s*$", text)
+    if m:
+        return m.group(1).strip()
+    blocklist = ("university", "hospital", "medical", "accreditation", "program")
+    if not any(b in text.lower() for b in blocklist) and len(text.split()) >= 2:
+        return text
+    return None
+
+
 def enrich_program(program: dict, eras: Optional[dict]) -> dict:
     out = dict(program)
     address = out.get("address") or ""
@@ -263,6 +340,8 @@ def enrich_program(program: dict, eras: Optional[dict]) -> dict:
 
     # Prefer specialty-based program name over mis-parsed institution strings
     specialty_name = specialty_program_name(out.get("specialty", ""))
+    if specialty_name:
+        out["specialty"] = specialty_name
     current_name = (out.get("name") or "").strip()
     hospital_name = (out.get("hospital") or "").strip()
     if specialty_name:
@@ -273,6 +352,28 @@ def enrich_program(program: dict, eras: Optional[dict]) -> dict:
             or current_name.lower() == hospital_name.lower()
         ):
             out["name"] = specialty_name
+
+    resolved = resolve_mailing_address(out)
+    if resolved.get("address") is not None:
+        out["address"] = resolved["address"] or None
+    if resolved.get("city"):
+        out["city"] = resolved["city"]
+    if resolved.get("state"):
+        out["state"] = resolved["state"]
+
+    if out.get("programDirector"):
+        out["programDirector"] = clean_program_director(out.get("programDirector"))
+    elif address:
+        # Some PDF blobs embed director name before "MD Accreditation"
+        m = re.search(r"([A-Z][a-z]+(?:\s+[A-Z]\.?)?\s+[A-Z][a-z]+),?\s+MD\s+Accreditation", address)
+        if m:
+            out["programDirector"] = m.group(1).strip()
+
+    if not out.get("programDirector") and out.get("contactEmail"):
+        local = out["contactEmail"].split("@")[0]
+        parts = [p for p in re.split(r"[._]", local) if p]
+        if len(parts) >= 2:
+            out["programDirector"] = " ".join(p.capitalize() for p in parts[:2])
 
     return out
 

@@ -159,11 +159,21 @@ struct ProgramAnnotation: Identifiable {
     init(program: Program) {
         self.id = program.id
         self.program = program
-        // Use address if available, otherwise fall back to city/state, then state center, then USA center
-        if let address = program.address, !address.isEmpty {
-            self.coordinate = GeocodingHelper.coordinate(for: address, city: program.city, state: program.state)
-        } else if !program.city.isEmpty && !program.state.isEmpty {
-            self.coordinate = GeocodingHelper.coordinate(for: program.city, state: program.state)
+        let resolved = AddressFormatter.resolved(
+            hospital: program.hospital,
+            address: program.address,
+            city: program.city,
+            state: program.state,
+            accreditationID: program.accreditationID
+        )
+        if !resolved.street.isEmpty {
+            self.coordinate = GeocodingHelper.coordinate(
+                for: resolved.street,
+                city: resolved.city,
+                state: resolved.state
+            )
+        } else if !resolved.city.isEmpty && !resolved.state.isEmpty {
+            self.coordinate = GeocodingHelper.coordinate(for: resolved.city, state: resolved.state)
         } else if !program.state.isEmpty {
             // If only state is available, use state center
             self.coordinate = GeocodingHelper.coordinate(for: program.state)
@@ -327,17 +337,7 @@ struct ProgramMapCard: View {
     }
     
     private func openInMaps() {
-        // Use full address if available, otherwise use hospital + city + state
-        let addressString: String
-        if let address = program.address, !address.isEmpty {
-            addressString = "\(address), \(program.city), \(program.state)"
-        } else if !program.hospital.isEmpty {
-            addressString = "\(program.hospital), \(program.city), \(program.state)"
-        } else if !program.name.isEmpty {
-            addressString = "\(program.name), \(program.city), \(program.state)"
-        } else {
-            addressString = "\(program.city), \(program.state)"
-        }
+        let addressString = AddressFormatter.geocodingQuery(for: program)
         
         Task { @MainActor in
             do {

@@ -65,7 +65,7 @@ struct ProgramSearchRowView: View {
                                     .cornerRadius(4)
 
                                 if let parentName = SpecialtyFormatter.rowParentResidencyLabel(for: program) {
-                                    Text("in \(parentName)")
+                                    Text("in \(DisplayNameFormatter.titleCaseWords(parentName))")
                                         .font(.arial(size: 10, weight: .medium))
                                         .foregroundColor(.secondary)
                                         .fixedSize(horizontal: false, vertical: true)
@@ -114,15 +114,16 @@ struct ProgramSearchRowView: View {
                             .foregroundColor(programTypeColor(program.type))
                         }
                         
-                        // IMG-Friendly - same style as Program Type (text with icon, no badge)
-                        if program.isIMGFriendly == true {
+                        // IMG status (verified vs heuristic)
+                        let imgStatus = IMGStatusDisplay.forCatalogProgram(program)
+                        if imgStatus != .none {
                             HStack(spacing: 3) {
                                 Image(systemName: "globe.americas.fill")
                                     .font(.arial(size: 8))
-                                Text("IMG")
+                                Text(imgStatus.label)
                                     .font(.arial(size: 10, weight: .medium))
                             }
-                            .foregroundColor(.purple)
+                            .foregroundColor(imgStatus.color)
                         }
                     }
                 }

@@ -119,6 +119,7 @@ class IMGFriendlyHelper {
             contactEmail: program.contactEmail,
             contactPhone: program.contactPhone,
             programCoordinator: program.programCoordinator,
+            programDirector: program.programDirector,
             address: program.address,
             isIMGFriendly: nil
         )
