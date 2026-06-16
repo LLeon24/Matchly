@@ -36,7 +36,7 @@ struct ProgramSearchRowView: View {
                     // Specialty badge (only badge-style element)
                     if !program.specialty.isEmpty {
                         let specialtyColor = SpecialtyFormatter.color(for: program.specialty)
-                        let specialtyAbbrev = SpecialtyFormatter.abbreviation(for: program.specialty)
+                        let specialtyAbbrev = SpecialtyFormatter.catalogDisplayAbbreviation(for: program)
                         
                         HStack(spacing: 6) {
                             HStack(spacing: 3) {

@@ -76,7 +76,7 @@ enum ERASTrainingLevel {
     return ACGMSpecialtyHierarchy.parentResidencyName(for: program)
   }
 
-  private static func parentLabel(fromERASName name: String) -> String? {
+  static func parentLabel(fromERASName name: String) -> String? {
     // e.g. "Cardiovascular Disease (Internal Medicine)"
     guard let open = name.lastIndex(of: "("), let close = name.lastIndex(of: ")"), open < close else {
       return nil
@@ -94,5 +94,28 @@ enum ERASTrainingLevel {
         return lower.prefix(1).uppercased() + lower.dropFirst()
       }
       .joined(separator: " ")
+  }
+
+  /// Whether an ERAS fellowship name lists the given parent specialty in parentheses.
+  static func fellowshipNamesParent(_ parentUserSpecialty: String, program: ResidencyProgramInfo) -> Bool {
+    guard let code = ACGMSpecialtyHierarchy.catalogSpecialtyCode(from: program.specialty),
+      let fellowshipName = index?.fellowshipByCode[code],
+      let parentLabel = parentLabel(fromERASName: fellowshipName)
+    else { return false }
+    return SpecialtyFormatter.namesMatchExact(parentLabel, parentUserSpecialty)
+      || SpecialtyFormatter.namesMatchExact(parentLabel, normalizedParentAlias(parentUserSpecialty))
+  }
+
+  private static func normalizedParentAlias(_ userSpecialty: String) -> String {
+    switch userSpecialty {
+    case "OB/GYN": return "Obstetrics and Gynecology"
+    case "General Surgery": return "Surgery"
+    case "PM&R": return "Physical Medicine and Rehabilitation"
+    case "Orthopedics": return "Orthopaedic Surgery"
+    case "ENT": return "Otolaryngology"
+    case "Neurosurgery": return "Neurological Surgery"
+    case "Radiology": return "Radiology-Diagnostic"
+    default: return userSpecialty
+    }
   }
 }

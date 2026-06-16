@@ -60,7 +60,31 @@ struct SpecialtyFormatter {
         "Aerospace Medicine": "Aero Med",
         "Occupational and Environmental Medicine": "Occ Med",
         "Public Health and General Preventive Medicine": "PHPM",
-        "Osteopathic Neuromusculoskeletal Medicine": "ONMM"
+        "Osteopathic Neuromusculoskeletal Medicine": "ONMM",
+        // Common fellowship subspecialty abbreviations (catalog codes)
+        "Cardiovascular Disease": "Cards",
+        "Gastroenterology": "GI",
+        "Pulmonary Disease and Critical Care Medicine": "Pulm/CCM",
+        "Pulmonary Disease": "Pulm",
+        "Hematology and Medical Oncology": "Hem/Onc",
+        "Medical Oncology": "Med Onc",
+        "Interventional Cardiology": "IC",
+        "Critical Care Medicine": "CCM",
+        "Geriatric Medicine": "Geriatrics",
+        "Sports Medicine": "Sports Med",
+        "Pediatric Emergency Medicine": "PEM",
+        "Medical Toxicology": "Tox",
+        "Hospice and Palliative Medicine": "HPM",
+        "Sleep Medicine": "Sleep",
+        "Pain Medicine": "Pain",
+        "Addiction Medicine": "Addiction",
+        "Epilepsy": "Epilepsy",
+        "Vascular Neurology": "Vasc Neuro",
+        "Clinical Neurophysiology": "Clin Neurophys",
+        "Urogynecology and Reconstructive Pelvic Surgery": "Urogyn",
+        "Gynecologic Oncology": "Gyn Onc",
+        "Maternal-Fetal Medicine": "MFM",
+        "Reproductive Endocrinology and Infertility": "REI",
     ]
     
     // Specialty colors - distinct colors for visual differentiation
@@ -106,8 +130,45 @@ struct SpecialtyFormatter {
     ]
     
     static func abbreviation(for specialty: String) -> String {
-        let normalized = normalizedCatalogName(specialty)
-        return abbreviations[normalized] ?? abbreviations[specialty] ?? normalized
+        let displayName = catalogDisplayName(specialty)
+        let normalized = normalizedCatalogName(displayName)
+        return abbreviations[normalized] ?? abbreviations[displayName] ?? shortLabel(displayName)
+    }
+
+    /// Human-readable catalog label without the trailing ACGME code, e.g. `(140)`.
+    static func catalogDisplayName(_ specialty: String) -> String {
+        var name = specialty.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let open = name.lastIndex(of: "("), let close = name.lastIndex(of: ")"), open < close {
+            let inner = name[name.index(after: open)..<close].trimmingCharacters(in: .whitespaces)
+            if inner.count == 3, inner.allSatisfy(\.isNumber) {
+                name = String(name[..<open]).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        return name
+    }
+
+    /// Compact badge label for search rows (avoids huge fellowship strings).
+    static func catalogDisplayAbbreviation(for program: ResidencyProgramInfo) -> String {
+        let displayName = catalogDisplayName(program.specialty)
+        let abbrev = abbreviation(for: displayName)
+        if abbrev.count <= 24 {
+            return abbrev
+        }
+        return shortLabel(displayName)
+    }
+
+    private static func shortLabel(_ name: String) -> String {
+        if name.count <= 24 { return name }
+        let words = name.split(separator: " ")
+        if words.count > 3 {
+            return words.prefix(3).joined(separator: " ") + "…"
+        }
+        return String(name.prefix(22)) + "…"
+    }
+
+    /// Strips parenthetical segments for alias lookup (legacy).
+    static func normalizedCatalogName(_ specialty: String) -> String {
+        catalogDisplayName(specialty)
     }
     
     static func color(for specialty: String) -> Color {
@@ -121,15 +182,6 @@ struct SpecialtyFormatter {
             return specialty
         }
         return "\(specialty) (\(abbrev))"
-    }
-
-    /// Strips ACGME catalog suffixes like `" (140)"` from specialty labels.
-    static func normalizedCatalogName(_ specialty: String) -> String {
-        var name = specialty.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let openParen = name.lastIndex(of: "(") {
-            name = String(name[..<openParen]).trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        return name
     }
 
     /// Maps onboarding / UI specialty labels to ACGME catalog base names.
@@ -172,38 +224,74 @@ struct SpecialtyFormatter {
     ]
 
     static func matches(userSpecialty: String, program: ResidencyProgramInfo) -> Bool {
-        let programBase = normalizedCatalogName(program.specialty)
         let userBase = userSpecialty.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        if namesMatch(programBase, userBase) {
-            return program.trainingLevel == .residency
+        switch program.trainingLevel {
+        case .residency:
+            return matchesResidency(userBase: userBase, program: program)
+        case .fellowship:
+            return matchesFellowship(userBase: userBase, program: program)
         }
-
-        let aliases = catalogAliases[userBase] ?? [userBase]
-        for alias in aliases {
-            if namesMatch(programBase, alias) {
-                return program.trainingLevel == .residency
-            }
-        }
-
-        // Fellowship applicants choosing a parent specialty (e.g. IM → cardiology fellowships).
-        if userBase == "Internal Medicine",
-           let code = ProgramTrainingLevelClassifier.specialtyCode(for: program),
-           internalMedicineFellowshipCodes.contains(code) {
-            return true
-        }
-
-        return false
     }
 
     static func matchesAny(userSpecialties: [String], program: ResidencyProgramInfo) -> Bool {
         userSpecialties.contains { matches(userSpecialty: $0, program: program) }
     }
 
+    /// Exact specialty name comparison — avoids false positives like Neurology ⊂ Urology.
+    static func namesMatchExact(_ lhs: String, _ rhs: String) -> Bool {
+        lhs.trimmingCharacters(in: .whitespacesAndNewlines)
+            .caseInsensitiveCompare(rhs.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
+    }
+
+    private static func matchesResidency(userBase: String, program: ResidencyProgramInfo) -> Bool {
+        if let programCode = ProgramTrainingLevelClassifier.specialtyCode(for: program) {
+            let parentCodes = ACGMSpecialtyHierarchy.residencyCodes(forUserSpecialty: userBase)
+            if !parentCodes.isEmpty, parentCodes.contains(programCode) {
+                return true
+            }
+        }
+
+        let programBase = normalizedCatalogName(program.specialty)
+        if namesMatchExact(programBase, userBase) {
+            return true
+        }
+
+        let aliases = catalogAliases[userBase] ?? [userBase]
+        return aliases.contains { namesMatchExact(programBase, $0) }
+    }
+
+    private static func matchesFellowship(userBase: String, program: ResidencyProgramInfo) -> Bool {
+        guard let programCode = ProgramTrainingLevelClassifier.specialtyCode(for: program) else {
+            return false
+        }
+
+        let eligibleCodes = ACGMSpecialtyHierarchy.fellowshipCodes(forUserSpecialty: userBase)
+        if eligibleCodes.contains(programCode) {
+            return true
+        }
+
+        if ERASTrainingLevel.fellowshipNamesParent(userBase, program: program) {
+            return true
+        }
+
+        if let parentCode = ACGMSpecialtyHierarchy.parentResidencyCode(for: program) {
+            let parentCodes = ACGMSpecialtyHierarchy.residencyCodes(forUserSpecialty: userBase)
+            if parentCodes.contains(parentCode) {
+                return true
+            }
+        }
+
+        // Legacy IM fellowship path (covered by hierarchy, kept for safety).
+        if userBase == "Internal Medicine", internalMedicineFellowshipCodes.contains(programCode) {
+            return true
+        }
+
+        return false
+    }
+
     private static func namesMatch(_ lhs: String, _ rhs: String) -> Bool {
-        lhs.caseInsensitiveCompare(rhs) == .orderedSame
-            || lhs.localizedCaseInsensitiveContains(rhs)
-            || rhs.localizedCaseInsensitiveContains(lhs)
+        namesMatchExact(lhs, rhs)
     }
 }
 
