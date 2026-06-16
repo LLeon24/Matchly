@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Combine
 
 struct ResidencyProgramInfo: Identifiable, Codable {
     let id: String
@@ -31,7 +32,18 @@ struct ResidencyProgramInfo: Identifiable, Codable {
     }
     
     var location: String {
-        return "\(city), \(state)"
+        let trimmedCity = city.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedState = state.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch (trimmedCity.isEmpty, trimmedState.isEmpty) {
+        case (false, false):
+            return "\(trimmedCity), \(trimmedState)"
+        case (false, true):
+            return trimmedCity
+        case (true, false):
+            return trimmedState
+        default:
+            return ""
+        }
     }
     
     // Convenience initializer for backward compatibility
@@ -53,15 +65,39 @@ struct ResidencyProgramInfo: Identifiable, Codable {
     }
 }
 
-class ResidencyProgramDatabase {
+struct ProgramSearchResults {
+    let programs: [ResidencyProgramInfo]
+    let totalCount: Int
+    let isTruncated: Bool
+}
+
+final class ResidencyProgramDatabase: ObservableObject {
     static let shared = ResidencyProgramDatabase()
-    
+
+    static let defaultResultLimit = 300
+
+    @Published private(set) var isReady = false
+    @Published private(set) var programCount = 0
+    @Published private(set) var residencyCount = 0
+    @Published private(set) var fellowshipCount = 0
+
     private var programs: [ResidencyProgramInfo] = []
-    
+    private var residencyPrograms: [ResidencyProgramInfo] = []
+    private var fellowshipPrograms: [ResidencyProgramInfo] = []
+    private let lock = NSLock()
+
     init() {
-        loadPrograms()
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            self?.loadPrograms()
+        }
     }
-    
+
+    private func withPrograms<T>(_ work: () -> T) -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return work()
+    }
+
     // State name to abbreviation mapping
     private let stateToAbbrev: [String: String] = [
         "alabama": "AL", "alaska": "AK", "arizona": "AZ", "arkansas": "AR",
@@ -79,199 +115,267 @@ class ResidencyProgramDatabase {
         "wisconsin": "WI", "wyoming": "WY", "district of columbia": "DC", "puerto rico": "PR"
     ]
     
-    func search(query: String, specialty: String? = nil, specialties: [String]? = nil, stateFilter: String? = nil, stateFilters: Set<String>? = nil, programTypeFilter: String? = nil, programTypes: [String]? = nil, imgFriendlyOnly: Bool = false) -> [ResidencyProgramInfo] {
-        let lowerQuery = query.lowercased().trimmingCharacters(in: .whitespaces)
-        
-        return programs.filter { program in
-            // Specialty filter - support multiple specialties
-            let matchesSpecialty: Bool
-            if let specialties = specialties, !specialties.isEmpty {
-                matchesSpecialty = specialties.contains(program.specialty)
-            } else if let specialty = specialty {
-                matchesSpecialty = program.specialty == specialty
-            } else {
-                matchesSpecialty = true
-            }
-            
-            // State filter (supports both full name and abbreviation, and multiple states)
-            let matchesState: Bool
-            if let stateFilters = stateFilters, !stateFilters.isEmpty {
-                // Multiple states selected - check if program's state is in the set
-                let programStateUpper = program.state.uppercased()
-                matchesState = stateFilters.contains { filterState in
-                    let filterUpper = filterState.uppercased()
-                    // Direct match
-                    if filterUpper == programStateUpper {
-                        return true
-                    }
-                    // Check if filter is full state name that maps to program's abbreviation
-                    if let abbrev = stateToAbbrev[filterState.lowercased()], abbrev.uppercased() == programStateUpper {
-                        return true
-                    }
-                    // Check if program state is abbreviation that maps to filter
-                    if let programAbbrev = stateToAbbrev[program.state.lowercased()], programAbbrev.uppercased() == filterUpper {
-                        return true
-                    }
-                    return false
-                }
-            } else if let stateFilter = stateFilter, !stateFilter.isEmpty {
-                // Single state filter (backward compatibility)
-                let lowerStateFilter = stateFilter.lowercased()
-                let programStateLower = program.state.lowercased()
-                
-                // Check if filter matches abbreviation directly
-                if lowerStateFilter == programStateLower {
-                    matchesState = true
-                } else if let abbrev = stateToAbbrev[lowerStateFilter], abbrev.uppercased() == program.state.uppercased() {
-                    // Check if filter is full state name that maps to program's abbreviation
-                    matchesState = true
-                } else if programStateLower.contains(lowerStateFilter) || lowerStateFilter.contains(programStateLower) {
-                    // Partial match
-                    matchesState = true
-                } else {
-                    matchesState = false
-                }
-            } else {
-                matchesState = true
-            }
-            
-            // Program type filter - support multiple types
-            let matchesType: Bool
-            if let programTypes = programTypes, !programTypes.isEmpty {
-                // If IMG-Friendly is in the selected types, filter by IMG status
-                if programTypes.contains("IMG-Friendly") {
-                    // If only IMG-Friendly is selected, show only IMG-friendly programs
-                    if programTypes.count == 1 {
-                        matchesType = program.isIMGFriendly == true
-                    } else {
-                        // IMG-Friendly + other types: show IMG-friendly programs OR programs matching other types
-                        let otherTypes = programTypes.filter { $0 != "IMG-Friendly" }
-                        matchesType = (program.isIMGFriendly == true) || otherTypes.contains(program.type)
-                    }
-                } else {
-                    // Regular type filtering (no IMG-Friendly selected)
-                    matchesType = programTypes.contains(program.type)
-                }
-            } else if let programTypeFilter = programTypeFilter {
-                // Backward compatibility: single type filter
-                matchesType = programTypeFilter == "All" || program.type == programTypeFilter
-            } else {
-                matchesType = true
-            }
-            
-            // IMG-friendly filter (for backward compatibility - only used if programTypes is nil)
-            let matchesIMG: Bool
-            if imgFriendlyOnly && programTypes == nil {
-                // Only show programs that are explicitly marked as IMG-friendly
-                matchesIMG = program.isIMGFriendly == true
-            } else {
-                matchesIMG = true // Show all if filter not applied or IMG-Friendly is handled via programTypes
-            }
-            
-            // Search query matching (improved algorithm - prioritize city/state)
-            let matchesQuery: Bool
-            if lowerQuery.isEmpty {
-                matchesQuery = true
-            } else {
-                // Normalize state names
-                let normalizedState = stateToAbbrev[lowerQuery] ?? lowerQuery
-                _ = stateToAbbrev[program.state.lowercased()]?.lowercased() ?? program.state.lowercased()
-                
-                // Priority 1: Exact city match (most important for location searches)
-                let cityExactMatch = program.city.lowercased() == lowerQuery
-                
-                // Priority 2: City contains query (e.g., "orlando" matches "Orlando, FL")
-                let cityContainsMatch = program.city.lowercased().contains(lowerQuery)
-                
-                // Priority 3: State match (exact or abbreviation)
-                let stateExactMatch = program.state.lowercased() == lowerQuery ||
-                                     normalizedState.uppercased() == program.state.uppercased() ||
-                                     (stateToAbbrev[lowerQuery]?.uppercased() == program.state.uppercased())
-                
-                // Priority 4: Hospital name contains query
-                let hospitalMatch = program.hospital.lowercased().contains(lowerQuery)
-                
-                // Priority 5: Program name contains query
-                let nameMatch = program.name.lowercased().contains(lowerQuery)
-                
-                // Priority 6: Accreditation ID match
-                let idMatch = program.accreditationID?.lowercased() == lowerQuery ||
-                             (program.accreditationID?.lowercased().contains(lowerQuery) ?? false)
-                
-                // Only match if query appears in relevant fields (not partial matches in unrelated fields)
-                // This prevents "orlando" from matching "Baton Rouge" or "LSU"
-                matchesQuery = cityExactMatch || cityContainsMatch || stateExactMatch || hospitalMatch || nameMatch || idMatch
-            }
-            
-            return matchesSpecialty && matchesState && matchesType && matchesIMG && matchesQuery
+    func search(
+        query: String,
+        specialty: String? = nil,
+        specialties: [String]? = nil,
+        stateFilter: String? = nil,
+        stateFilters: Set<String>? = nil,
+        programTypeFilter: String? = nil,
+        programTypes: [String]? = nil,
+        trainingLevel: ProgramTrainingLevel? = nil,
+        imgFriendlyOnly: Bool = false,
+        limit: Int = ResidencyProgramDatabase.defaultResultLimit
+    ) -> ProgramSearchResults {
+        withPrograms {
+            performSearch(
+                query: query,
+                specialty: specialty,
+                specialties: specialties,
+                stateFilter: stateFilter,
+                stateFilters: stateFilters,
+                programTypeFilter: programTypeFilter,
+                programTypes: programTypes,
+                trainingLevel: trainingLevel,
+                imgFriendlyOnly: imgFriendlyOnly,
+                limit: limit
+            )
         }
     }
-    
-    func getAllPrograms(specialty: String? = nil, specialties: [String]? = nil) -> [ResidencyProgramInfo] {
-        if let specialties = specialties, !specialties.isEmpty {
-            return programs.filter { specialties.contains($0.specialty) }
-        } else if let specialty = specialty {
-            return programs.filter { $0.specialty == specialty }
+
+    /// Backward-compatible search that returns all matches (uncapped).
+    func searchPrograms(
+        query: String,
+        specialty: String? = nil,
+        specialties: [String]? = nil,
+        stateFilter: String? = nil,
+        stateFilters: Set<String>? = nil,
+        programTypeFilter: String? = nil,
+        programTypes: [String]? = nil,
+        trainingLevel: ProgramTrainingLevel? = nil,
+        imgFriendlyOnly: Bool = false
+    ) -> [ResidencyProgramInfo] {
+        search(
+            query: query,
+            specialty: specialty,
+            specialties: specialties,
+            stateFilter: stateFilter,
+            stateFilters: stateFilters,
+            programTypeFilter: programTypeFilter,
+            programTypes: programTypes,
+            trainingLevel: trainingLevel,
+            imgFriendlyOnly: imgFriendlyOnly,
+            limit: Int.max
+        ).programs
+    }
+
+    private func performSearch(
+        query: String,
+        specialty: String?,
+        specialties: [String]?,
+        stateFilter: String?,
+        stateFilters: Set<String>?,
+        programTypeFilter: String?,
+        programTypes: [String]?,
+        trainingLevel: ProgramTrainingLevel?,
+        imgFriendlyOnly: Bool,
+        limit: Int
+    ) -> ProgramSearchResults {
+        let lowerQuery = query.lowercased().trimmingCharacters(in: .whitespaces)
+
+        let pool: [ResidencyProgramInfo]
+        switch trainingLevel {
+        case .residency:
+            pool = residencyPrograms
+        case .fellowship:
+            pool = fellowshipPrograms
+        case nil:
+            pool = programs
         }
-        return programs
+
+        var totalCount = 0
+        var results: [ResidencyProgramInfo] = []
+        results.reserveCapacity(min(limit, pool.count))
+
+        for program in pool {
+            guard matchesProgram(
+                program,
+                lowerQuery: lowerQuery,
+                specialty: specialty,
+                specialties: specialties,
+                stateFilter: stateFilter,
+                stateFilters: stateFilters,
+                programTypeFilter: programTypeFilter,
+                programTypes: programTypes,
+                imgFriendlyOnly: imgFriendlyOnly
+            ) else { continue }
+
+            totalCount += 1
+            if results.count < limit {
+                results.append(program)
+            }
+        }
+
+        return ProgramSearchResults(
+            programs: results,
+            totalCount: totalCount,
+            isTruncated: totalCount > results.count
+        )
+    }
+
+    private func matchesProgram(
+        _ program: ResidencyProgramInfo,
+        lowerQuery: String,
+        specialty: String?,
+        specialties: [String]?,
+        stateFilter: String?,
+        stateFilters: Set<String>?,
+        programTypeFilter: String?,
+        programTypes: [String]?,
+        imgFriendlyOnly: Bool
+    ) -> Bool {
+        let matchesSpecialty: Bool
+        if let specialties, !specialties.isEmpty {
+            matchesSpecialty = SpecialtyFormatter.matchesAny(userSpecialties: specialties, program: program)
+        } else if let specialty {
+            matchesSpecialty = program.specialty == specialty
+                || SpecialtyFormatter.matches(userSpecialty: specialty, program: program)
+        } else {
+            matchesSpecialty = true
+        }
+
+        let matchesState: Bool
+        if let stateFilters, !stateFilters.isEmpty {
+            let programStateUpper = program.state.uppercased()
+            matchesState = stateFilters.contains { filterState in
+                let filterUpper = filterState.uppercased()
+                if filterUpper == programStateUpper { return true }
+                if let abbrev = stateToAbbrev[filterState.lowercased()], abbrev.uppercased() == programStateUpper {
+                    return true
+                }
+                if let programAbbrev = stateToAbbrev[program.state.lowercased()], programAbbrev.uppercased() == filterUpper {
+                    return true
+                }
+                return false
+            }
+        } else if let stateFilter, !stateFilter.isEmpty {
+            let lowerStateFilter = stateFilter.lowercased()
+            let programStateLower = program.state.lowercased()
+
+            if lowerStateFilter == programStateLower {
+                matchesState = true
+            } else if let abbrev = stateToAbbrev[lowerStateFilter], abbrev.uppercased() == program.state.uppercased() {
+                matchesState = true
+            } else if programStateLower.contains(lowerStateFilter) || lowerStateFilter.contains(programStateLower) {
+                matchesState = true
+            } else {
+                matchesState = false
+            }
+        } else {
+            matchesState = true
+        }
+
+        let matchesType: Bool
+        if let programTypes, !programTypes.isEmpty {
+            if programTypes.contains("IMG-Friendly") {
+                if programTypes.count == 1 {
+                    matchesType = program.isIMGFriendly == true
+                } else {
+                    let otherTypes = programTypes.filter { $0 != "IMG-Friendly" }
+                    matchesType = (program.isIMGFriendly == true) || otherTypes.contains(program.type)
+                }
+            } else {
+                matchesType = programTypes.contains(program.type)
+            }
+        } else if let programTypeFilter {
+            matchesType = programTypeFilter == "All" || program.type == programTypeFilter
+        } else {
+            matchesType = true
+        }
+
+        let matchesIMG: Bool
+        if imgFriendlyOnly && programTypes == nil {
+            matchesIMG = program.isIMGFriendly == true
+        } else {
+            matchesIMG = true
+        }
+
+        let matchesQuery: Bool
+        if lowerQuery.isEmpty {
+            matchesQuery = true
+        } else {
+            let normalizedState = stateToAbbrev[lowerQuery] ?? lowerQuery
+
+            let cityExactMatch = program.city.lowercased() == lowerQuery
+            let cityContainsMatch = program.city.lowercased().contains(lowerQuery)
+            let stateExactMatch = program.state.lowercased() == lowerQuery ||
+                normalizedState.uppercased() == program.state.uppercased() ||
+                (stateToAbbrev[lowerQuery]?.uppercased() == program.state.uppercased())
+            let hospitalMatch = program.hospital.lowercased().contains(lowerQuery)
+            let nameMatch = program.name.lowercased().contains(lowerQuery)
+            let idMatch = program.accreditationID?.lowercased() == lowerQuery ||
+                (program.accreditationID?.lowercased().contains(lowerQuery) ?? false)
+
+            matchesQuery = cityExactMatch || cityContainsMatch || stateExactMatch || hospitalMatch || nameMatch || idMatch
+        }
+
+        return matchesSpecialty && matchesState && matchesType && matchesIMG && matchesQuery
+    }
+
+    func getAllPrograms(specialty: String? = nil, specialties: [String]? = nil, trainingLevel: ProgramTrainingLevel? = nil) -> [ResidencyProgramInfo] {
+        withPrograms {
+            let pool: [ResidencyProgramInfo]
+            switch trainingLevel {
+            case .residency:
+                pool = residencyPrograms
+            case .fellowship:
+                pool = fellowshipPrograms
+            case nil:
+                pool = programs
+            }
+
+            if let specialties, !specialties.isEmpty {
+                return pool.filter { SpecialtyFormatter.matchesAny(userSpecialties: specialties, program: $0) }
+            }
+            if let specialty {
+                return pool.filter {
+                    $0.specialty == specialty || SpecialtyFormatter.matches(userSpecialty: specialty, program: $0)
+                }
+            }
+            return pool
+        }
+    }
+
+    private func publishCatalogCounts() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.programCount = self.programs.count
+            self.residencyCount = self.residencyPrograms.count
+            self.fellowshipCount = self.fellowshipPrograms.count
+            self.isReady = true
+        }
+    }
+
+    private func indexLoadedPrograms(_ loaded: [ResidencyProgramInfo]) {
+        lock.lock()
+        programs = loaded
+        residencyPrograms = loaded.filter { $0.trainingLevel == .residency }
+        fellowshipPrograms = loaded.filter { $0.trainingLevel == .fellowship }
+        lock.unlock()
+        publishCatalogCounts()
     }
     
     // MARK: - ERAS Data Loading
     
-    /// Load programs from ERAS JSON file
-    /// Expected JSON format: Array of objects with fields: id, name, hospital, city, state, specialty, type, accreditationID
+    /// Load programs from bundled JSON (ACGME or ERAS format).
     func loadFromERASJSON(data: Data) throws {
         let decoder = JSONDecoder()
-        var erasPrograms = try decoder.decode([ResidencyProgramInfo].self, from: data)
-        
-        // Format hospital names properly and assess IMG friendliness
-        for i in 0..<erasPrograms.count {
-            let originalProgram = erasPrograms[i]
-            let formattedHospital = HospitalNameFormatter.format(originalProgram.hospital)
-            
-            // Assess IMG friendliness if not already set
-            var imgFriendlyStatus = originalProgram.isIMGFriendly
-            if imgFriendlyStatus == nil {
-                // Create a temporary program with formatted hospital for assessment
-                let tempProgram = ResidencyProgramInfo(
-                    id: originalProgram.id,
-                    name: originalProgram.name,
-                    hospital: formattedHospital,
-                    city: originalProgram.city,
-                    state: originalProgram.state,
-                    specialty: originalProgram.specialty,
-                    type: originalProgram.type,
-                    accreditationID: originalProgram.accreditationID,
-                    websiteURL: originalProgram.websiteURL,
-                    contactEmail: originalProgram.contactEmail,
-                    contactPhone: originalProgram.contactPhone,
-                    programCoordinator: originalProgram.programCoordinator,
-                    address: originalProgram.address,
-                    isIMGFriendly: nil
-                )
-                imgFriendlyStatus = IMGFriendlyHelper.shared.assessIMGFriendliness(program: tempProgram)
-            }
-            
-            // Create updated program with formatted hospital and IMG status
-            erasPrograms[i] = ResidencyProgramInfo(
-                id: originalProgram.id,
-                name: originalProgram.name,
-                hospital: formattedHospital,
-                city: originalProgram.city,
-                state: originalProgram.state,
-                specialty: originalProgram.specialty,
-                type: originalProgram.type,
-                accreditationID: originalProgram.accreditationID,
-                websiteURL: originalProgram.websiteURL,
-                contactEmail: originalProgram.contactEmail,
-                contactPhone: originalProgram.contactPhone,
-                programCoordinator: originalProgram.programCoordinator,
-                address: originalProgram.address,
-                isIMGFriendly: imgFriendlyStatus
-            )
+        let loaded = try decoder.decode([ResidencyProgramInfo].self, from: data)
+        let merged = withPrograms {
+            programs.append(contentsOf: loaded)
+            return programs
         }
-        
-        programs.append(contentsOf: erasPrograms)
+        indexLoadedPrograms(merged)
     }
     
     /// Load programs from ERAS JSON file in the app bundle
@@ -296,10 +400,11 @@ class ResidencyProgramDatabase {
         try loadFromERASJSON(data: data)
     }
     
-    /// Clear existing programs and load only from ERAS data
+    /// Clear existing programs and load only from bundled JSON data.
     func replaceWithERASData(data: Data) throws {
-        programs.removeAll()
-        try loadFromERASJSON(data: data)
+        let decoder = JSONDecoder()
+        let loaded = try decoder.decode([ResidencyProgramInfo].self, from: data)
+        indexLoadedPrograms(loaded)
     }
     
     private func loadPrograms() {
@@ -319,7 +424,7 @@ class ResidencyProgramDatabase {
             }
         }
         
-        // Fallback to hardcoded programs if ERAS data not available
+        // Fallback to hardcoded programs if bundled data not available
         loadInternalMedicinePrograms()
         loadFamilyMedicinePrograms()
         loadEmergencyMedicinePrograms()
@@ -337,6 +442,7 @@ class ResidencyProgramDatabase {
         loadPMRPrograms()
         loadDermatologyPrograms()
         loadNeurosurgeryPrograms()
+        indexLoadedPrograms(withPrograms { programs })
     }
     
     private func loadInternalMedicinePrograms() {

@@ -25,8 +25,32 @@ and effective date. This is often the fastest way to build a complete catalog.
 ```bash
 python build_from_reports.py \
   --reports-dir ~/Desktop/ACGME/Reports \
-  --output ../../Data/ACGME_2026.json
+  --output ../../Data/ACGME_2026.json \
+  --enrich
 ```
+
+`--enrich` merges `ERAS2026.json` (by ACGME ID), parses city/state from messy
+PDF address strings, and adds campus-specific hospital names (e.g. `AdventHealth
+Florida (East Orlando)` instead of plain `AdventHealth`). You can also run
+enrichment alone:
+
+```bash
+python enrich_catalog.py
+```
+
+### Residency vs fellowship (ERAS PAR)
+
+Matchly classifies training level using the [AAMC ERAS PAR specialty
+index](https://systems.aamc.org/eras/erasstats/par/index.cfm) (54 residencies,
+~79 fellowships across July + December cycles). Refresh annually:
+
+```bash
+python ../eras/fetch_par_specialties.py
+```
+
+This writes `Matchly/Data/ERAS_PAR_specialties.json`, bundled in the app.
+ACGME-only programs not listed on ERAS fall back to the ACGME specialty-code
+hierarchy.
 
 ### Option B — script downloads PDFs (polite rate limit)
 

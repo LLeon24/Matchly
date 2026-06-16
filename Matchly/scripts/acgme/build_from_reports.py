@@ -126,6 +126,17 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=Path("acgme_catalog.json"))
     parser.add_argument("--delay", type=float, default=3.0, help="Seconds between PDF downloads")
     parser.add_argument("--limit", type=int, default=0, help="Max specialties to download (0=all)")
+    parser.add_argument(
+        "--enrich",
+        action="store_true",
+        help="Merge ERAS + address parsing after PDF build (requires ERAS2026.json)",
+    )
+    parser.add_argument(
+        "--eras",
+        type=Path,
+        default=None,
+        help="ERAS JSON for --enrich (default: ERAS2026.json next to --output)",
+    )
     args = parser.parse_args()
 
     if not args.reports_dir and not args.fetch_reports:
@@ -153,7 +164,27 @@ def main() -> None:
 
     programs = load_from_directory(args.reports_dir)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(programs, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    if args.enrich:
+        eras_path = args.eras or (args.output.parent / "ERAS2026.json")
+        if eras_path.exists():
+            from enrich_catalog import enrich_catalog
+
+            tmp = args.output.with_suffix(".raw.json")
+            tmp.write_text(json.dumps(programs, indent=2, ensure_ascii=False), encoding="utf-8")
+            stats = enrich_catalog(tmp, eras_path, args.output)
+            tmp.unlink(missing_ok=True)
+            logger.info(
+                "Enriched catalog: %d with city/state, %d vague hospital names remain",
+                stats["with_city_state"],
+                stats["vague_hospitals"],
+            )
+        else:
+            logger.warning("ERAS file not found at %s — skipping enrichment", eras_path)
+            args.output.write_text(json.dumps(programs, indent=2, ensure_ascii=False), encoding="utf-8")
+    else:
+        args.output.write_text(json.dumps(programs, indent=2, ensure_ascii=False), encoding="utf-8")
+
     logger.info("Wrote %d unique programs → %s", len(programs), args.output)
 
     with_state = sum(1 for p in programs if p.get("state"))

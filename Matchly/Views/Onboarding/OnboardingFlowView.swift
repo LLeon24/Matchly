@@ -13,6 +13,7 @@ struct OnboardingFlowView: View {
     @State private var currentStep: OnboardingStep = .welcome
     @State private var profile = UserProfile()
     @State private var selectedSpecialties: Set<String> = []
+    @State private var selectedApplyingTrack: ProgramTrainingLevelFilter = .residency
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var showMainApp = false
     @State private var iconScale: CGFloat = 1.0
@@ -20,15 +21,17 @@ struct OnboardingFlowView: View {
     
     enum OnboardingStep: Int, CaseIterable {
         case welcome = 0
-        case specialties = 1  // Moved specialties to be second (right after welcome)
-        case name = 2
-        case aamcID = 3
-        case photo = 4
-        case calendarSync = 5
+        case applyingTrack = 1
+        case specialties = 2
+        case name = 3
+        case aamcID = 4
+        case photo = 5
+        case calendarSync = 6
         
         var title: String {
             switch self {
             case .welcome: return "Welcome to Matchly"
+            case .applyingTrack: return "What Are You Applying To?"
             case .specialties: return "Select Your Specialties"
             case .name: return "What's your name?"
             case .aamcID: return "AAMC ID (Optional)"
@@ -40,6 +43,7 @@ struct OnboardingFlowView: View {
         var subtitle: String {
             switch self {
             case .welcome: return "Let's get you set up"
+            case .applyingTrack: return "Medical students apply to residency. After residency, physicians apply to fellowship. You can change this anytime in Settings."
             case .specialties: return "Choose the specialties you're applying to. You can select multiple if you're dual applying."
             case .name: return "We'll use this to personalize your experience"
             case .aamcID: return "Your AAMC ID helps us provide better program matching"
@@ -63,6 +67,8 @@ struct OnboardingFlowView: View {
                     switch currentStep {
                     case .welcome:
                         welcomeStep
+                    case .applyingTrack:
+                        applyingTrackStep
                     case .specialties:
                         specialtiesStep
                     case .name:
@@ -171,7 +177,7 @@ struct OnboardingFlowView: View {
             // Continue button with gradient
             Button(action: {
                 withAnimation(.easeInOut(duration: 0.3)) {
-                    currentStep = .specialties  // Go to specialties first
+                    currentStep = .applyingTrack
                 }
             }) {
                 HStack(spacing: 8) {
@@ -431,11 +437,79 @@ struct OnboardingFlowView: View {
         }
     }
     
+    // MARK: - Applying Track Step
+    private var applyingTrackStep: some View {
+        OnboardingStepView(
+            title: OnboardingStep.applyingTrack.title,
+            subtitle: OnboardingStep.applyingTrack.subtitle,
+            content: {
+                VStack(spacing: 16) {
+                    ForEach([ProgramTrainingLevelFilter.residency, .fellowship], id: \.self) { track in
+                        Button(action: {
+                            selectedApplyingTrack = track
+                        }) {
+                            HStack(spacing: 14) {
+                                Image(systemName: track == .residency ? "cross.case.fill" : "brain.head.profile")
+                                    .font(.arial(size: 24))
+                                    .foregroundColor(track == .residency ? .blue : .purple)
+                                    .frame(width: 36)
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(track.rawValue)
+                                        .font(.arial(size: 18, weight: .semibold))
+                                        .foregroundColor(.primary)
+                                    Text(track == .residency
+                                         ? "Categorical & integrated residency programs"
+                                         : "Subspecialty fellowship programs")
+                                        .font(.arial(size: 13))
+                                        .foregroundColor(.secondary)
+                                        .multilineTextAlignment(.leading)
+                                }
+
+                                Spacer()
+
+                                Image(systemName: selectedApplyingTrack == track ? "checkmark.circle.fill" : "circle")
+                                    .font(.arial(size: 22))
+                                    .foregroundColor(selectedApplyingTrack == track ? .blue : .secondary.opacity(0.4))
+                            }
+                            .padding(16)
+                            .glassEffect(
+                                selectedApplyingTrack == track
+                                    ? .regular.tint((track == .residency ? Color.blue : Color.purple).opacity(0.2)).interactive()
+                                    : .regular.interactive(),
+                                in: .rect(cornerRadius: 16)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Spacer()
+                }
+            },
+            onNext: {
+                dataManager.preferences.applyingTrack = selectedApplyingTrack.rawValue
+                dataManager.savePreferences()
+                withAnimation {
+                    currentStep = .specialties
+                }
+            },
+            canContinue: true,
+            buttonText: "Continue",
+            onBack: {
+                withAnimation {
+                    currentStep = .welcome
+                }
+            }
+        )
+    }
+
     // MARK: - Specialties Step
     private var specialtiesStep: some View {
         OnboardingStepView(
             title: OnboardingStep.specialties.title,
-            subtitle: OnboardingStep.specialties.subtitle,
+            subtitle: selectedApplyingTrack == .fellowship
+                ? "Choose your specialty area. We'll show related fellowship programs in search."
+                : OnboardingStep.specialties.subtitle,
             content: {
                 SpecialtySelectionContentView(
                     selectedSpecialties: $selectedSpecialties
@@ -458,7 +532,7 @@ struct OnboardingFlowView: View {
             buttonText: "Continue",
             onBack: {
                 withAnimation {
-                    currentStep = .welcome
+                    currentStep = .applyingTrack
                 }
             }
         )
@@ -478,6 +552,7 @@ struct OnboardingFlowView: View {
         
         // Save calendar sync preference
         dataManager.preferences.enableCalendarSync = enableCalendarSync
+        dataManager.preferences.applyingTrack = selectedApplyingTrack.rawValue
         
         // Mark onboarding as complete
         dataManager.preferences.hasCompletedOnboarding = true

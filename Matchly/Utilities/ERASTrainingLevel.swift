@@ -1,0 +1,98 @@
+//
+//  ERASTrainingLevel.swift
+//  Matchly
+//
+//  Residency vs fellowship classification from AAMC ERAS PAR
+//  (https://systems.aamc.org/eras/erasstats/par/index.cfm).
+//
+
+import Foundation
+
+private struct ERASPARSpecialtyIndex: Decodable {
+  let residencyByCode: [String: String]
+  let fellowshipByCode: [String: String]
+}
+
+enum ERASTrainingLevel {
+  private static let index: ERASPARSpecialtyIndex? = {
+    guard let url = Bundle.main.url(forResource: "ERAS_PAR_specialties", withExtension: "json"),
+      let data = try? Data(contentsOf: url),
+      let decoded = try? JSONDecoder().decode(ERASPARSpecialtyIndex.self, from: data)
+    else {
+      print("Warning: Could not load ERAS_PAR_specialties.json — falling back to ACGME hierarchy")
+      return nil
+    }
+    return decoded
+  }()
+
+  private static let parentAbbreviationMap: [String: String] = [
+    "obgyn": "OB/GYN",
+    "obstetrics and gynecology": "OB/GYN",
+    "internal medicine": "Internal Medicine",
+    "family medicine": "Family Medicine",
+    "pediatrics": "Pediatrics",
+    "general surgery": "General Surgery",
+    "surgery": "General Surgery",
+    "neurology": "Neurology",
+    "anesthesiology": "Anesthesiology",
+    "pathology": "Pathology",
+    "psychiatry": "Psychiatry",
+    "urology": "Urology",
+    "physical medicine and rehabilitation": "PM&R",
+    "preventive medicine": "Preventive Medicine",
+    "multidisciplinary": "Multidisciplinary",
+    "radiology": "Radiology",
+    "neurological surgery": "Neurosurgery",
+    "orthopaedic surgery": "Orthopedics",
+    "emergency medicine": "Emergency Medicine",
+  ]
+
+  static func trainingLevel(for program: ResidencyProgramInfo) -> ProgramTrainingLevel? {
+    guard let code = ACGMSpecialtyHierarchy.catalogSpecialtyCode(from: program.specialty) else {
+      return nil
+    }
+    if index?.residencyByCode[code] != nil { return .residency }
+    if index?.fellowshipByCode[code] != nil { return .fellowship }
+    return nil
+  }
+
+  static func erasSpecialtyName(for program: ResidencyProgramInfo) -> String? {
+    guard let code = ACGMSpecialtyHierarchy.catalogSpecialtyCode(from: program.specialty) else {
+      return nil
+    }
+    return index?.residencyByCode[code] ?? index?.fellowshipByCode[code]
+  }
+
+  /// Parent residency label for ERAS-listed fellowships, parsed from PAR specialty name.
+  static func parentResidencyName(for program: ResidencyProgramInfo) -> String? {
+    guard trainingLevel(for: program) == .fellowship,
+      let code = ACGMSpecialtyHierarchy.catalogSpecialtyCode(from: program.specialty),
+      let fellowshipName = index?.fellowshipByCode[code]
+    else { return nil }
+
+    if let parent = parentLabel(fromERASName: fellowshipName) {
+      return parent
+    }
+    return ACGMSpecialtyHierarchy.parentResidencyName(for: program)
+  }
+
+  private static func parentLabel(fromERASName name: String) -> String? {
+    // e.g. "Cardiovascular Disease (Internal Medicine)"
+    guard let open = name.lastIndex(of: "("), let close = name.lastIndex(of: ")"), open < close else {
+      return nil
+    }
+    let inner = String(name[name.index(after: open)..<close]).trimmingCharacters(in: .whitespaces)
+    guard !inner.isEmpty, inner.count != 3 || !inner.allSatisfy(\.isNumber) else { return nil }
+
+    let key = inner.lowercased()
+    if let mapped = parentAbbreviationMap[key] { return mapped }
+    return inner
+      .split(separator: " ")
+      .map { word in
+        let lower = word.lowercased()
+        if ["and", "of", "in", "the", "for"].contains(lower) { return lower }
+        return lower.prefix(1).uppercased() + lower.dropFirst()
+      }
+      .joined(separator: " ")
+  }
+}

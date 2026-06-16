@@ -27,25 +27,33 @@ struct ProgramSearchView: View {
     @State private var showSpecialtyFilter: Bool = false
     @State private var tempSelectedSpecialties: Set<String> = [] // Temporary selections while sheet is open
     @State private var tempShowAllSpecialties: Bool = true
+    @State private var trainingLevelFilter: ProgramTrainingLevelFilter = .residency
+    @State private var searchResults: [ResidencyProgramInfo] = []
+    @State private var totalMatchCount = 0
+    @State private var isResultSetTruncated = false
+    @State private var resultLimit = ResidencyProgramDatabase.defaultResultLimit
+    @State private var hasRunSearch = false
+    @State private var searchRefreshTask: Task<Void, Never>?
     
     let onSelect: (ResidencyProgramInfo) -> Void
     var allowMultiSelect: Bool = false
     
-    private var database = ResidencyProgramDatabase.shared
+    @ObservedObject private var database = ResidencyProgramDatabase.shared
     
-    // All available specialties
-    private let allSpecialties = [
-        "Internal Medicine", "Family Medicine", "Emergency Medicine", "Pediatrics",
-        "General Surgery", "OB/GYN", "Psychiatry", "Neurology", "Anesthesiology",
-        "Radiology", "Pathology", "Orthopedics", "ENT", "Urology", "PM&R",
-        "Dermatology", "Neurosurgery", "Child Neurology", "Nuclear Medicine",
-        "Radiation Oncology", "Plastic Surgery", "Ophthalmology", "Interventional Radiology - Integrated",
-        "Thoracic Surgery - Integrated", "Vascular Surgery - Integrated", "Transitional Year",
-        "Aerospace Medicine", "Occupational and Environmental Medicine",
-        "Public Health and General Preventive Medicine", "Osteopathic Neuromusculoskeletal Medicine"
-    ]
-    
-    // All US states for filter
+    // All available specialties (residency + common fellowship areas)
+    private var allSpecialties: [String] {
+        SpecialtyFormatter.commonSpecialties
+    }
+
+    private var preferredTrainingLevel: ProgramTrainingLevelFilter {
+        ProgramTrainingLevelFilter(rawValue: dataManager.preferences.applyingTrack) ?? .residency
+    }
+
+    private var hasSpecialtySelection: Bool {
+        !selectedSpecialties.isEmpty
+            || (!showAllSpecialties && !dataManager.preferences.specialties.isEmpty)
+    }
+
     private let allStates = [
         "All", "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID",
         "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO",
@@ -59,68 +67,84 @@ struct ProgramSearchView: View {
         self.onSelect = onSelect
         self.allowMultiSelect = allowMultiSelect
     }
-    
-    // Cache search results to avoid recalculating on every view update
-    @State private var cachedSearchResults: [ResidencyProgramInfo] = []
-    @State private var lastSearchCacheKey: String = ""
-    
-    private var searchResults: [ResidencyProgramInfo] {
-        // Create cache key from all search parameters
-        let specialtiesKey = showAllSpecialties ? "all" : (selectedSpecialties.isEmpty ? "prefs" : selectedSpecialties.sorted().joined(separator: ","))
-        let typesKey = showAllProgramTypes ? "all" : selectedProgramTypes.sorted().joined(separator: ",")
-        let statesKey = showAllStates ? "all" : selectedStates.sorted().joined(separator: ",")
-        let cacheKey = "\(searchText)-\(specialtiesKey)-\(typesKey)-\(statesKey)"
-        
-        // Return cached result if search parameters haven't changed
-        if cacheKey == lastSearchCacheKey && !cachedSearchResults.isEmpty {
-            return cachedSearchResults
-        }
-        
-        // Determine which specialties to use
-        let specialtiesToUse: [String]?
+
+    private var hasActiveFilters: Bool {
+        !searchText.trimmingCharacters(in: .whitespaces).isEmpty
+            || !showAllStates && !selectedStates.isEmpty
+            || !showAllProgramTypes && !selectedProgramTypes.isEmpty
+            || hasSpecialtySelection
+            || trainingLevelFilter != preferredTrainingLevel
+            || trainingLevelFilter == .all
+    }
+
+    private var specialtiesToUse: [String]? {
         if showAllSpecialties || (selectedSpecialties.isEmpty && dataManager.preferences.specialties.isEmpty) {
-            specialtiesToUse = nil // Show all
-        } else if !selectedSpecialties.isEmpty {
-            specialtiesToUse = Array(selectedSpecialties) // User's explicit selection
-        } else {
-            specialtiesToUse = dataManager.preferences.specialties // Use preferences
+            return nil
         }
-        
-        // Determine which program types to use
-        let programTypesToUse: [String]?
+        if !selectedSpecialties.isEmpty {
+            return Array(selectedSpecialties)
+        }
+        return dataManager.preferences.specialties
+    }
+
+    private var programTypesToUse: [String]? {
         if showAllProgramTypes || selectedProgramTypes.isEmpty {
-            programTypesToUse = nil // Show all
-        } else {
-            programTypesToUse = Array(selectedProgramTypes)
+            return nil
         }
-        
-        // Use stateFilters (Set) if states are selected, otherwise nil
-        let stateFilters: Set<String>? = {
-            if showAllStates || selectedStates.isEmpty {
-                return nil
-            } else {
-                return selectedStates
-            }
-        }()
-        
+        return Array(selectedProgramTypes)
+    }
+
+    private var stateFiltersToUse: Set<String>? {
+        if showAllStates || selectedStates.isEmpty {
+            return nil
+        }
+        return selectedStates
+    }
+
+    private func refreshSearch(resetLimit: Bool = false) {
+        guard database.isReady else { return }
+        if resetLimit {
+            resultLimit = ResidencyProgramDatabase.defaultResultLimit
+        }
+        guard hasActiveFilters else {
+            searchResults = []
+            totalMatchCount = 0
+            isResultSetTruncated = false
+            hasRunSearch = false
+            return
+        }
+
         let results = database.search(
             query: searchText,
             specialty: nil,
             specialties: specialtiesToUse,
-            stateFilter: nil, // Use stateFilters instead
-            stateFilters: stateFilters,
-            programTypeFilter: nil, // Use programTypes instead
+            stateFilter: nil,
+            stateFilters: stateFiltersToUse,
+            programTypeFilter: nil,
             programTypes: programTypesToUse,
-            imgFriendlyOnly: false // IMG-Friendly is now handled via programTypes
+            trainingLevel: trainingLevelFilter.trainingLevel,
+            imgFriendlyOnly: false,
+            limit: resultLimit
         )
-        
-        // Cache the results asynchronously
-        DispatchQueue.main.async {
-            cachedSearchResults = results
-            lastSearchCacheKey = cacheKey
+
+        searchResults = results.programs
+        totalMatchCount = results.totalCount
+        isResultSetTruncated = results.isTruncated
+        hasRunSearch = true
+    }
+
+    private func loadMoreResults() {
+        resultLimit += ResidencyProgramDatabase.defaultResultLimit
+        refreshSearch()
+    }
+
+    private func scheduleSearchRefresh() {
+        searchRefreshTask?.cancel()
+        searchRefreshTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            guard !Task.isCancelled else { return }
+            refreshSearch(resetLimit: true)
         }
-        
-        return results
     }
     
     var body: some View {
@@ -142,9 +166,26 @@ struct ProgramSearchView: View {
                 }
             }
             .onAppear {
+                trainingLevelFilter = preferredTrainingLevel
                 if !dataManager.preferences.specialties.isEmpty {
                     selectedSpecialties = Set(dataManager.preferences.specialties)
                 }
+                refreshSearch()
+            }
+            .onChange(of: searchText) { _, _ in scheduleSearchRefresh() }
+            .onChange(of: selectedStates) { _, _ in refreshSearch(resetLimit: true) }
+            .onChange(of: showAllStates) { _, _ in refreshSearch(resetLimit: true) }
+            .onChange(of: selectedProgramTypes) { _, _ in refreshSearch(resetLimit: true) }
+            .onChange(of: showAllProgramTypes) { _, _ in refreshSearch(resetLimit: true) }
+            .onChange(of: selectedSpecialties) { _, _ in refreshSearch(resetLimit: true) }
+            .onChange(of: showAllSpecialties) { _, _ in refreshSearch(resetLimit: true) }
+            .onChange(of: trainingLevelFilter) { _, newValue in
+                dataManager.preferences.applyingTrack = newValue.rawValue
+                dataManager.savePreferences()
+                refreshSearch(resetLimit: true)
+            }
+            .onChange(of: database.isReady) { _, isReady in
+                if isReady { refreshSearch() }
             }
         }
     }
@@ -244,12 +285,31 @@ struct ProgramSearchView: View {
                                         selectedSpecialties = tempSelectedSpecialties
                                         showAllSpecialties = tempShowAllSpecialties
                                         showSpecialtyFilter = false
+                                        refreshSearch()
                                     },
                                     onClear: {
                                         tempSelectedSpecialties.removeAll()
                                         tempShowAllSpecialties = true
                                     }
                                 )
+                            }
+
+                            ForEach(ProgramTrainingLevelFilter.allCases) { level in
+                                Button(action: {
+                                    trainingLevelFilter = level
+                                }) {
+                                    Text(level.rawValue)
+                                        .font(.arial(size: 12, weight: trainingLevelFilter == level ? .semibold : .medium))
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .glassEffect(
+                                            trainingLevelFilter == level
+                                                ? .regular.tint(Color.purple.opacity(0.25)).interactive()
+                                                : .regular.interactive(),
+                                            in: .capsule
+                                        )
+                                }
+                                .buttonStyle(.plain)
                             }
                         
                         // State filter - sheet-based like specialty and program types
@@ -301,6 +361,7 @@ struct ProgramSearchView: View {
                                     selectedStates = tempSelectedStates
                                     showAllStates = tempShowAllStates
                                     showStateFilter = false
+                                    refreshSearch()
                                 },
                                 onClear: {
                                     tempSelectedStates.removeAll()
@@ -358,6 +419,7 @@ struct ProgramSearchView: View {
                                     selectedProgramTypes = tempSelectedProgramTypes
                                     showAllProgramTypes = tempShowAllProgramTypes
                                     showProgramTypeFilter = false
+                                    refreshSearch()
                                 },
                                 onClear: {
                                     tempSelectedProgramTypes.removeAll()
@@ -369,15 +431,18 @@ struct ProgramSearchView: View {
                         Spacer()
                         
                         // Clear filters button
-                        if (!selectedStates.isEmpty && !showAllStates) || (!selectedProgramTypes.isEmpty && !showAllProgramTypes) || (!selectedSpecialties.isEmpty && !showAllSpecialties) {
+                        if (!selectedStates.isEmpty && !showAllStates) || (!selectedProgramTypes.isEmpty && !showAllProgramTypes) || (!selectedSpecialties.isEmpty && !showAllSpecialties) || trainingLevelFilter != preferredTrainingLevel {
                             Button(action: {
                                 withAnimation {
+                                    searchText = ""
                                     selectedStates.removeAll()
                                     showAllStates = true
                                     selectedProgramTypes.removeAll()
                                     showAllProgramTypes = true
                                     selectedSpecialties.removeAll()
                                     showAllSpecialties = true
+                                    trainingLevelFilter = preferredTrainingLevel
+                                    refreshSearch(resetLimit: true)
                                 }
                             }) {
                                 HStack(spacing: 4) {
@@ -400,29 +465,43 @@ struct ProgramSearchView: View {
     
     private var resultsView: some View {
         Group {
-            let specialtiesToUse: [String]? = {
-                if showAllSpecialties || (selectedSpecialties.isEmpty && dataManager.preferences.specialties.isEmpty) {
-                    return nil
-                } else if !selectedSpecialties.isEmpty {
-                    return Array(selectedSpecialties)
-                } else {
-                    return dataManager.preferences.specialties
+            if !database.isReady {
+                VStack(spacing: 16) {
+                    ProgressView()
+                    Text("Loading \(database.programCount > 0 ? "\(database.programCount)" : "program") catalog…")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
                 }
-            }()
-            
-            let allPrograms = specialtiesToUse == nil
-                ? database.getAllPrograms()
-                : database.getAllPrograms(specialties: specialtiesToUse!)
-            let displayResults = searchText.isEmpty && showAllStates && showAllProgramTypes && (selectedSpecialties.isEmpty || showAllSpecialties)
-                ? allPrograms
-                : searchResults
-            
-            if displayResults.isEmpty {
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if !hasActiveFilters {
+                promptToSearchView
+            } else if searchResults.isEmpty && hasRunSearch {
                 emptyResultsView
             } else {
-                programsListView(displayResults: displayResults)
+                programsListView(displayResults: searchResults)
             }
         }
+    }
+
+    private var promptToSearchView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "text.magnifyingglass")
+                .font(.arial(size: 50))
+                .foregroundColor(.secondary)
+            Text("Search \(database.programCount.formatted()) programs")
+                .font(.headline)
+            Text("Type a hospital, city, or state — or apply specialty/state filters. Defaults to \(trainingLevelFilter.rawValue.lowercased()) programs.")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+            if database.fellowshipCount > 0 {
+                Text("\(database.residencyCount.formatted()) residencies · \(database.fellowshipCount.formatted()) fellowships")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     
     private var emptyResultsView: some View {
@@ -442,60 +521,73 @@ struct ProgramSearchView: View {
     
     private func programsListView(displayResults: [ResidencyProgramInfo]) -> some View {
         VStack(spacing: 0) {
-            // Optimize: Pre-sort once instead of in Dictionary grouping
             let sortedResults = displayResults.sorted {
-                HospitalNameFormatter.format($0.hospital) < HospitalNameFormatter.format($1.hospital)
+                $0.formattedHospital.localizedCaseInsensitiveCompare($1.formattedHospital) == .orderedAscending
             }
-            let groupedPrograms = Dictionary(grouping: sortedResults) { program in
-                String(HospitalNameFormatter.format(program.hospital).prefix(1).uppercased())
-            }
-            let sortedKeys = groupedPrograms.keys.sorted()
-            
-            ScrollViewReader { proxy in
-                HStack(spacing: 0) {
-                            List {
-                                ForEach(sortedKeys, id: \.self) { key in
-                                    Section(header: 
-                                        Text(key)
-                                            .font(.arial(size: 13, weight: .semibold))
-                                            .foregroundColor(.secondary)
-                                            .textCase(.none)
-                                    ) {
-                                ForEach(groupedPrograms[key] ?? []) { program in
-                                    ProgramSearchRowView(
-                                        program: program,
-                                        isSelected: selectedPrograms.contains(program.id),
-                                        allowMultiSelect: allowMultiSelect,
-                                        onTap: {
-                                            if allowMultiSelect {
-                                                if selectedPrograms.contains(program.id) {
-                                                    selectedPrograms.remove(program.id)
-                                                } else {
-                                                    selectedPrograms.insert(program.id)
-                                                }
-                                            } else {
-                                                onSelect(program)
-                                                dismiss()
-                                            }
-                                        }
-                                    )
-                                }
-                            }
-                            .id(key)
-                        }
-                    }
-                    .listStyle(.insetGrouped)
-                    
-                    alphabetScrollIndex(sortedKeys: sortedKeys, proxy: proxy)
+            let useGroupedList = sortedResults.count <= 120
+
+            if useGroupedList {
+                let groupedPrograms = Dictionary(grouping: sortedResults) { program in
+                    String(program.formattedHospital.prefix(1).uppercased())
                 }
+                let sortedKeys = groupedPrograms.keys.sorted()
+
+                ScrollViewReader { proxy in
+                    HStack(spacing: 0) {
+                        List {
+                            ForEach(sortedKeys, id: \.self) { key in
+                                Section(header:
+                                    Text(key)
+                                        .font(.arial(size: 13, weight: .semibold))
+                                        .foregroundColor(.secondary)
+                                        .textCase(.none)
+                                ) {
+                                    ForEach(groupedPrograms[key] ?? []) { program in
+                                        programRow(for: program)
+                                    }
+                                }
+                                .id(key)
+                            }
+                        }
+                        .listStyle(.insetGrouped)
+
+                        alphabetScrollIndex(sortedKeys: sortedKeys, proxy: proxy)
+                    }
+                }
+            } else {
+                List(sortedResults) { program in
+                    programRow(for: program)
+                }
+                .listStyle(.insetGrouped)
             }
-            
-            footerWithCount(count: displayResults.count)
-            
+
+            footerWithCount(displayed: sortedResults.count)
+
             if allowMultiSelect && !selectedPrograms.isEmpty {
                 addSelectedButton
             }
         }
+    }
+
+    @ViewBuilder
+    private func programRow(for program: ResidencyProgramInfo) -> some View {
+        ProgramSearchRowView(
+            program: program,
+            isSelected: selectedPrograms.contains(program.id),
+            allowMultiSelect: allowMultiSelect,
+            onTap: {
+                if allowMultiSelect {
+                    if selectedPrograms.contains(program.id) {
+                        selectedPrograms.remove(program.id)
+                    } else {
+                        selectedPrograms.insert(program.id)
+                    }
+                } else {
+                    onSelect(program)
+                    dismiss()
+                }
+            }
+        )
     }
     
     private func alphabetScrollIndex(sortedKeys: [String], proxy: ScrollViewProxy) -> some View {
@@ -517,22 +609,40 @@ struct ProgramSearchView: View {
         .padding(.vertical, 8)
     }
     
-    private func footerWithCount(count: Int) -> some View {
+    private func footerWithCount(displayed: Int) -> some View {
         VStack(spacing: 0) {
             Divider()
-            HStack {
-                Spacer()
+            VStack(spacing: 8) {
                 HStack(spacing: 5) {
                     Image(systemName: "list.bullet")
                         .font(.arial(size: 11))
                         .foregroundColor(.secondary.opacity(0.7))
-                    Text("\(count) program\(count == 1 ? "" : "s")")
+                    Text("\(displayed) shown")
                         .font(.arial(size: 12, weight: .medium))
                         .foregroundColor(.secondary)
+                    if isResultSetTruncated {
+                        Text("of \(totalMatchCount.formatted())")
+                            .font(.arial(size: 12))
+                            .foregroundColor(.secondary)
+                    }
                 }
-                .padding(.vertical, 8)
-                Spacer()
+
+                if isResultSetTruncated {
+                    Button(action: loadMoreResults) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.down.circle.fill")
+                                .font(.arial(size: 14))
+                            Text("Show \(min(ResidencyProgramDatabase.defaultResultLimit, totalMatchCount - displayed)) more")
+                                .font(.arial(size: 14, weight: .semibold))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                    }
+                    .buttonStyle(.glass)
+                }
             }
+            .padding(.vertical, 10)
+            .padding(.horizontal)
             .glassEffect(.regular, in: .rect(cornerRadius: 0))
         }
     }

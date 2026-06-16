@@ -134,6 +134,20 @@ struct SettingsView: View {
     
     private var appInformationSection: some View {
         Section("App Information") {
+                    Picker("Applying To", selection: Binding(
+                        get: {
+                            ProgramTrainingLevelFilter(rawValue: dataManager.preferences.applyingTrack) ?? .residency
+                        },
+                        set: { newValue in
+                            dataManager.preferences.applyingTrack = newValue.rawValue
+                            dataManager.savePreferences()
+                        }
+                    )) {
+                        ForEach(ProgramTrainingLevelFilter.allCases) { track in
+                            Text(track.rawValue).tag(track)
+                        }
+                    }
+
                     if !dataManager.preferences.specialties.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Specialties")

@@ -20,7 +20,7 @@ struct ProgramSearchRowView: View {
                 if allowMultiSelect {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                         .foregroundColor(isSelected ? .blue : .gray.opacity(0.5))
-                        .font(.system(size: 20))
+                        .font(.arial(size: 20))
                         .frame(width: 24)
                 }
                 
@@ -28,47 +28,67 @@ struct ProgramSearchRowView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     // Hospital name
                     Text(program.formattedHospital)
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.arial(size: 15, weight: .semibold))
                         .lineLimit(2)
+                        .minimumScaleFactor(0.8)
+                        .fixedSize(horizontal: false, vertical: true)
                     
                     // Specialty badge (only badge-style element)
                     if !program.specialty.isEmpty {
                         let specialtyColor = SpecialtyFormatter.color(for: program.specialty)
                         let specialtyAbbrev = SpecialtyFormatter.abbreviation(for: program.specialty)
                         
-                        HStack(spacing: 3) {
-                            Image(systemName: "stethoscope")
-                                .font(.system(size: 8))
-                            Text(specialtyAbbrev)
-                                .font(.system(size: 10, weight: .semibold))
+                        HStack(spacing: 6) {
+                            HStack(spacing: 3) {
+                                Image(systemName: "stethoscope")
+                                    .font(.arial(size: 8))
+                                Text(specialtyAbbrev)
+                                    .font(.arial(size: 10, weight: .semibold))
+                            }
+                            .foregroundColor(specialtyColor)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(specialtyColor.opacity(0.15))
+                            .cornerRadius(4)
+
+                            Text(program.trainingLevel.rawValue)
+                                .font(.arial(size: 9, weight: .semibold))
+                                .foregroundColor(program.trainingLevel == .fellowship ? .purple : .blue)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background((program.trainingLevel == .fellowship ? Color.purple : Color.blue).opacity(0.12))
+                                .cornerRadius(4)
                         }
-                        .foregroundColor(specialtyColor)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(specialtyColor.opacity(0.15))
-                        .cornerRadius(4)
+
+                        if let parentName = program.parentResidencyName {
+                            Text("in \(SpecialtyFormatter.abbreviation(for: parentName))")
+                                .font(.arial(size: 10, weight: .medium))
+                                .foregroundColor(.secondary)
+                        }
                     }
                     
                     // Location and Accreditation ID on first line
                     HStack(spacing: 8) {
                         // Location
-                        HStack(spacing: 3) {
-                            Image(systemName: "mappin.circle.fill")
-                                .font(.system(size: 9))
-                            Text(program.location)
-                                .font(.system(size: 11))
+                        if !program.location.isEmpty {
+                            HStack(spacing: 3) {
+                                Image(systemName: "mappin.circle.fill")
+                                    .font(.arial(size: 9))
+                                Text(program.location)
+                                    .font(.arial(size: 11))
+                            }
+                            .foregroundColor(.secondary)
                         }
-                        .foregroundColor(.secondary)
                         
                         // Accreditation ID - subtle, no background
                         if let acgmeID = program.accreditationID {
                             HStack(spacing: 2) {
                                 Image(systemName: "number.circle.fill")
-                                    .font(.system(size: 9))
+                                    .font(.arial(size: 9))
                                 Text("ID:")
-                                    .font(.system(size: 10, weight: .medium))
+                                    .font(.arial(size: 10, weight: .medium))
                                 Text(acgmeID)
-                                    .font(.system(size: 11, weight: .medium))
+                                    .font(.arial(size: 11, weight: .medium))
                             }
                             .foregroundColor(.secondary)
                         }
@@ -80,9 +100,9 @@ struct ProgramSearchRowView: View {
                         if !program.type.isEmpty {
                             HStack(spacing: 3) {
                                 Image(systemName: programTypeIcon(program.type))
-                                    .font(.system(size: 8))
+                                    .font(.arial(size: 8))
                                 Text(program.type)
-                                    .font(.system(size: 10, weight: .medium))
+                                    .font(.arial(size: 10, weight: .medium))
                             }
                             .foregroundColor(programTypeColor(program.type))
                         }
@@ -91,9 +111,9 @@ struct ProgramSearchRowView: View {
                         if program.isIMGFriendly == true {
                             HStack(spacing: 3) {
                                 Image(systemName: "globe.americas.fill")
-                                    .font(.system(size: 8))
+                                    .font(.arial(size: 8))
                                 Text("IMG")
-                                    .font(.system(size: 10, weight: .medium))
+                                    .font(.arial(size: 10, weight: .medium))
                             }
                             .foregroundColor(.purple)
                         }
@@ -104,7 +124,7 @@ struct ProgramSearchRowView: View {
                 
                 if !allowMultiSelect {
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.arial(size: 11, weight: .medium))
                         .foregroundColor(.secondary.opacity(0.4))
                         .frame(width: 16)
                 }
