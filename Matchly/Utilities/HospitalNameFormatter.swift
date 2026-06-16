@@ -113,7 +113,23 @@ struct HospitalNameFormatter {
             let range = NSRange(result.startIndex..., in: result)
             result = regex.stringByReplacingMatches(in: result, range: range, withTemplate: "$1 (")
         }
+        result = collapseConsecutiveDuplicateWords(result)
         return result
+    }
+
+    /// Safety net for catalog strings like "Adventhealth Adventhealth Tampa".
+    private static func collapseConsecutiveDuplicateWords(_ name: String) -> String {
+        let words = name.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+        guard words.count > 1 else { return name }
+        var deduped: [String] = []
+        var previousKey: String?
+        for word in words {
+            let key = word.lowercased().trimmingCharacters(in: .punctuationCharacters)
+            if key == previousKey { continue }
+            deduped.append(word)
+            previousKey = key
+        }
+        return deduped.joined(separator: " ")
     }
     
     private static func formatPart(_ part: String) -> String {

@@ -109,6 +109,158 @@ def is_truncated_hospital(name: str) -> bool:
     return False
 
 
+def _token_key(word: str) -> str:
+    return word.lower().rstrip(".")
+
+
+def has_consecutive_duplicate_tokens(name: str) -> bool:
+    words = name.split()
+    prev = None
+    for word in words:
+        key = _token_key(word)
+        if prev and key == prev:
+            return True
+        prev = key
+    return False
+
+
+CITY_NAME_TOKENS = {
+    "tampa", "orlando", "miami", "jacksonville", "gainesville", "tallahassee",
+    "boston", "chicago", "houston", "dallas", "atlanta", "phoenix", "denver",
+}
+
+
+def has_city_then_person_name(name: str) -> bool:
+    parts = name.split()
+    if len(parts) < 4:
+        return False
+    city_token = parts[-3].lower().rstrip(".,")
+    if city_token not in CITY_NAME_TOKENS:
+        return False
+    person1, person2 = parts[-2], parts[-1]
+    if not (person1[0].isupper() and person2[0].isupper()):
+        return False
+    if any(marker in person2.lower() for marker in ("hospital", "program", "center")):
+        return False
+    return True
+
+
+def is_corrupted_hospital(name: str) -> bool:
+    if not name or not name.strip():
+        return True
+    if has_consecutive_duplicate_tokens(name):
+        return True
+    if has_city_then_person_name(name):
+        return True
+    if is_truncated_hospital(name):
+        return True
+    lower = name.lower()
+    if "adventhealth adventhealth" in lower:
+        return True
+    if re.search(
+        r"\b(?:tampa|orlando|miami|boston|chicago)\s+[A-Z][a-z]+\s+[A-Z]\S+\s*$",
+        name,
+        re.I,
+    ):
+        return True
+    if re.search(
+        r"\b(?:Hospital|Health|Healthcare|Medical|University|Clinic|Center|Florida|AdventHealth)\b.*"
+        r"\b[A-Z][a-z]+\s+[A-Z]\S+\s*$",
+        name,
+    ):
+        if not re.search(r"\b(?:Saint|St\.|Mount|Fort|Los|San|New|North|South|East|West)\s+[A-Z]", name):
+            return True
+    return False
+
+
+def strip_trailing_director_name(name: str) -> str:
+    """Remove embedded program-director names from mis-parsed ACGME PDF strings."""
+    if not name:
+        return name
+    trimmed = name.strip()
+    if has_city_then_person_name(trimmed):
+        return " ".join(trimmed.split()[:-2])
+    person_tail = re.search(
+        r"^(.*\b(?:Hospital|Health|Healthcare|Medical|University|Clinic|Center|Florida|"
+        r"AdventHealth|Program|Tampa|Orlando))\s+"
+        r"((?:[A-Z][a-z]+(?:\s+[A-Z]\.?)?\s+){1,2}[A-Z]\S+)\s*$",
+        trimmed,
+    )
+    if person_tail:
+        prefix, suffix = person_tail.group(1).strip(), person_tail.group(2).strip()
+        if not any(
+            marker in suffix.lower()
+            for marker in ("hospital", "health", "medical", "university", "program", "center", "florida")
+        ):
+            return prefix
+    return trimmed
+
+
+def extract_hospital_brand(name: str) -> Optional[str]:
+    lower = (name or "").lower()
+    brands = (
+        "adventhealth",
+        "hca florida",
+        "orlando health",
+        "baycare",
+        "mayo clinic",
+        "ascension",
+        "baptist",
+        "ochsner",
+        "northwell",
+        "honorhealth",
+    )
+    for brand in brands:
+        if brand in lower:
+            return brand
+    return None
+
+
+def sanitize_acgme_hospital(name: str) -> str:
+    name = re.sub(r"\s+", " ", (name or "").strip())
+    if name.lower().endswith(" program"):
+        name = name[:-8].strip()
+    words = name.split()
+    deduped: list[str] = []
+    prev_key = None
+    for word in words:
+        key = _token_key(word)
+        if prev_key and key == prev_key:
+            continue
+        deduped.append(word)
+        prev_key = key
+    name = " ".join(deduped)
+    return strip_trailing_director_name(name)
+
+
+def eras_display_hospital(eras: dict) -> str:
+    return sanitize_acgme_hospital(clean_eras_hospital(eras.get("hospital") or ""))
+
+
+def institution_hospital_for_program(program: dict, template: str) -> str:
+    """Pick the best institution template for a program (match city/campus when possible)."""
+    city = (program.get("city") or "").strip().lower()
+    template = template.strip()
+    if not template:
+        return program.get("hospital", "")
+
+    campus = parse_campus_from_address(program.get("address"))
+    template_lower = template.lower()
+
+    if city and city in template_lower:
+        return template
+
+    if campus:
+        campus_lower = campus.lower()
+        if campus_lower in template_lower:
+            return template
+        base = re.sub(r"\s*\([^)]+\)\s*$", "", template).strip()
+        if base:
+            return f"{base} ({campus})"
+
+    return template
+
+
 def site_from_address(address: Optional[str]) -> Optional[str]:
     if not address:
         return None
@@ -280,7 +432,7 @@ def resolve_mailing_address(program: dict) -> dict:
     if acc_id in CAMPUS_OVERRIDES_BY_ID:
         return dict(CAMPUS_OVERRIDES_BY_ID[acc_id])
 
-        if ("central florida" in hospital and "hca" in hospital) or ("ucf" in hospital and "hca" in hospital):
+    if ("central florida" in hospital and "hca" in hospital) or ("ucf" in hospital and "hca" in hospital):
         if "osceola" in hospital and "lake nona" not in hospital:
             return dict(OSCEOLA_CAMPUS_ADDRESS)
         if "lake nona" in hospital or "lake nona" in raw.lower() or "6850" in raw:
@@ -311,15 +463,18 @@ def clean_program_director(raw: Optional[str]) -> Optional[str]:
 def enrich_program(program: dict, eras: Optional[dict]) -> dict:
     out = dict(program)
     address = out.get("address") or ""
+    out["hospital"] = sanitize_acgme_hospital(out.get("hospital", ""))
 
-    # ERAS merge (highest confidence for overlapping programs)
+    # ERAS merge — authoritative when accreditation ID matches
     if eras:
         hospital_lower = (out.get("hospital") or "").lower()
         is_osceola_campus = "osceola" in hospital_lower and "lake nona" not in hospital_lower
         if eras.get("city") and eras.get("state") and not is_osceola_campus:
             out["city"] = eras["city"]
             out["state"] = eras["state"]
-        out["hospital"] = pick_better_hospital(out.get("hospital", ""), eras.get("hospital", ""))
+        eras_hospital = eras_display_hospital(eras)
+        if eras_hospital:
+            out["hospital"] = eras_hospital
         if eras.get("websiteURL") and not out.get("websiteURL"):
             out["websiteURL"] = eras["websiteURL"]
         eras_name = (eras.get("name") or "").strip()
@@ -335,9 +490,11 @@ def enrich_program(program: dict, eras: Optional[dict]) -> dict:
             if not (out.get("state") or "").strip():
                 out["state"] = parsed_state
 
-    # Improve hospital name using campus patterns in address
-    out["hospital"] = improve_hospital_from_address(out.get("hospital", ""), address)
-    out["hospital"] = reconstruct_hospital_from_address(out.get("hospital", ""), address)
+    # Improve hospital name using campus patterns only when ERAS did not supply a clean name
+    if not eras or is_corrupted_hospital(out.get("hospital", "")):
+        out["hospital"] = improve_hospital_from_address(out.get("hospital", ""), address)
+        out["hospital"] = reconstruct_hospital_from_address(out.get("hospital", ""), address)
+    out["hospital"] = sanitize_acgme_hospital(out.get("hospital", ""))
 
     # Prefer specialty-based program name over mis-parsed institution strings
     specialty_name = specialty_program_name(out.get("specialty", ""))
@@ -386,11 +543,24 @@ def propagate_institution_data(programs: list[dict]) -> list[dict]:
         if key:
             by_inst[key].append(program)
 
+    # Index clean hospital names by city/state for brand-based repair (cross-specialty).
+    clean_by_location: dict[tuple[str, str], list[str]] = defaultdict(list)
+    for program in programs:
+        hospital = program.get("hospital") or ""
+        city = (program.get("city") or "").strip().lower()
+        state = (program.get("state") or "").strip().upper()
+        if city and state and hospital and not is_corrupted_hospital(hospital):
+            clean_by_location[(city, state)].append(hospital)
+
     for group in by_inst.values():
-        # Best hospital template: longest non-vague name in the group
+        # Best hospital template: longest clean name in the group (often from ERAS sibling specialty)
         templates = sorted(
-            [p["hospital"] for p in group if p.get("hospital") and not is_truncated_hospital(p["hospital"])],
-            key=lambda h: -len(h),
+            [
+                p["hospital"]
+                for p in group
+                if p.get("hospital") and not is_corrupted_hospital(p["hospital"])
+            ],
+            key=lambda h: (-("(" in h), -len(h)),
         )
         best_hospital = templates[0] if templates else ""
         inst_prefix = ""
@@ -428,11 +598,36 @@ def propagate_institution_data(programs: list[dict]) -> list[dict]:
                     program["city"] = program.get("city") or default_city
                     program["state"] = program.get("state") or default_state
 
-            if is_vague_hospital(program.get("hospital", "")) and inst_prefix:
+            hospital = program.get("hospital", "")
+            if is_corrupted_hospital(hospital):
+                brand = extract_hospital_brand(hospital)
+                city = (program.get("city") or "").strip().lower()
+                state = (program.get("state") or "").strip().upper()
+                if brand and city and state:
+                    candidates = [
+                        c
+                        for c in clean_by_location.get((city, state), [])
+                        if brand in c.lower()
+                    ]
+                    if candidates:
+                        # Prefer campus-specific ERAS-style names, e.g. "AdventHealth Florida (Tampa)"
+                        candidates.sort(
+                            key=lambda c: (
+                                f"({city})" not in c.lower(),
+                                -("(" in c),
+                                len(c),
+                            )
+                        )
+                        program["hospital"] = candidates[0]
+                    elif best_hospital:
+                            program["hospital"] = institution_hospital_for_program(program, best_hospital)
+                elif best_hospital:
+                    program["hospital"] = institution_hospital_for_program(program, best_hospital)
+            elif is_vague_hospital(hospital) and inst_prefix:
                 campus = parse_campus_from_address(program.get("address"))
                 if campus:
                     candidate = f"{inst_prefix} ({campus})"
-                    program["hospital"] = pick_better_hospital(program["hospital"], candidate)
+                    program["hospital"] = pick_better_hospital(hospital, candidate)
 
     return programs
 
