@@ -238,12 +238,14 @@ STREET_LINE_RE = re.compile(
     re.I,
 )
 
+OSCEOLA_CAMPUS_ADDRESS = {
+    "address": "700 W Oak St",
+    "city": "Kissimmee",
+    "state": "FL",
+}
+
 CAMPUS_OVERRIDES_BY_ID = {
-    "1101100194": {
-        "address": "7300 W Oak St",
-        "city": "Kissimmee",
-        "state": "FL",
-    },
+    "1101100194": dict(OSCEOLA_CAMPUS_ADDRESS),
 }
 
 
@@ -278,12 +280,9 @@ def resolve_mailing_address(program: dict) -> dict:
     if acc_id in CAMPUS_OVERRIDES_BY_ID:
         return dict(CAMPUS_OVERRIDES_BY_ID[acc_id])
 
-    if ("central florida" in hospital and "hca" in hospital) or ("ucf" in hospital and "hca" in hospital):
+        if ("central florida" in hospital and "hca" in hospital) or ("ucf" in hospital and "hca" in hospital):
         if "osceola" in hospital and "lake nona" not in hospital:
-            parsed = parse_street_from_raw(raw)
-            if parsed and parsed[1].lower() == "kissimmee":
-                return {"address": parsed[0], "city": parsed[1], "state": parsed[2]}
-            return {"address": "7300 W Oak St", "city": "Kissimmee", "state": "FL"}
+            return dict(OSCEOLA_CAMPUS_ADDRESS)
         if "lake nona" in hospital or "lake nona" in raw.lower() or "6850" in raw:
             return {"address": "6850 Lake Nona Blvd", "city": "Orlando", "state": "FL"}
 
@@ -315,7 +314,9 @@ def enrich_program(program: dict, eras: Optional[dict]) -> dict:
 
     # ERAS merge (highest confidence for overlapping programs)
     if eras:
-        if eras.get("city") and eras.get("state"):
+        hospital_lower = (out.get("hospital") or "").lower()
+        is_osceola_campus = "osceola" in hospital_lower and "lake nona" not in hospital_lower
+        if eras.get("city") and eras.get("state") and not is_osceola_campus:
             out["city"] = eras["city"]
             out["state"] = eras["state"]
         out["hospital"] = pick_better_hospital(out.get("hospital", ""), eras.get("hospital", ""))

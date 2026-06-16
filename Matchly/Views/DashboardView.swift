@@ -105,24 +105,7 @@ struct DashboardView: View {
         .sheet(isPresented: $showAddProgram) {
             NavigationView {
                 ProgramSearchView(
-                    onSelect: { programInfo in
-                        let newProgram = Program(
-                            specialty: programInfo.specialty,
-                            name: programInfo.name,
-                            hospital: HospitalNameFormatter.format(programInfo.hospital),
-                            city: programInfo.city,
-                            state: programInfo.state,
-                            address: programInfo.address,
-                            type: programInfo.type,
-                            accreditationID: programInfo.accreditationID,
-                            websiteURL: programInfo.websiteURL,
-                            contactEmail: programInfo.contactEmail,
-                            contactPhone: programInfo.contactPhone,
-                            programCoordinator: programInfo.programCoordinator,
-                            isIMGFriendly: programInfo.isIMGFriendly
-                        )
-                        dataManager.addProgram(newProgram)
-                    },
+                    onSelect: { _ in },
                     allowMultiSelect: true
                 )
             }

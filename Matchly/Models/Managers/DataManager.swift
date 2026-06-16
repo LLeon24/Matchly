@@ -11,14 +11,21 @@ import OSLog
 
 class DataManager: ObservableObject {
     static let shared = DataManager()
+
+    enum AddProgramResult {
+        case added
+        case duplicate
+    }
     
     @Published var programs: [Program] = []
     @Published var preferences: UserPreferences = UserPreferences()
+    @Published var lastAddProgramNotice: String?
     
     private let programsKey = "saved_programs"
     private let preferencesKey = "user_preferences"
     private let cloudSync = CloudSyncManager.shared
     private static let logger = Logger(subsystem: "com.matchly", category: "DataManager")
+    private var cancellables = Set<AnyCancellable>()
     
     // Performance optimization: Debounce save operations
     private var saveProgramsWorkItem: DispatchWorkItem?
@@ -66,8 +73,18 @@ class DataManager: ObservableObject {
     
     init() {
         loadData()
-        // Try to load from iCloud on startup
         loadFromCloudIfAvailable()
+        observeCatalogReadiness()
+    }
+
+    private func observeCatalogReadiness() {
+        ResidencyProgramDatabase.shared.$isReady
+            .filter { $0 }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.refreshSavedProgramsFromCatalog()
+            }
+            .store(in: &cancellables)
     }
     
     func savePrograms() {
@@ -181,8 +198,26 @@ class DataManager: ObservableObject {
     
     func loadData() {
         loadPrograms()
+        deduplicateSavedPrograms()
         loadPreferences()
         recalculateAllScores()
+    }
+
+    /// Removes duplicate saved programs, keeping the earliest entry for each ACGME listing.
+    private func deduplicateSavedPrograms() {
+        var unique: [Program] = []
+        var removed = 0
+        for program in programs {
+            if ProgramIdentity.isDuplicate(program, in: unique) {
+                removed += 1
+            } else {
+                unique.append(program)
+            }
+        }
+        guard removed > 0 else { return }
+        programs = unique
+        savePrograms()
+        Self.logger.info("Removed \(removed, privacy: .public) duplicate saved program(s)")
     }
     
     private func loadFromCloudIfAvailable() {
@@ -203,16 +238,63 @@ class DataManager: ObservableObject {
         }
     }
     
-    func addProgram(_ program: Program) {
+    @discardableResult
+    func addProgram(_ program: Program) -> AddProgramResult {
+        if ProgramIdentity.isDuplicate(program, in: programs) {
+            lastAddProgramNotice = "This program is already in your list."
+            return .duplicate
+        }
+
         var newProgram = program
         newProgram.finalScore = newProgram.questionnaire.totalWeightedScore(preferences: preferences, programEMR: newProgram.emr)
         
-        // Update immediately - @Published will automatically notify observers
         programs.append(newProgram)
         savePrograms()
-        
-        // Explicitly trigger update to ensure all views refresh immediately
         objectWillChange.send()
+        return .added
+    }
+
+    /// Updates mailing address and catalog metadata for saved programs when the bundled catalog improves.
+    func refreshSavedProgramsFromCatalog() {
+        let database = ResidencyProgramDatabase.shared
+        guard database.isReady else { return }
+
+        var changed = false
+        for index in programs.indices {
+            guard let accreditationID = programs[index].accreditationID?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !accreditationID.isEmpty,
+                  let catalogProgram = database.program(withAccreditationID: accreditationID)
+            else { continue }
+
+            var updated = programs[index]
+            let before = catalogSnapshot(updated)
+            CatalogProgramMapper.applyCatalogInfo(catalogProgram, to: &updated)
+            let after = catalogSnapshot(updated)
+            if before != after {
+                updated.finalScore = updated.questionnaire.totalWeightedScore(
+                    preferences: preferences,
+                    programEMR: updated.emr
+                )
+                programs[index] = updated
+                changed = true
+            }
+        }
+
+        if changed {
+            savePrograms()
+            objectWillChange.send()
+        }
+    }
+
+    private func catalogSnapshot(_ program: Program) -> (String?, String, String, String, String, String?) {
+        (
+            program.address,
+            program.city,
+            program.state,
+            program.hospital,
+            program.specialty,
+            program.programDirector
+        )
     }
     
     func updateProgram(_ program: Program) {

@@ -166,9 +166,7 @@ struct ProgramsListView: View {
             }
             .sheet(isPresented: $showAddProgram) {
                 ProgramSearchView(
-                    onSelect: { programInfo in
-                        dataManager.addProgram(CatalogProgramMapper.toSavedProgram(programInfo))
-                    },
+                    onSelect: { _ in },
                     allowMultiSelect: true
                 )
             }
@@ -350,16 +348,7 @@ struct CompactProgramRowView: View {
                         .foregroundColor(programTypeColor(program.type))
                     }
                     
-                    let imgDisplay = IMGStatusDisplay.forSavedProgram(program)
-                    if imgDisplay != .none {
-                        HStack(spacing: 3) {
-                            Image(systemName: "globe.americas.fill")
-                                .font(.arial(size: 8))
-                            Text(imgDisplay.label)
-                                .font(.arial(size: 10, weight: .medium))
-                        }
-                        .foregroundColor(imgDisplay.color)
-                    }
+                    SavedProgramIMGBadge(program: program)
                 }
                 
                 // Signal and Red Flags on third line

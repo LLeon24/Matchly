@@ -114,17 +114,8 @@ enum AddressFormatter {
         if (h.contains("central florida") && h.contains("hca")) || (h.contains("ucf") && h.contains("hca")) {
             // Hospital campus label wins over a mismatched street line in the PDF blob.
             if h.contains("osceola") && !h.contains("lake nona") {
-                if let parsed = parseStreetFromRaw(rawAddress),
-                   parsed.city.lowercased() == "kissimmee" {
-                    return ResolvedAddress(
-                        street: parsed.street,
-                        city: parsed.city,
-                        state: parsed.state,
-                        siteName: "HCA Florida Osceola Hospital"
-                    )
-                }
                 return ResolvedAddress(
-                    street: "7300 W Oak St",
+                    street: "700 W Oak St",
                     city: "Kissimmee",
                     state: "FL",
                     siteName: "HCA Florida Osceola Hospital"
@@ -149,7 +140,7 @@ enum AddressFormatter {
 
     private static let overridesByAccreditationID: [String: ResolvedAddress] = [
         "1101100194": ResolvedAddress(
-            street: "7300 W Oak St",
+            street: "700 W Oak St",
             city: "Kissimmee",
             state: "FL",
             siteName: "HCA Florida Osceola Hospital"

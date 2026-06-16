@@ -372,6 +372,16 @@ final class ResidencyProgramDatabase: ObservableObject {
         }
     }
 
+    func program(withAccreditationID accreditationID: String) -> ResidencyProgramInfo? {
+        let trimmed = accreditationID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return withPrograms {
+            programs.first {
+                $0.accreditationID == trimmed || $0.id == trimmed
+            }
+        }
+    }
+
     private func indexLoadedPrograms(_ loaded: [ResidencyProgramInfo]) {
         lock.lock()
         programs = loaded

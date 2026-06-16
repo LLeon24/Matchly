@@ -11,6 +11,7 @@ struct ProgramSearchRowView: View {
     let program: ResidencyProgramInfo
     let isSelected: Bool
     let allowMultiSelect: Bool
+    var isAlreadyInList: Bool = false
     let onTap: () -> Void
     
     var body: some View {
@@ -76,6 +77,16 @@ struct ProgramSearchRowView: View {
                     
                     // Location and Accreditation ID on first line
                     HStack(spacing: 8) {
+                        if isAlreadyInList {
+                            HStack(spacing: 3) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.arial(size: 9))
+                                Text("Added")
+                                    .font(.arial(size: 10, weight: .semibold))
+                            }
+                            .foregroundColor(.green)
+                        }
+
                         // Location
                         if !program.location.isEmpty {
                             HStack(spacing: 3) {

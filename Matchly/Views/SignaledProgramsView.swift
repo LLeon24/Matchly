@@ -121,17 +121,7 @@ struct SignaledProgramsView: View {
                                         .foregroundColor(programTypeColor(program.type))
                                     }
                                     
-                                    // IMG-Friendly - same style as Program Type (text with icon, no badge) - matching ProgramsListView
-                                    let imgStatus = program.isIMGFriendly ?? IMGFriendlyHelper.shared.assessIMGFriendlinessForProgram(program)
-                                    if imgStatus == true {
-                                        HStack(spacing: 3) {
-                                            Image(systemName: "globe.americas.fill")
-                                                .font(.arial(size: 8))
-                                            Text("IMG")
-                                                .font(.arial(size: 10, weight: .medium))
-                                        }
-                                        .foregroundColor(.purple)
-                                    }
+                                    SavedProgramIMGBadge(program: program)
                                 }
                                 
                                 // Signal and Red Flags on third line

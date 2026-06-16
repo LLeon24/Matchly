@@ -15,6 +15,8 @@ struct OnboardingFlowView: View {
     @State private var selectedSpecialties: Set<String> = []
     @State private var selectedApplyingTrack: ProgramTrainingLevelFilter = .residency
     @State private var selectedPhoto: PhotosPickerItem?
+    @State private var showImageCrop = false
+    @State private var imageToCrop: UIImage?
     @State private var showMainApp = false
     @State private var iconScale: CGFloat = 1.0
     @State private var enableCalendarSync: Bool = false
@@ -87,10 +89,25 @@ struct OnboardingFlowView: View {
         .fullScreenCover(isPresented: $showMainApp) {
             MainTabView()
         }
-        .onChange(of: selectedPhoto) { oldValue, newItem in
+        .onChange(of: selectedPhoto) { _, newItem in
             Task {
-                if let data = try? await newItem?.loadTransferable(type: Data.self) {
-                    profile.photoData = data
+                guard let newItem else { return }
+                if let data = try? await newItem.loadTransferable(type: Data.self),
+                   let uiImage = UIImage(data: data) {
+                    await MainActor.run {
+                        imageToCrop = uiImage.fixedOrientation()
+                        showImageCrop = true
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showImageCrop) {
+            if let imageToCrop {
+                ImageCropView(image: imageToCrop) { croppedImage in
+                    if let data = croppedImage.jpegData(compressionQuality: 0.9) {
+                        profile.photoData = data
+                    }
+                    self.imageToCrop = nil
                 }
             }
         }

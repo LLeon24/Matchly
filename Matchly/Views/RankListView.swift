@@ -25,33 +25,41 @@ struct RankListView: View {
         case interviewDate = "Interview Date"
     }
     
-    /// Sort programs by review status, then interview status, then score, then name.
-    /// Extracted to avoid duplicating this comparator in multiple places.
-    private func sortedByReviewStatus(_ programs: [Program]) -> [Program] {
-        // Pre-calculate review/interview status to avoid repeated function calls during sorting
-        let programsWithStatus = programs.map { program in
-            (program: program, isReviewed: program.isReviewed, isInterviewed: program.isInterviewed)
+    /// Sort programs by final score (highest first), then hospital name.
+    private func sortedByScore(_ programs: [Program]) -> [Program] {
+        programs.sorted {
+            if $0.finalScore != $1.finalScore {
+                return $0.finalScore > $1.finalScore
+            }
+            return HospitalNameFormatter.format($0.hospital) < HospitalNameFormatter.format($1.hospital)
         }
-        
-        return programsWithStatus.sorted { item1, item2 in
-            // Reviewed programs always come before unreviewed
-            if item1.isReviewed != item2.isReviewed {
-                return item1.isReviewed
+    }
+
+    private func applySortOption(_ programs: [Program]) -> [Program] {
+        switch sortOption {
+        case .score:
+            return sortedByScore(programs)
+        case .name:
+            return programs.sorted {
+                HospitalNameFormatter.format($0.hospital) < HospitalNameFormatter.format($1.hospital)
             }
-            
-            // If both reviewed or both unreviewed, prioritize interviewed programs
-            if item1.isInterviewed != item2.isInterviewed {
-                return item1.isInterviewed
+        case .location:
+            return programs.sorted {
+                if $0.state != $1.state {
+                    return $0.state < $1.state
+                }
+                return $0.city < $1.city
             }
-            
-            // Both have same review/interview status - sort by score
-            if item1.program.finalScore != item2.program.finalScore {
-                return item1.program.finalScore > item2.program.finalScore
+        case .interviewDate:
+            return programs.sorted {
+                guard let date1 = $0.interviewDate, let date2 = $1.interviewDate else {
+                    if $0.interviewDate != nil { return true }
+                    if $1.interviewDate != nil { return false }
+                    return $0.finalScore > $1.finalScore
+                }
+                return date1 < date2
             }
-            
-            // Same score - sort by name for consistency
-            return HospitalNameFormatter.format(item1.program.hospital) < HospitalNameFormatter.format(item2.program.hospital)
-        }.map { $0.program }
+        }
     }
     
     var rankedPrograms: [Program] {
@@ -59,8 +67,7 @@ struct RankListView: View {
         var programs: [Program]
         
         if manualOrder.isEmpty {
-            // Start with all programs, sorted by score (highest first)
-            programs = sortedByReviewStatus(dataManager.programs)
+            programs = applySortOption(dataManager.programs)
         } else {
             // Use manual order if available - optimize with dictionary lookup (O(1) instead of O(n))
             let programsById = Dictionary(uniqueKeysWithValues: dataManager.programs.map { ($0.id, $0) })
@@ -72,7 +79,7 @@ struct RankListView: View {
             }
             // Add any programs not in manual order (newly added)
             let manualIds = Set(manualOrder)
-            for program in sortedByReviewStatus(dataManager.programs) where !manualIds.contains(program.id) {
+            for program in applySortOption(dataManager.programs) where !manualIds.contains(program.id) {
                 ordered.append(program)
             }
             programs = ordered
@@ -97,28 +104,7 @@ struct RankListView: View {
         
         // Apply sorting (only if not using manual order)
         if manualOrder.isEmpty {
-            switch sortOption {
-            case .score:
-                programs = sortedByReviewStatus(programs)
-            case .name:
-                programs = programs.sorted { HospitalNameFormatter.format($0.hospital) < HospitalNameFormatter.format($1.hospital) }
-            case .location:
-                programs = programs.sorted { 
-                    if $0.state != $1.state {
-                        return $0.state < $1.state
-                    }
-                    return $0.city < $1.city
-                }
-            case .interviewDate:
-                programs = programs.sorted {
-                    guard let date1 = $0.interviewDate, let date2 = $1.interviewDate else {
-                        if $0.interviewDate != nil { return true }
-                        if $1.interviewDate != nil { return false }
-                        return $0.finalScore > $1.finalScore
-                    }
-                    return date1 < date2
-                }
-            }
+            programs = applySortOption(programs)
         }
         
         return programs
@@ -277,6 +263,8 @@ struct RankListView: View {
             ForEach(SortOption.allCases, id: \.self) { option in
                 Button(action: {
                     sortOption = option
+                    manualOrder = []
+                    saveManualOrder()
                 }) {
                     HStack {
                         Text(option.rawValue)
@@ -320,7 +308,7 @@ struct RankListView: View {
                 ForEach(Array(groupedPrograms[specialty] ?? []), id: \.id) { program in
                     NavigationLink(destination: ProgramEntryView(program: program)) {
                         RankListItemView(
-                            rank: (regularPrograms.firstIndex(where: { $0.id == program.id }) ?? 0) + 1,
+                            rank: (groupedPrograms[specialty]?.firstIndex(where: { $0.id == program.id }) ?? 0) + 1,
                             program: program
                         )
                     }
@@ -564,16 +552,7 @@ struct RankListItemView: View {
                     }
                     
                     // IMG-Friendly
-                    let imgStatus = program.isIMGFriendly ?? IMGFriendlyHelper.shared.assessIMGFriendlinessForProgram(program)
-                    if imgStatus == true {
-                        HStack(spacing: 3) {
-                            Image(systemName: "globe.americas.fill")
-                                .font(.arial(size: 9))
-                            Text("IMG")
-                                .font(.arial(size: 11, weight: .medium))
-                        }
-                        .foregroundColor(.purple)
-                    }
+                    SavedProgramIMGBadge(program: program, iconSize: 9, textSize: 11)
                 }
                 
                 // Signal and Red Flags on third row

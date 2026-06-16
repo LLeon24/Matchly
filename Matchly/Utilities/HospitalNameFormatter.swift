@@ -35,7 +35,7 @@ struct HospitalNameFormatter {
     static func format(_ name: String) -> String {
         guard !name.isEmpty else { return name }
         
-        var result = name
+        var result = normalizeRawName(name)
         
         // Handle parentheses - format content inside parentheses
         if let regex = parenthesesRegex {
@@ -103,6 +103,18 @@ struct HospitalNameFormatter {
         
         return DisplayNameFormatter.titleCaseParentheticals(in: result)
     }
+
+    private static func normalizeRawName(_ name: String) -> String {
+        var result = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if result.lowercased().hasSuffix(" program") {
+            result = String(result.dropLast(8)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if let regex = try? NSRegularExpression(pattern: "([^\\s])\\(", options: []) {
+            let range = NSRange(result.startIndex..., in: result)
+            result = regex.stringByReplacingMatches(in: result, range: range, withTemplate: "$1 (")
+        }
+        return result
+    }
     
     private static func formatPart(_ part: String) -> String {
         guard !part.isEmpty else { return part }
@@ -113,6 +125,14 @@ struct HospitalNameFormatter {
         for (index, word) in words.enumerated() {
             let trimmed = word.trimmingCharacters(in: .whitespaces)
             guard !trimmed.isEmpty else { continue }
+
+            if trimmed.contains("-") {
+                let hyphenParts = trimmed
+                    .split(separator: "-")
+                    .map { capitalizeFirst(String($0)) }
+                formattedWords.append(hyphenParts.joined(separator: "-"))
+                continue
+            }
             
             let lower = trimmed.lowercased()
             let upper = trimmed.uppercased()

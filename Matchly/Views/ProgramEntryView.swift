@@ -577,7 +577,7 @@ struct ProgramEntryView: View {
                                     finalScore: finalScore
                                 )
                                 if program == nil {
-                                    dataManager.addProgram(updatedProgram)
+                                    guard dataManager.addProgram(updatedProgram) == .added else { return }
                                 } else {
                                     dataManager.updateProgram(updatedProgram)
                                 }
@@ -667,6 +667,19 @@ struct ProgramEntryView: View {
                 Button("OK", role: .cancel) { }
             } message: {
                 Text(signalLimitMessage)
+            }
+            .alert(
+                "Already in List",
+                isPresented: Binding(
+                    get: { dataManager.lastAddProgramNotice != nil },
+                    set: { if !$0 { dataManager.lastAddProgramNotice = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) {
+                    dataManager.lastAddProgramNotice = nil
+                }
+            } message: {
+                Text(dataManager.lastAddProgramNotice ?? "")
             }
             .alert("Add to Calendar", isPresented: $showEnableCalendarSyncAlert) {
                 Button("Cancel", role: .cancel) {
@@ -1070,7 +1083,7 @@ struct ProgramEntryView: View {
         
         // Update or add program - this calculates score and updates immediately
         if program == nil {
-            dataManager.addProgram(newProgram)
+            guard dataManager.addProgram(newProgram) == .added else { return }
         } else {
             dataManager.updateProgram(newProgram)
         }

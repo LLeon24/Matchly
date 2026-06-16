@@ -232,6 +232,19 @@ struct ProgramSearchView: View {
             .onChange(of: database.isReady) { _, isReady in
                 if isReady { refreshSearch() }
             }
+            .alert(
+                "Already in List",
+                isPresented: Binding(
+                    get: { dataManager.lastAddProgramNotice != nil },
+                    set: { if !$0 { dataManager.lastAddProgramNotice = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) {
+                    dataManager.lastAddProgramNotice = nil
+                }
+            } message: {
+                Text(dataManager.lastAddProgramNotice ?? "")
+            }
         }
     }
     
@@ -697,11 +710,21 @@ struct ProgramSearchView: View {
 
     @ViewBuilder
     private func programRow(for program: ResidencyProgramInfo) -> some View {
+        let isAlreadyInList = dataManager.programs.contains {
+            ProgramIdentity.isSameProgram($0, catalog: program)
+        }
+
         ProgramSearchRowView(
             program: program,
             isSelected: selectedPrograms.contains(program.id),
             allowMultiSelect: allowMultiSelect,
+            isAlreadyInList: isAlreadyInList,
             onTap: {
+                if isAlreadyInList {
+                    dataManager.lastAddProgramNotice = "This program is already in your list."
+                    return
+                }
+
                 if allowMultiSelect {
                     if selectedPrograms.contains(program.id) {
                         selectedPrograms.remove(program.id)
@@ -709,6 +732,8 @@ struct ProgramSearchView: View {
                         selectedPrograms.insert(program.id)
                     }
                 } else {
+                    let mapped = CatalogProgramMapper.toSavedProgram(program)
+                    guard dataManager.addProgram(mapped) == .added else { return }
                     onSelect(program)
                     dismiss()
                 }
@@ -777,10 +802,29 @@ struct ProgramSearchView: View {
         VStack(spacing: 0) {
             Divider()
             Button(action: {
+                var addedCount = 0
+                var skippedCount = 0
+
                 for program in searchResults where selectedPrograms.contains(program.id) {
-                    dataManager.addProgram(CatalogProgramMapper.toSavedProgram(program))
+                    switch dataManager.addProgram(CatalogProgramMapper.toSavedProgram(program)) {
+                    case .added:
+                        addedCount += 1
+                    case .duplicate:
+                        skippedCount += 1
+                    }
                 }
-                dismiss()
+
+                if skippedCount > 0 {
+                    if addedCount == 0 {
+                        dataManager.lastAddProgramNotice = "Those programs are already in your list."
+                    } else {
+                        dataManager.lastAddProgramNotice = "Added \(addedCount) program\(addedCount == 1 ? "" : "s"). Skipped \(skippedCount) duplicate\(skippedCount == 1 ? "" : "s")."
+                    }
+                }
+
+                if addedCount > 0 {
+                    dismiss()
+                }
             }) {
                 HStack {
                     Spacer()
