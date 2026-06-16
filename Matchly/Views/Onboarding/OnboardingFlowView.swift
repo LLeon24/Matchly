@@ -90,11 +90,15 @@ struct OnboardingFlowView: View {
         .fullScreenCover(isPresented: $showMainApp) {
             MainTabView()
         }
-        .onChange(of: selectedPhoto) { _, newItem in
+        .onChange(of: selectedPhoto) { newItem in
             guard let newItem else { return }
             isLoadingPhoto = true
             Task {
-                let preparedImage = await PhotoPickerImageLoader.loadPreparedImage(from: newItem)
+                guard let data = try? await newItem.loadTransferable(type: Data.self) else {
+                    await MainActor.run { isLoadingPhoto = false }
+                    return
+                }
+                let preparedImage = await PhotoPickerImageLoader.loadPreparedImage(from: data)
                 await MainActor.run {
                     isLoadingPhoto = false
                     if let preparedImage {

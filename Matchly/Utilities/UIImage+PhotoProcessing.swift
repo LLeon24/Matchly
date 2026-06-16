@@ -4,7 +4,6 @@
 //
 
 import ImageIO
-import PhotosUI
 import UIKit
 
 struct CropImageItem: Identifiable {
@@ -15,9 +14,8 @@ struct CropImageItem: Identifiable {
 enum PhotoPickerImageLoader {
     private static let maxPixelDimension: CGFloat = 2048
 
-    static func loadPreparedImage(from item: PhotosPickerItem) async -> UIImage? {
-        guard let data = try? await item.loadTransferable(type: Data.self) else { return nil }
-        return await Task.detached(priority: .userInitiated) {
+    static func loadPreparedImage(from data: Data) async -> UIImage? {
+        await Task.detached(priority: .userInitiated) {
             UIImage.preparedForCropping(from: data, maxPixelDimension: maxPixelDimension)
         }.value
     }
