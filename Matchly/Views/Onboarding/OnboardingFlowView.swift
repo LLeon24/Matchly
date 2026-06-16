@@ -7,6 +7,7 @@
 
 import SwiftUI
 import PhotosUI
+import UIKit
 
 struct OnboardingFlowView: View {
     @ObservedObject private var dataManager = DataManager.shared
@@ -15,8 +16,8 @@ struct OnboardingFlowView: View {
     @State private var selectedSpecialties: Set<String> = []
     @State private var selectedApplyingTrack: ProgramTrainingLevelFilter = .residency
     @State private var selectedPhoto: PhotosPickerItem?
-    @State private var showImageCrop = false
-    @State private var imageToCrop: UIImage?
+    @State private var cropImageItem: CropImageItem?
+    @State private var isLoadingPhoto = false
     @State private var showMainApp = false
     @State private var iconScale: CGFloat = 1.0
     @State private var enableCalendarSync: Bool = false
@@ -90,24 +91,22 @@ struct OnboardingFlowView: View {
             MainTabView()
         }
         .onChange(of: selectedPhoto) { _, newItem in
+            guard let newItem else { return }
+            isLoadingPhoto = true
             Task {
-                guard let newItem else { return }
-                if let data = try? await newItem.loadTransferable(type: Data.self),
-                   let uiImage = UIImage(data: data) {
-                    await MainActor.run {
-                        imageToCrop = uiImage.fixedOrientation()
-                        showImageCrop = true
+                let preparedImage = await PhotoPickerImageLoader.loadPreparedImage(from: newItem)
+                await MainActor.run {
+                    isLoadingPhoto = false
+                    if let preparedImage {
+                        cropImageItem = CropImageItem(image: preparedImage)
                     }
                 }
             }
         }
-        .sheet(isPresented: $showImageCrop) {
-            if let imageToCrop {
-                ImageCropView(image: imageToCrop) { croppedImage in
-                    if let data = croppedImage.jpegData(compressionQuality: 0.9) {
-                        profile.photoData = data
-                    }
-                    self.imageToCrop = nil
+        .fullScreenCover(item: $cropImageItem) { item in
+            ImageCropView(image: item.image) { croppedImage in
+                if let data = croppedImage.jpegData(compressionQuality: 0.9) {
+                    profile.photoData = data
                 }
             }
         }
@@ -206,7 +205,7 @@ struct OnboardingFlowView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 18)
             }
-            // Hero CTA → prominent Liquid Glass over the soft gradient backdrop.
+            // Hero CTA ? prominent Liquid Glass over the soft gradient backdrop.
             .buttonStyle(.glassProminent)
             .tint(AppColors.primaryBlue)
             .padding(.horizontal, 32)
@@ -322,41 +321,51 @@ struct OnboardingFlowView: View {
                 VStack(spacing: 32) {
                     Spacer()
                     
-                    PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                        ZStack {
-                            Circle()
-                                .fill(.clear)
-                                .frame(width: 140, height: 140)
-                                .glassEffect(.regular.interactive(), in: .circle)
-                            
-                            if let photoData = profile.photoData,
-                               let uiImage = UIImage(data: photoData) {
-                                Image(uiImage: uiImage)
-                                    .resizable()
-                                    .scaledToFill()
+                    ZStack {
+                        PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                            ZStack {
+                                Circle()
+                                    .fill(.clear)
                                     .frame(width: 140, height: 140)
-                                    .clipShape(Circle())
-                            } else {
-                                VStack(spacing: 12) {
-                                    Image(systemName: "camera.fill")
-                                        .font(.arial(size: 40))
-                                        .foregroundColor(.blue)
-                                    Text("Add Photo")
-                                        .font(.arial(size: 16, weight: .medium))
-                                        .foregroundColor(.blue)
+                                    .glassEffect(.regular.interactive(), in: .circle)
+                                
+                                if let photoData = profile.photoData,
+                                   let uiImage = UIImage(data: photoData) {
+                                    Image(uiImage: uiImage)
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 140, height: 140)
+                                        .clipShape(Circle())
+                                } else {
+                                    VStack(spacing: 12) {
+                                        Image(systemName: "camera.fill")
+                                            .font(.arial(size: 40))
+                                            .foregroundColor(.blue)
+                                        Text("Add Photo")
+                                            .font(.arial(size: 16, weight: .medium))
+                                            .foregroundColor(.blue)
+                                    }
+                                }
+                                
+                                if profile.hasPhoto {
+                                    Circle()
+                                        .fill(Color.black.opacity(0.3))
+                                        .frame(width: 140, height: 140)
+                                    
+                                    Image(systemName: "pencil.circle.fill")
+                                        .font(.arial(size: 32))
+                                        .foregroundColor(.white)
                                 }
                             }
-                            
-                            // Edit overlay
-                            if profile.hasPhoto {
-                                Circle()
-                                    .fill(Color.black.opacity(0.3))
-                                    .frame(width: 140, height: 140)
-                                
-                                Image(systemName: "pencil.circle.fill")
-                                    .font(.arial(size: 32))
-                                    .foregroundColor(.white)
-                            }
+                        }
+                        .disabled(isLoadingPhoto)
+                        
+                        if isLoadingPhoto {
+                            Circle()
+                                .fill(Color.black.opacity(0.35))
+                                .frame(width: 140, height: 140)
+                            ProgressView()
+                                .tint(.white)
                         }
                     }
                     
@@ -632,7 +641,7 @@ struct OnboardingStepView<Content: View>: View {
             // Footer buttons
             VStack(spacing: 12) {
                 HStack(spacing: 12) {
-                    // Back button (if available) → neutral Liquid Glass.
+                    // Back button (if available) ? neutral Liquid Glass.
                     if let onBack = onBack {
                         Button(action: onBack) {
                             HStack(spacing: 6) {
@@ -648,7 +657,7 @@ struct OnboardingStepView<Content: View>: View {
                         .buttonStyle(.glass)
                     }
 
-                    // Continue button → prominent Liquid Glass, brand-tinted.
+                    // Continue button ? prominent Liquid Glass, brand-tinted.
                     Button(action: onNext) {
                         Text(buttonText)
                             .font(.arial(size: 17, weight: .semibold))

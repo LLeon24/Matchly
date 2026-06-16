@@ -17,70 +17,80 @@ struct ProfileEditView: View {
     @State private var aamcID: String = ""
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var photoData: Data?
-    @State private var showImageCrop: Bool = false
-    @State private var imageToCrop: UIImage?
+    @State private var cropImageItem: CropImageItem?
+    @State private var isLoadingPhoto = false
     
     var body: some View {
         Form {
             Section {
                 // Profile Photo
                 VStack(spacing: 16) {
-                    PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                        ZStack {
-                            if let photoData = photoData,
-                               let uiImage = UIImage(data: photoData) {
-                                Image(uiImage: uiImage)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 120, height: 120)
-                                    .clipShape(Circle())
-                            } else if let existingPhotoData = dataManager.preferences.profile.photoData,
-                                      let uiImage = UIImage(data: existingPhotoData) {
-                                Image(uiImage: uiImage)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 120, height: 120)
-                                    .clipShape(Circle())
-                            } else {
-                                ZStack {
-                                    Circle()
-                                        .fill(
-                                            LinearGradient(
-                                                colors: [Color.blue.opacity(0.2), Color.purple.opacity(0.2)],
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
-                                            )
-                                        )
+                    ZStack {
+                        PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                            ZStack {
+                                if let photoData = photoData,
+                                   let uiImage = UIImage(data: photoData) {
+                                    Image(uiImage: uiImage)
+                                        .resizable()
+                                        .scaledToFill()
                                         .frame(width: 120, height: 120)
-                                    
-                                    Image(systemName: "person.fill")
-                                        .font(.arial(size: 50))
-                                        .foregroundStyle(
-                                            LinearGradient(
-                                                colors: [.blue, .purple],
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
+                                        .clipShape(Circle())
+                                } else if let existingPhotoData = dataManager.preferences.profile.photoData,
+                                          let uiImage = UIImage(data: existingPhotoData) {
+                                    Image(uiImage: uiImage)
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 120, height: 120)
+                                        .clipShape(Circle())
+                                } else {
+                                    ZStack {
+                                        Circle()
+                                            .fill(
+                                                LinearGradient(
+                                                    colors: [Color.blue.opacity(0.2), Color.purple.opacity(0.2)],
+                                                    startPoint: .topLeading,
+                                                    endPoint: .bottomTrailing
+                                                )
                                             )
-                                        )
+                                            .frame(width: 120, height: 120)
+                                        
+                                        Image(systemName: "person.fill")
+                                            .font(.arial(size: 50))
+                                            .foregroundStyle(
+                                                LinearGradient(
+                                                    colors: [.blue, .purple],
+                                                    startPoint: .topLeading,
+                                                    endPoint: .bottomTrailing
+                                                )
+                                            )
+                                    }
+                                }
+                                
+                                Circle()
+                                    .fill(Color.black.opacity(0.4))
+                                    .frame(width: 120, height: 120)
+                                
+                                VStack(spacing: 4) {
+                                    Image(systemName: "camera.fill")
+                                        .font(.arial(size: 24))
+                                        .foregroundColor(.white)
+                                    Text(photoData != nil || dataManager.preferences.profile.photoData != nil ? "Change" : "Add Photo")
+                                        .font(.arial(size: 14, weight: .medium))
+                                        .foregroundColor(.white)
                                 }
                             }
-                            
-                            // Edit overlay
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isLoadingPhoto)
+                        
+                        if isLoadingPhoto {
                             Circle()
-                                .fill(Color.black.opacity(0.4))
+                                .fill(Color.black.opacity(0.45))
                                 .frame(width: 120, height: 120)
-                            
-                            VStack(spacing: 4) {
-                                Image(systemName: "camera.fill")
-                                    .font(.arial(size: 24))
-                                    .foregroundColor(.white)
-                                Text(photoData != nil || dataManager.preferences.profile.photoData != nil ? "Change" : "Add Photo")
-                                    .font(.arial(size: 14, weight: .medium))
-                                    .foregroundColor(.white)
-                            }
+                            ProgressView()
+                                .tint(.white)
                         }
                     }
-                    .buttonStyle(.plain)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.top, 24) // Increased padding for Dynamic Island
@@ -158,30 +168,23 @@ struct ProfileEditView: View {
         .onAppear {
             loadProfile()
         }
-        .onChange(of: selectedPhoto) { oldValue, newItem in
+        .onChange(of: selectedPhoto) { _, newItem in
+            guard let newItem else { return }
+            isLoadingPhoto = true
             Task {
-                if let newItem = newItem {
-                    if let data = try? await newItem.loadTransferable(type: Data.self),
-                       let uiImage = UIImage(data: data) {
-                        await MainActor.run {
-                            // Fix orientation before showing crop view
-                            imageToCrop = uiImage.fixedOrientation()
-                            showImageCrop = true
-                        }
+                let preparedImage = await PhotoPickerImageLoader.loadPreparedImage(from: newItem)
+                await MainActor.run {
+                    isLoadingPhoto = false
+                    if let preparedImage {
+                        cropImageItem = CropImageItem(image: preparedImage)
                     }
                 }
             }
         }
-        .sheet(isPresented: $showImageCrop) {
-            if let imageToCrop = imageToCrop {
-                ImageCropView(image: imageToCrop) { croppedImage in
-                    // Save the cropped image with proper orientation
-                    // Use JPEG with high quality to preserve image quality
-                    if let data = croppedImage.jpegData(compressionQuality: 0.9) {
-                        photoData = data
-                    }
-                    // Clear the image to crop
-                    self.imageToCrop = nil
+        .fullScreenCover(item: $cropImageItem) { item in
+            ImageCropView(image: item.image) { croppedImage in
+                if let data = croppedImage.jpegData(compressionQuality: 0.9) {
+                    photoData = data
                 }
             }
         }
@@ -206,93 +209,6 @@ struct ProfileEditView: View {
         dataManager.savePreferences()
         dataManager.objectWillChange.send() // Force UI refresh
         dismiss()
-    }
-}
-
-// MARK: - UIImage Extension for Orientation Fix
-extension UIImage {
-    /// Fixes image orientation by redrawing the image in the correct orientation
-    func fixedOrientation() -> UIImage {
-        // If orientation is already up, return self
-        if imageOrientation == .up {
-            return self
-        }
-        
-        // Calculate the proper transform to make the image upright
-        var transform = CGAffineTransform.identity
-        
-        switch imageOrientation {
-        case .down, .downMirrored:
-            transform = transform.translatedBy(x: size.width, y: size.height)
-            transform = transform.rotated(by: .pi)
-        case .left, .leftMirrored:
-            transform = transform.translatedBy(x: size.width, y: 0)
-            transform = transform.rotated(by: .pi / 2)
-        case .right, .rightMirrored:
-            transform = transform.translatedBy(x: 0, y: size.height)
-            transform = transform.rotated(by: -.pi / 2)
-        default:
-            break
-        }
-        
-        switch imageOrientation {
-        case .upMirrored, .downMirrored:
-            transform = transform.translatedBy(x: size.width, y: 0)
-            transform = transform.scaledBy(x: -1, y: 1)
-        case .leftMirrored, .rightMirrored:
-            transform = transform.translatedBy(x: size.height, y: 0)
-            transform = transform.scaledBy(x: -1, y: 1)
-        default:
-            break
-        }
-        
-        // Now we draw the underlying CGImage into a new context, applying the transform
-        guard let cgImage = cgImage else {
-            return self
-        }
-        
-        guard let colorSpace = cgImage.colorSpace else {
-            return self
-        }
-        
-        let width: Int
-        let height: Int
-        
-        switch imageOrientation {
-        case .left, .leftMirrored, .right, .rightMirrored:
-            width = Int(size.height)
-            height = Int(size.width)
-        default:
-            width = Int(size.width)
-            height = Int(size.height)
-        }
-        
-        guard let context = CGContext(
-            data: nil,
-            width: width,
-            height: height,
-            bitsPerComponent: cgImage.bitsPerComponent,
-            bytesPerRow: 0,
-            space: colorSpace,
-            bitmapInfo: cgImage.bitmapInfo.rawValue
-        ) else {
-            return self
-        }
-        
-        context.concatenate(transform)
-        
-        switch imageOrientation {
-        case .left, .leftMirrored, .right, .rightMirrored:
-            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: size.height, height: size.width))
-        default:
-            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: size.width, height: size.height))
-        }
-        
-        guard let cgImageFixed = context.makeImage() else {
-            return self
-        }
-        
-        return UIImage(cgImage: cgImageFixed, scale: scale, orientation: .up)
     }
 }
 
