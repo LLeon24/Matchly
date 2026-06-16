@@ -119,6 +119,7 @@ final class ResidencyProgramDatabase: ObservableObject {
         query: String,
         specialty: String? = nil,
         specialties: [String]? = nil,
+        fellowshipCodes: Set<String>? = nil,
         stateFilter: String? = nil,
         stateFilters: Set<String>? = nil,
         programTypeFilter: String? = nil,
@@ -132,6 +133,7 @@ final class ResidencyProgramDatabase: ObservableObject {
                 query: query,
                 specialty: specialty,
                 specialties: specialties,
+                fellowshipCodes: fellowshipCodes,
                 stateFilter: stateFilter,
                 stateFilters: stateFilters,
                 programTypeFilter: programTypeFilter,
@@ -159,6 +161,7 @@ final class ResidencyProgramDatabase: ObservableObject {
             query: query,
             specialty: specialty,
             specialties: specialties,
+            fellowshipCodes: nil,
             stateFilter: stateFilter,
             stateFilters: stateFilters,
             programTypeFilter: programTypeFilter,
@@ -173,6 +176,7 @@ final class ResidencyProgramDatabase: ObservableObject {
         query: String,
         specialty: String?,
         specialties: [String]?,
+        fellowshipCodes: Set<String>?,
         stateFilter: String?,
         stateFilters: Set<String>?,
         programTypeFilter: String?,
@@ -203,6 +207,7 @@ final class ResidencyProgramDatabase: ObservableObject {
                 lowerQuery: lowerQuery,
                 specialty: specialty,
                 specialties: specialties,
+                fellowshipCodes: fellowshipCodes,
                 stateFilter: stateFilter,
                 stateFilters: stateFilters,
                 programTypeFilter: programTypeFilter,
@@ -228,6 +233,7 @@ final class ResidencyProgramDatabase: ObservableObject {
         lowerQuery: String,
         specialty: String?,
         specialties: [String]?,
+        fellowshipCodes: Set<String>?,
         stateFilter: String?,
         stateFilters: Set<String>?,
         programTypeFilter: String?,
@@ -242,6 +248,14 @@ final class ResidencyProgramDatabase: ObservableObject {
                 || SpecialtyFormatter.matches(userSpecialty: specialty, program: program)
         } else {
             matchesSpecialty = true
+        }
+
+        let matchesFellowshipType: Bool
+        if let fellowshipCodes, !fellowshipCodes.isEmpty {
+            let programCode = ProgramTrainingLevelClassifier.specialtyCode(for: program)
+            matchesFellowshipType = programCode.map { fellowshipCodes.contains($0) } ?? false
+        } else {
+            matchesFellowshipType = true
         }
 
         let matchesState: Bool
@@ -319,7 +333,7 @@ final class ResidencyProgramDatabase: ObservableObject {
             matchesQuery = cityExactMatch || cityContainsMatch || stateExactMatch || hospitalMatch || nameMatch || idMatch
         }
 
-        return matchesSpecialty && matchesState && matchesType && matchesIMG && matchesQuery
+        return matchesSpecialty && matchesFellowshipType && matchesState && matchesType && matchesIMG && matchesQuery
     }
 
     func getAllPrograms(specialty: String? = nil, specialties: [String]? = nil, trainingLevel: ProgramTrainingLevel? = nil) -> [ResidencyProgramInfo] {

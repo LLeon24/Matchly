@@ -11,6 +11,7 @@ struct SpecialtyFilterSheet: View {
     let allSpecialties: [String]
     @Binding var selectedSpecialties: Set<String>
     @Binding var showAll: Bool
+    var navigationTitle: String = "Filter Specialties"
     let onApply: () -> Void
     let onClear: () -> Void
     @Environment(\.dismiss) var dismiss
@@ -64,7 +65,7 @@ struct SpecialtyFilterSheet: View {
             }
             .scrollContentBackground(.hidden)
             .appCanvasBackground()
-            .navigationTitle("Filter Specialties")
+            .navigationTitle(navigationTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {

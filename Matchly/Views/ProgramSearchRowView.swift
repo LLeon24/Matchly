@@ -33,37 +33,44 @@ struct ProgramSearchRowView: View {
                         .minimumScaleFactor(0.8)
                         .fixedSize(horizontal: false, vertical: true)
                     
-                    // Specialty badge (only badge-style element)
+                    // Specialty — full name, wraps on any device width
                     if !program.specialty.isEmpty {
                         let specialtyColor = SpecialtyFormatter.color(for: program.specialty)
-                        let specialtyAbbrev = SpecialtyFormatter.catalogDisplayAbbreviation(for: program)
-                        
-                        HStack(spacing: 6) {
-                            HStack(spacing: 3) {
+                        let specialtyLabel = SpecialtyFormatter.rowSpecialtyLabel(for: program)
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(alignment: .top, spacing: 4) {
                                 Image(systemName: "stethoscope")
-                                    .font(.arial(size: 8))
-                                Text(specialtyAbbrev)
-                                    .font(.arial(size: 10, weight: .semibold))
+                                    .font(.arial(size: 9))
+                                    .padding(.top, 2)
+                                Text(specialtyLabel)
+                                    .font(.arial(size: 11, weight: .semibold))
+                                    .multilineTextAlignment(.leading)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                             .foregroundColor(specialtyColor)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(specialtyColor.opacity(0.15))
-                            .cornerRadius(4)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(specialtyColor.opacity(0.12))
+                            .cornerRadius(6)
 
-                            Text(program.trainingLevel.rawValue)
-                                .font(.arial(size: 9, weight: .semibold))
-                                .foregroundColor(program.trainingLevel == .fellowship ? .purple : .blue)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 2)
-                                .background((program.trainingLevel == .fellowship ? Color.purple : Color.blue).opacity(0.12))
-                                .cornerRadius(4)
-                        }
+                            HStack(spacing: 6) {
+                                Text(program.trainingLevel.rawValue)
+                                    .font(.arial(size: 9, weight: .semibold))
+                                    .foregroundColor(program.trainingLevel == .fellowship ? .purple : .blue)
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 2)
+                                    .background((program.trainingLevel == .fellowship ? Color.purple : Color.blue).opacity(0.12))
+                                    .cornerRadius(4)
 
-                        if let parentName = program.parentResidencyName {
-                            Text("in \(SpecialtyFormatter.abbreviation(for: parentName))")
-                                .font(.arial(size: 10, weight: .medium))
-                                .foregroundColor(.secondary)
+                                if let parentName = SpecialtyFormatter.rowParentResidencyLabel(for: program) {
+                                    Text("in \(parentName)")
+                                        .font(.arial(size: 10, weight: .medium))
+                                        .foregroundColor(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
                         }
                     }
                     
@@ -119,8 +126,9 @@ struct ProgramSearchRowView: View {
                         }
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 
-                Spacer()
+                Spacer(minLength: 0)
                 
                 if !allowMultiSelect {
                     Image(systemName: "chevron.right")

@@ -147,7 +147,24 @@ struct SpecialtyFormatter {
         return name
     }
 
-    /// Compact badge label for search rows (avoids huge fellowship strings).
+    /// Full specialty label for search rows — never truncated.
+    static func rowSpecialtyLabel(for program: ResidencyProgramInfo) -> String {
+        if let erasName = ERASTrainingLevel.erasSpecialtyName(for: program) {
+            return erasName
+        }
+        return catalogDisplayName(program.specialty)
+    }
+
+    /// Parent line under fellowship rows; hides non-actionable "Multidisciplinary" parent.
+    static func rowParentResidencyLabel(for program: ResidencyProgramInfo) -> String? {
+        guard program.trainingLevel == .fellowship,
+              let parent = program.parentResidencyName,
+              parent.caseInsensitiveCompare("Multidisciplinary") != .orderedSame
+        else { return nil }
+        return parent
+    }
+
+    /// Compact badge label for tight spaces (settings, rank list). Search rows use `rowSpecialtyLabel`.
     static func catalogDisplayAbbreviation(for program: ResidencyProgramInfo) -> String {
         let displayName = catalogDisplayName(program.specialty)
         let abbrev = abbreviation(for: displayName)

@@ -27,6 +27,11 @@ struct ProgramSearchView: View {
     @State private var showSpecialtyFilter: Bool = false
     @State private var tempSelectedSpecialties: Set<String> = [] // Temporary selections while sheet is open
     @State private var tempShowAllSpecialties: Bool = true
+    @State private var selectedFellowshipCodes: Set<String> = []
+    @State private var showAllFellowshipTypes: Bool = true
+    @State private var showFellowshipTypeFilter: Bool = false
+    @State private var tempSelectedFellowshipCodes: Set<String> = []
+    @State private var tempShowAllFellowshipTypes: Bool = true
     @State private var trainingLevelFilter: ProgramTrainingLevelFilter = .residency
     @State private var searchResults: [ResidencyProgramInfo] = []
     @State private var totalMatchCount = 0
@@ -43,6 +48,32 @@ struct ProgramSearchView: View {
     // All available specialties (residency + common fellowship areas)
     private var allSpecialties: [String] {
         SpecialtyFormatter.commonSpecialties
+    }
+
+    private var parentSpecialtiesForFellowship: [String] {
+        if !showAllSpecialties, !selectedSpecialties.isEmpty {
+            return Array(selectedSpecialties)
+        }
+        if !dataManager.preferences.specialties.isEmpty {
+            return dataManager.preferences.specialties
+        }
+        return []
+    }
+
+    private var fellowshipCodesToUse: Set<String>? {
+        guard trainingLevelFilter == .fellowship,
+              !showAllFellowshipTypes,
+              !selectedFellowshipCodes.isEmpty
+        else { return nil }
+        return selectedFellowshipCodes
+    }
+
+    private func pruneInvalidFellowshipSelections() {
+        let valid = Set(FellowshipFilterCatalog.options(forUserSpecialties: parentSpecialtiesForFellowship).map(\.code))
+        selectedFellowshipCodes = selectedFellowshipCodes.intersection(valid)
+        if selectedFellowshipCodes.isEmpty {
+            showAllFellowshipTypes = true
+        }
     }
 
     private var preferredTrainingLevel: ProgramTrainingLevelFilter {
@@ -73,6 +104,7 @@ struct ProgramSearchView: View {
             || !showAllStates && !selectedStates.isEmpty
             || !showAllProgramTypes && !selectedProgramTypes.isEmpty
             || hasSpecialtySelection
+            || !showAllFellowshipTypes && !selectedFellowshipCodes.isEmpty
             || trainingLevelFilter != preferredTrainingLevel
             || trainingLevelFilter == .all
     }
@@ -118,6 +150,7 @@ struct ProgramSearchView: View {
             query: searchText,
             specialty: nil,
             specialties: specialtiesToUse,
+            fellowshipCodes: fellowshipCodesToUse,
             stateFilter: nil,
             stateFilters: stateFiltersToUse,
             programTypeFilter: nil,
@@ -177,11 +210,23 @@ struct ProgramSearchView: View {
             .onChange(of: showAllStates) { _, _ in refreshSearch(resetLimit: true) }
             .onChange(of: selectedProgramTypes) { _, _ in refreshSearch(resetLimit: true) }
             .onChange(of: showAllProgramTypes) { _, _ in refreshSearch(resetLimit: true) }
-            .onChange(of: selectedSpecialties) { _, _ in refreshSearch(resetLimit: true) }
-            .onChange(of: showAllSpecialties) { _, _ in refreshSearch(resetLimit: true) }
+            .onChange(of: selectedSpecialties) { _, _ in
+                pruneInvalidFellowshipSelections()
+                refreshSearch(resetLimit: true)
+            }
+            .onChange(of: showAllSpecialties) { _, _ in
+                pruneInvalidFellowshipSelections()
+                refreshSearch(resetLimit: true)
+            }
+            .onChange(of: selectedFellowshipCodes) { _, _ in refreshSearch(resetLimit: true) }
+            .onChange(of: showAllFellowshipTypes) { _, _ in refreshSearch(resetLimit: true) }
             .onChange(of: trainingLevelFilter) { _, newValue in
                 dataManager.preferences.applyingTrack = newValue.rawValue
                 dataManager.savePreferences()
+                if newValue != .fellowship {
+                    selectedFellowshipCodes.removeAll()
+                    showAllFellowshipTypes = true
+                }
                 refreshSearch(resetLimit: true)
             }
             .onChange(of: database.isReady) { _, isReady in
@@ -248,13 +293,19 @@ struct ProgramSearchView: View {
                                     
                                     let displayText: String = {
                                         if showAllSpecialties {
-                                            return "All"
+                                            return trainingLevelFilter == .fellowship ? "All Fields" : "All"
+                                        } else if selectedSpecialties.count == 1, let one = selectedSpecialties.first {
+                                            return SpecialtyFormatter.abbreviation(for: one)
                                         } else if !selectedSpecialties.isEmpty {
                                             return "\(selectedSpecialties.count)"
                                         } else if !dataManager.preferences.specialties.isEmpty {
+                                            if dataManager.preferences.specialties.count == 1,
+                                               let one = dataManager.preferences.specialties.first {
+                                                return SpecialtyFormatter.abbreviation(for: one)
+                                            }
                                             return "\(dataManager.preferences.specialties.count)"
                                         } else {
-                                            return "All"
+                                            return trainingLevelFilter == .fellowship ? "All Fields" : "All"
                                         }
                                     }()
                                     
@@ -281,10 +332,12 @@ struct ProgramSearchView: View {
                                     allSpecialties: allSpecialties,
                                     selectedSpecialties: $tempSelectedSpecialties,
                                     showAll: $tempShowAllSpecialties,
+                                    navigationTitle: trainingLevelFilter == .fellowship ? "Your Specialty" : "Filter Specialties",
                                     onApply: {
                                         selectedSpecialties = tempSelectedSpecialties
                                         showAllSpecialties = tempShowAllSpecialties
                                         showSpecialtyFilter = false
+                                        pruneInvalidFellowshipSelections()
                                         refreshSearch()
                                     },
                                     onClear: {
@@ -310,6 +363,70 @@ struct ProgramSearchView: View {
                                         )
                                 }
                                 .buttonStyle(.plain)
+                            }
+
+                            if trainingLevelFilter == .fellowship {
+                                Button(action: {
+                                    tempSelectedFellowshipCodes = selectedFellowshipCodes
+                                    tempShowAllFellowshipTypes = showAllFellowshipTypes
+                                    showFellowshipTypeFilter = true
+                                }) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "arrow.triangle.branch")
+                                            .font(.arial(size: 13))
+                                            .foregroundColor(.purple)
+
+                                        let fellowshipDisplayText: String = {
+                                            if showAllFellowshipTypes || selectedFellowshipCodes.isEmpty {
+                                                return "All Types"
+                                            }
+                                            if selectedFellowshipCodes.count == 1,
+                                               let code = selectedFellowshipCodes.first,
+                                               let name = FellowshipFilterCatalog.displayName(forCode: code) {
+                                                if let paren = name.firstIndex(of: "(") {
+                                                    return String(name[..<paren]).trimmingCharacters(in: .whitespaces)
+                                                }
+                                                return name
+                                            }
+                                            return "\(selectedFellowshipCodes.count) types"
+                                        }()
+
+                                        Text(fellowshipDisplayText)
+                                            .font(.arial(size: 12, weight: .medium))
+                                            .lineLimit(2)
+                                            .multilineTextAlignment(.leading)
+                                            .fixedSize(horizontal: false, vertical: true)
+
+                                        Image(systemName: "chevron.down")
+                                            .font(.arial(size: 9))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .glassEffect(
+                                        (!showAllFellowshipTypes && !selectedFellowshipCodes.isEmpty)
+                                            ? .regular.tint(Color.purple.opacity(0.25)).interactive()
+                                            : .regular.interactive(),
+                                        in: .capsule
+                                    )
+                                }
+                                .sheet(isPresented: $showFellowshipTypeFilter) {
+                                    FellowshipTypeFilterSheet(
+                                        userSpecialties: parentSpecialtiesForFellowship,
+                                        selectedCodes: $tempSelectedFellowshipCodes,
+                                        showAll: $tempShowAllFellowshipTypes,
+                                        onApply: {
+                                            selectedFellowshipCodes = tempSelectedFellowshipCodes
+                                            showAllFellowshipTypes = tempShowAllFellowshipTypes
+                                            showFellowshipTypeFilter = false
+                                            refreshSearch()
+                                        },
+                                        onClear: {
+                                            tempSelectedFellowshipCodes.removeAll()
+                                            tempShowAllFellowshipTypes = true
+                                        }
+                                    )
+                                }
                             }
                         
                         // State filter - sheet-based like specialty and program types
@@ -431,7 +548,7 @@ struct ProgramSearchView: View {
                         Spacer()
                         
                         // Clear filters button
-                        if (!selectedStates.isEmpty && !showAllStates) || (!selectedProgramTypes.isEmpty && !showAllProgramTypes) || (!selectedSpecialties.isEmpty && !showAllSpecialties) || trainingLevelFilter != preferredTrainingLevel {
+                        if (!selectedStates.isEmpty && !showAllStates) || (!selectedProgramTypes.isEmpty && !showAllProgramTypes) || (!selectedSpecialties.isEmpty && !showAllSpecialties) || (!selectedFellowshipCodes.isEmpty && !showAllFellowshipTypes) || trainingLevelFilter != preferredTrainingLevel {
                             Button(action: {
                                 withAnimation {
                                     searchText = ""
@@ -441,6 +558,8 @@ struct ProgramSearchView: View {
                                     showAllProgramTypes = true
                                     selectedSpecialties.removeAll()
                                     showAllSpecialties = true
+                                    selectedFellowshipCodes.removeAll()
+                                    showAllFellowshipTypes = true
                                     trainingLevelFilter = preferredTrainingLevel
                                     refreshSearch(resetLimit: true)
                                 }
@@ -495,6 +614,13 @@ struct ProgramSearchView: View {
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)
+            if trainingLevelFilter == .fellowship {
+                Text("Use Your Specialty for your field, then Fellowship Type to narrow subspecialties.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            }
             if database.fellowshipCount > 0 {
                 Text("\(database.residencyCount.formatted()) residencies · \(database.fellowshipCount.formatted()) fellowships")
                     .font(.caption)
