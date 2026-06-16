@@ -1,12 +1,12 @@
 {
   "version": "2026.2",
-  "generatedAt": "2026-06-16T09:15:49Z",
-  "programCount": 14136,
+  "generatedAt": "2026-06-16T22:10:45Z",
+  "programCount": 14207,
   "datasetURL": "ACGME_2026.json",
   "source": "acgme_ads_report_1_pdfs+eras_enrichment",
   "enrichment": {
     "erasSource": "ERAS2026.json",
-    "withCityState": 13997,
-    "vagueHospitalRemaining": 45
+    "withCityState": 14069,
+    "vagueHospitalRemaining": 44
   }
 }

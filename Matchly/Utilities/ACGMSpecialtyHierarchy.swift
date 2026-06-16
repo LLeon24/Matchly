@@ -10,6 +10,8 @@ import Foundation
 
 enum ACGMSpecialtyHierarchy {
   private struct PARIndex: Decodable {
+    let residencyByCode: [String: String]?
+    let fellowshipByCode: [String: String]?
     let fellowshipParentByCode: [String: String]?
     let userSpecialtyResidencyCodes: [String: [String]]?
     let additionalFellowshipCodesByUserSpecialty: [String: [String]]?
@@ -108,14 +110,34 @@ enum ACGMSpecialtyHierarchy {
   }
 
   static func trainingLevel(for program: ResidencyProgramInfo) -> ProgramTrainingLevel {
-    let code = catalogSpecialtyCode(from: program.specialty)
-      ?? program.accreditationID.map { String($0.prefix(3)) }
-      ?? String(program.id.prefix(3))
-    return residencySpecialtyCodes.contains(code) ? .residency : .fellowship
+    if let erasLevel = ERASTrainingLevel.trainingLevel(for: program) {
+      return erasLevel
+    }
+
+    if let code = catalogSpecialtyCode(from: program.specialty) {
+      return residencySpecialtyCodes.contains(code) ? .residency : .fellowship
+    }
+
+    if let code = ERASTrainingLevel.specialtyCode(forSpecialtyName: program.specialty) {
+      if parIndex?.residencyByCode?[code] != nil || residencySpecialtyCodes.contains(code) {
+        return .residency
+      }
+      return .fellowship
+    }
+
+    if let id = program.accreditationID ?? Optional(program.id), id.count >= 3 {
+      let prefix = String(id.prefix(3))
+      if fellowshipParentCode[prefix] != nil { return .fellowship }
+      if residencySpecialtyCodes.contains(prefix) { return .residency }
+    }
+
+    return .fellowship
   }
 
   static func parentResidencyCode(for program: ResidencyProgramInfo) -> String? {
-    guard let code = catalogSpecialtyCode(from: program.specialty) else { return nil }
+    let code = ERASTrainingLevel.specialtyCode(for: program)
+      ?? catalogSpecialtyCode(from: program.specialty)
+    guard let code else { return nil }
     if residencySpecialtyCodes.contains(code) { return code }
     return fellowshipParentCode[code]
   }

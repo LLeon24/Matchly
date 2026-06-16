@@ -16,6 +16,11 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
+SCRIPTS_ACGME = REPO / "scripts" / "acgme"
+sys.path.insert(0, str(SCRIPTS_ACGME))
+
+from specialty_training import code_for_specialty_name, training_level_for_program, load_par_index
+
 CATALOG = REPO / "Data" / "ACGME_2026.json"
 PAR = REPO / "Data" / "ERAS_PAR_specialties.json"
 
@@ -75,8 +80,7 @@ RESIDENCY_CODES = {
 
 
 def catalog_code(specialty: str) -> str | None:
-    m = re.search(r"\((\d{3})\)\s*$", specialty.strip())
-    return m.group(1) if m else None
+    return code_for_specialty_name(specialty, load_par()) or None
 
 
 def normalized_name(specialty: str) -> str:
@@ -120,7 +124,9 @@ def fellowship_codes_for_user(par: dict, user: str) -> set[str]:
     return codes
 
 
-def training_level(code: str, par: dict) -> str:
+def training_level(code: str, par: dict, program: dict | None = None) -> str:
+    if program:
+        return training_level_for_program(program["specialty"], program.get("accreditationID"), par)
     if code in par.get("residencyByCode", {}):
         return "residency"
     if code in par.get("fellowshipByCode", {}):
@@ -154,8 +160,7 @@ def matches_fellowship(user: str, program: dict, par: dict) -> bool:
 
 
 def matches(user: str, program: dict, par: dict) -> bool:
-    code = catalog_code(program["specialty"]) or program.get("id", "")[:3]
-    level = training_level(code, par) if code else "residency"
+    level = training_level("", par, program)
     if level == "residency":
         return matches_residency(user, program, par)
     return matches_fellowship(user, program, par)
@@ -186,7 +191,7 @@ def main() -> int:
         for p in programs:
             spec = p["specialty"]
             code = catalog_code(spec) or ""
-            level = training_level(code, par) if code else "residency"
+            level = training_level("", par, p)
             if level != "residency":
                 continue
             if matches_residency(user, p, par) and old_substring_match(user, spec) and not names_match_exact(normalized_name(spec), user):
@@ -208,7 +213,7 @@ def main() -> int:
     # Per-specialty residency audit: programs that OLD logic would include but NEW excludes (good)
     # Per-specialty: programs NEW includes for residency filter
     for user in COMMON_SPECIALTIES:
-        matched = [p for p in programs if training_level(catalog_code(p["specialty"]) or "", par) == "residency" and matches_residency(user, p, par)]
+        matched = [p for p in programs if training_level("", par, p) == "residency" and matches_residency(user, p, par)]
         wrong = [p for p in matched if user.casefold() not in normalized_name(p["specialty"]).casefold()
                  and catalog_code(p["specialty"]) not in residency_codes_for_user(par, user)
                  and not any(names_match_exact(normalized_name(p["specialty"]), a) for a in CATALOG_ALIASES.get(user, [user]))]

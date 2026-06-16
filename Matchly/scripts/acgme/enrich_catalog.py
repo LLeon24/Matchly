@@ -19,6 +19,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+SCRIPTS_ACGME = Path(__file__).resolve().parent
+if str(SCRIPTS_ACGME) not in __import__("sys").path:
+    __import__("sys").path.insert(0, str(SCRIPTS_ACGME))
+
+from specialty_training import (
+    load_par_index,
+    resolve_catalog_specialty,
+    specialty_with_code,
+    training_level_for_name,
+)
+
 CITY_STATE_ZIP_RE = re.compile(
     r"(?<![A-Za-z])([A-Za-z][A-Za-z .'\-]{0,45}?),\s*([A-Z]{2})\s+(\d{5}(?:-\d{4})?)"
 )
@@ -460,7 +471,7 @@ def clean_program_director(raw: Optional[str]) -> Optional[str]:
     return None
 
 
-def enrich_program(program: dict, eras: Optional[dict]) -> dict:
+def enrich_program(program: dict, eras: Optional[dict], par: dict) -> dict:
     out = dict(program)
     address = out.get("address") or ""
     out["hospital"] = sanitize_acgme_hospital(out.get("hospital", ""))
@@ -496,10 +507,22 @@ def enrich_program(program: dict, eras: Optional[dict]) -> dict:
         out["hospital"] = reconstruct_hospital_from_address(out.get("hospital", ""), address)
     out["hospital"] = sanitize_acgme_hospital(out.get("hospital", ""))
 
-    # Prefer specialty-based program name over mis-parsed institution strings
-    specialty_name = specialty_program_name(out.get("specialty", ""))
-    if specialty_name:
-        out["specialty"] = specialty_name
+    # Resolve specialty: ACGME name, corrected by ERAS when misclassified.
+    acc_id = out.get("accreditationID") or out.get("id")
+    eras_specialty = eras.get("specialty") if eras else None
+    if eras and eras.get("trainingLevel") == "residency" and eras_specialty:
+        resolved = eras_specialty
+    else:
+        resolved = resolve_catalog_specialty(
+            out.get("specialty", ""),
+            eras_specialty,
+            par,
+            accreditation_id=acc_id,
+        )
+    resolved = specialty_with_code(resolved, par, accreditation_id=acc_id)
+    out["specialty"] = resolved
+
+    specialty_name = specialty_program_name(resolved)
     current_name = (out.get("name") or "").strip()
     hospital_name = (out.get("hospital") or "").strip()
     if specialty_name:
@@ -638,14 +661,48 @@ def enrich_catalog(
     output_path: Path,
     manifest_path: Optional[Path] = None,
 ) -> dict:
+    par = load_par_index()
     acgme_programs = json.loads(acgme_path.read_text(encoding="utf-8"))
     eras_programs = json.loads(eras_path.read_text(encoding="utf-8"))
     eras_by_id = {p.get("accreditationID") or p.get("id"): p for p in eras_programs}
+    acgme_ids = {p.get("accreditationID") or p.get("id") for p in acgme_programs}
 
     enriched = [
-        enrich_program(p, eras_by_id.get(p.get("accreditationID") or p.get("id")))
+        enrich_program(p, eras_by_id.get(p.get("accreditationID") or p.get("id")), par)
         for p in acgme_programs
     ]
+
+    # ERAS-only residency programs missing from the ACGME export.
+    for acc_id, eras in eras_by_id.items():
+        if acc_id in acgme_ids:
+            continue
+        level = eras.get("trainingLevel") or training_level_for_name(eras.get("specialty", ""), par)
+        if level != "residency":
+            continue
+        specialty = specialty_with_code(
+            eras.get("specialty") or eras.get("name") or "Unknown",
+            par,
+            accreditation_id=acc_id,
+        )
+        enriched.append(
+            enrich_program(
+                {
+                    "id": acc_id,
+                    "name": specialty_program_name(specialty),
+                    "hospital": eras.get("hospital") or "",
+                    "city": eras.get("city") or "",
+                    "state": eras.get("state") or "",
+                    "address": None,
+                    "specialty": specialty,
+                    "type": eras.get("type") or "Academic",
+                    "accreditationID": acc_id,
+                    "websiteURL": eras.get("websiteURL"),
+                },
+                eras,
+                par,
+            )
+        )
+
     enriched = propagate_institution_data(enriched)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)

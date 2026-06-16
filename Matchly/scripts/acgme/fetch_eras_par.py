@@ -72,27 +72,54 @@ def infer_program_type(program_name: str) -> str:
     return "Academic"
 
 
-def discover_specialties(session: requests.Session) -> dict[str, str]:
+def _links_from_row(tr) -> list[dict]:
+    out: list[dict] = []
+    for anchor in tr.find_all("a", href=re.compile(r"SPEC_CD=")):
+        match = re.search(r"SPEC_CD=(\d+)", anchor.get("href", ""))
+        if match:
+            out.append({"name": anchor.get_text(strip=True), "spec_cd": match.group(1)})
+    return out
+
+
+def discover_specialties(session: requests.Session) -> dict[str, dict[str, str]]:
+    """Return specialty name -> {code, trainingLevel} using PAR index section rows."""
     response = session.get(INDEX_URL, timeout=30)
     response.raise_for_status()
     soup = BeautifulSoup(response.content, "html.parser")
-    specialties: dict[str, str] = {}
-    for link in soup.find_all("a", href=True):
-        href = link.get("href", "")
-        text = link.get_text(strip=True)
-        match = re.search(r"SPEC_CD=([^&]+)", href)
-        if not match or not text or len(text) < 3:
+
+    july: list[dict] = []
+    residency: list[dict] = []
+    december: list[dict] = []
+
+    for row in soup.find_all("tr"):
+        text = row.get_text(" ", strip=True)
+        next_row = row.find_next_sibling("tr")
+        if not next_row:
             continue
-        code = match.group(1)
-        if not code.isdigit():
-            continue
-        if text in {"Specialty Information Available!", "New Specialties"}:
-            continue
-        specialties[text] = code
+        if "Fellowship - July Cycle" in text and "December" not in text:
+            july = _links_from_row(next_row)
+        elif "Residency - September Cycle" in text:
+            residency = _links_from_row(next_row)
+        elif "Fellowship - December Cycle" in text:
+            december = _links_from_row(next_row)
+
+    specialties: dict[str, dict[str, str]] = {}
+    for item in residency:
+        specialties[item["name"]] = {
+            "code": item["spec_cd"],
+            "trainingLevel": "residency",
+        }
+    for item in july + december:
+        specialties[item["name"]] = {
+            "code": item["spec_cd"],
+            "trainingLevel": "fellowship",
+        }
     return specialties
 
 
-def parse_program_row(row, specialty_name: str) -> Optional[dict]:
+def parse_program_row(
+    row, specialty_name: str, specialty_code: str, training_level: str
+) -> Optional[dict]:
     cells = row.find_all(["td", "th"])
     if len(cells) < 5:
         return None
@@ -152,6 +179,8 @@ def parse_program_row(row, specialty_name: str) -> Optional[dict]:
         "city": city,
         "state": state,
         "specialty": specialty_name,
+        "specialtyCode": specialty_code,
+        "trainingLevel": training_level,
         "type": infer_program_type(program_name),
         "accreditationID": acgme_id,
         "erasStatus": status.strip() if status else None,
@@ -160,7 +189,10 @@ def parse_program_row(row, specialty_name: str) -> Optional[dict]:
 
 
 def fetch_specialty_programs(
-    session: requests.Session, specialty_name: str, specialty_code: str
+    session: requests.Session,
+    specialty_name: str,
+    specialty_code: str,
+    training_level: str,
 ) -> list[dict]:
     url = f"{DISPLAY_URL}?NAV_ROW=PAR&SPEC_CD={specialty_code}"
     response = session.get(url, timeout=45)
@@ -174,7 +206,7 @@ def fetch_specialty_programs(
             row_text = row.get_text(" ", strip=True).upper()
             if "STATE" in row_text and "CITY" in row_text and "PROGRAM NAME" in row_text:
                 continue
-            program = parse_program_row(row, specialty_name)
+            program = parse_program_row(row, specialty_name, specialty_code, training_level)
             if not program:
                 continue
             key = program["accreditationID"]
@@ -192,19 +224,33 @@ def fetch_all(
 ) -> list[dict]:
     specialties = discover_specialties(session)
     if specialty_filter:
-        specialties = {k: v for k, v in specialties.items() if k in specialty_filter or v in specialty_filter}
+        filtered: dict[str, dict[str, str]] = {}
+        for name, meta in specialties.items():
+            if name in specialty_filter or meta["code"] in specialty_filter:
+                filtered[name] = meta
+        specialties = filtered
 
-    all_programs: list[dict] = []
-    for name, code in sorted(specialties.items(), key=lambda item: item[1]):
-        print(f"  {name} ({code})...", end=" ", flush=True)
+    by_id: dict[str, dict] = {}
+    for name, meta in sorted(specialties.items(), key=lambda item: item[1]["code"]):
+        code = meta["code"]
+        training_level = meta["trainingLevel"]
+        print(f"  [{training_level}] {name} ({code})...", end=" ", flush=True)
         try:
-            programs = fetch_specialty_programs(session, name, code)
+            programs = fetch_specialty_programs(session, name, code, training_level)
             print(f"{len(programs)} programs")
-            all_programs.extend(programs)
+            for program in programs:
+                acc_id = program["accreditationID"]
+                existing = by_id.get(acc_id)
+                if existing is None:
+                    by_id[acc_id] = program
+                    continue
+                # Prefer fellowship metadata when the same ID appears under both sections.
+                if existing.get("trainingLevel") == "residency" and training_level == "fellowship":
+                    by_id[acc_id] = program
         except Exception as exc:
             print(f"error: {exc}")
         time.sleep(delay_seconds)
-    return all_programs
+    return list(by_id.values())
 
 
 def main() -> int:

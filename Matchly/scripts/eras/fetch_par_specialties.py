@@ -144,6 +144,11 @@ ADDITIONAL_FELLOWSHIP_CODES_BY_USER_SPECIALTY: dict[str, list[str]] = {
 }
 
 
+def build_acgme_specialty_by_code() -> dict[str, str]:
+    entries = re.findall(r"([^(]+?)\s*\((\d{3})\)", ACGME_REPORT_SPECIALTY_ORDER)
+    return {code: name.strip() for name, code in entries}
+
+
 def build_fellowship_parent_by_code() -> dict[str, str]:
     entries = re.findall(r"([^(]+?)\s*\((\d{3})\)", ACGME_REPORT_SPECIALTY_ORDER)
     parent: str | None = None
@@ -208,6 +213,7 @@ def fetch_par_specialties() -> dict:
     fellowship_by_code = {item["spec_cd"]: item["name"] for item in fellowship}
     residency_by_code = {item["spec_cd"]: item["name"] for item in residency}
     fellowship_parent = build_fellowship_parent_by_code()
+    acgme_specialty_by_code = build_acgme_specialty_by_code()
 
     return {
         "source": PAR_URL,
@@ -219,9 +225,11 @@ def fetch_par_specialties() -> dict:
             "fellowshipDecember": len(december),
             "fellowshipTotal": len(fellowship_by_code),
             "fellowshipParentMappings": len(fellowship_parent),
+            "acgmeSpecialties": len(acgme_specialty_by_code),
         },
         "residencyByCode": residency_by_code,
         "fellowshipByCode": fellowship_by_code,
+        "acgmeSpecialtyByCode": acgme_specialty_by_code,
         "fellowshipJulyByCode": {item["spec_cd"]: item["name"] for item in july},
         "fellowshipDecemberByCode": {item["spec_cd"]: item["name"] for item in december},
         "fellowshipParentByCode": fellowship_parent,

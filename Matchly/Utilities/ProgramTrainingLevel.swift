@@ -31,8 +31,9 @@ enum ProgramTrainingLevelFilter: String, CaseIterable, Identifiable {
 
 enum ProgramTrainingLevelClassifier {
   static func specialtyCode(for program: ResidencyProgramInfo) -> String? {
-    ACGMSpecialtyHierarchy.catalogSpecialtyCode(from: program.specialty)
-      ?? program.accreditationID.map { String($0.prefix(3)) }
+    ERASTrainingLevel.specialtyCode(for: program)
+      ?? ACGMSpecialtyHierarchy.catalogSpecialtyCode(from: program.specialty)
+      ?? fellowshipCodeFromAccreditationID(program)
   }
 
   /// ERAS PAR is authoritative when a specialty code is listed there; otherwise ACGME hierarchy.
@@ -41,6 +42,15 @@ enum ProgramTrainingLevelClassifier {
       return erasLevel
     }
     return ACGMSpecialtyHierarchy.trainingLevel(for: program)
+  }
+
+  /// Fellowship codes are explicit in accreditation IDs (e.g. 156, 141). Parent codes (140) are ambiguous.
+  private static func fellowshipCodeFromAccreditationID(_ program: ResidencyProgramInfo) -> String? {
+    let id = program.accreditationID ?? program.id
+    guard id.count >= 3 else { return nil }
+    let prefix = String(id.prefix(3))
+    guard ACGMSpecialtyHierarchy.fellowshipParentCode[prefix] != nil else { return nil }
+    return prefix
   }
 }
 
