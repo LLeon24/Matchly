@@ -303,19 +303,18 @@ class ResidencyProgramDatabase {
     }
     
     private func loadPrograms() {
-        // Try to load ERAS data first (if available)
-        // Check multiple possible locations in the app bundle
-        let possibleNames = ["ERAS2026", "Data/ERAS2026"]
+        // Prefer ACGME catalog (full US accreditation list), then ERAS fallback.
+        let possibleNames = ["ACGME_2026", "Data/ACGME_2026", "ERAS2026", "Data/ERAS2026"]
         
         for name in possibleNames {
-            if let erasURL = Bundle.main.url(forResource: name, withExtension: "json"),
-               let data = try? Data(contentsOf: erasURL) {
+            if let url = Bundle.main.url(forResource: name, withExtension: "json"),
+               let data = try? Data(contentsOf: url) {
                 do {
                     try replaceWithERASData(data: data)
-                    print("✓ Loaded programs from ERAS 2026 database")
+                    print("✓ Loaded programs from \(name) database")
                     return
                 } catch {
-                    print("⚠️ Error loading ERAS data, falling back to hardcoded programs: \(error)")
+                    print("⚠️ Error loading program data, falling back to hardcoded programs: \(error)")
                 }
             }
         }
