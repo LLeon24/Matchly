@@ -10,6 +10,7 @@ import SwiftUI
 struct LiquidGlassTabBar: View {
     @Binding var selectedTab: Int
     @State private var pendingTab: Int? = nil
+    @Environment(\.matchlyLayout) private var layout
     
     var body: some View {
         // A single floating Liquid Glass capsule that hovers over the content.
@@ -62,8 +63,8 @@ struct LiquidGlassTabBar: View {
                     handleTabSelection(targetTab: 4)
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 10)
+            .padding(.horizontal, layout == .compactVertical ? 8 : 10)
+            .padding(.vertical, layout.tabBarVerticalPadding)
             // The native Liquid Glass material: adapts automatically to light /
             // dark and to the content scrolling beneath it. `.interactive()`
             // gives the bar the subtle lensing/press response of system glass.
@@ -72,8 +73,8 @@ struct LiquidGlassTabBar: View {
         // Inset from the screen edges + lifted above the home indicator so the
         // capsule reads as a discrete pill floating over content (not chrome
         // welded to the bottom edge).
-        .padding(.horizontal, 16)
-        .padding(.bottom, 4)
+        .padding(.horizontal, layout == .compactVertical ? 12 : 16)
+        .padding(.bottom, layout == .compactVertical ? 2 : 4)
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ProceedWithTabNavigation"))) { _ in
             // Proceed with pending tab navigation after save/discard
             if let tab = pendingTab {
@@ -119,19 +120,22 @@ struct TabBarButton: View {
     let isSelected: Bool
     let color: Color
     let action: () -> Void
+    @Environment(\.matchlyLayout) private var layout
     
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 4) {
+            VStack(spacing: layout == .compactVertical ? 2 : 4) {
                 // No background shape on selection — only tint/weight change.
                 Image(systemName: icon)
-                    .font(.arial(size: 22, weight: isSelected ? .semibold : .regular))
+                    .font(.arial(size: layout.tabBarIconFont, weight: isSelected ? .semibold : .regular))
                     .foregroundColor(isSelected ? color : .secondary)
-                    .frame(height: 28)
+                    .frame(height: layout == .compactVertical ? 22 : 28)
                 
                 Text(title)
-                    .font(.arial(size: 10, weight: isSelected ? .semibold : .regular))
+                    .font(.arial(size: layout.tabBarTitleFont, weight: isSelected ? .semibold : .regular))
                     .foregroundColor(isSelected ? color : .secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())

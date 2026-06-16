@@ -12,6 +12,7 @@ import Combine
 
 struct DashboardView: View {
     @EnvironmentObject var dataManager: DataManager
+    @Environment(\.matchlyLayout) private var screenLayout
     @State private var showAddProgram = false
     @State private var showCustomization = false
     @State private var showProfileEdit = false
@@ -47,8 +48,8 @@ struct DashboardView: View {
                     selection: $selectedSection
                 )
                 .padding(.horizontal, 20)
-                .padding(.top, 4)
-                .padding(.bottom, 14)
+                .padding(.top, screenLayout == .compactVertical ? 0 : 4)
+                .padding(.bottom, screenLayout == .compactVertical ? 6 : 14)
 
                 TabView(selection: $selectedSection) {
                     overviewPage
@@ -118,22 +119,22 @@ struct DashboardView: View {
     /// Compact command bar that stays pinned above the swipeable pages:
     /// profile photo (opens profile editor), greeting, and the customize button.
     private var headerBar: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: screenLayout == .compactVertical ? 10 : 14) {
             Button(action: { showProfileEdit = true }) {
                 headerAvatar
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Edit profile")
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: screenLayout == .compactVertical ? 1 : 3) {
                 Text(getGreeting())
-                    .font(.arial(size: 24, weight: .bold))
+                    .font(.arial(size: screenLayout.headerGreetingFont, weight: .bold))
                     .foregroundColor(.primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
 
                 Text(headerSubtitle)
-                    .font(.arial(size: 14, weight: .medium))
+                    .font(.arial(size: screenLayout.headerSubtitleFont, weight: .medium))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
@@ -141,14 +142,11 @@ struct DashboardView: View {
 
             Spacer(minLength: 8)
 
-            // Floating chrome → Liquid Glass. `.interactive()` gives the press
-            // lensing; the circular glass capsule reads as an elevated control
-            // hovering over the dashboard canvas.
             Button(action: { showCustomization = true }) {
                 Image(systemName: "slider.horizontal.3")
-                    .font(.arial(size: 18, weight: .medium))
+                    .font(.arial(size: screenLayout == .compactVertical ? 16 : 18, weight: .medium))
                     .foregroundColor(.primary)
-                    .frame(width: 40, height: 40)
+                    .frame(width: screenLayout.headerCustomizeButtonSize, height: screenLayout.headerCustomizeButtonSize)
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
@@ -156,15 +154,15 @@ struct DashboardView: View {
             .accessibilityLabel("Customize dashboard")
         }
         .padding(.horizontal, 20)
-        .padding(.top, 10)
-        .padding(.bottom, 16)
+        .padding(.top, screenLayout == .compactVertical ? 6 : 10)
+        .padding(.bottom, screenLayout.headerVerticalPadding)
     }
 
     /// Profile photo if set, otherwise the user's initials in a clean tinted
     /// circle, with a single SF Symbol as a last resort when there's no name.
     @ViewBuilder
     private var headerAvatar: some View {
-        let size: CGFloat = 48
+        let size = screenLayout.headerAvatarSize
 
         if let photoData = dataManager.preferences.profile.photoData,
            let uiImage = UIImage(data: photoData) {
@@ -179,7 +177,7 @@ struct DashboardView: View {
                     .fill(AppColors.primaryGradient)
                     .frame(width: size, height: size)
                 Text(initials)
-                    .font(.arial(size: 19, weight: .semibold))
+                    .font(.arial(size: size * 0.4, weight: .semibold))
                     .foregroundColor(.white)
             }
             .frame(width: size, height: size)
@@ -220,7 +218,7 @@ struct DashboardView: View {
     /// 1) Overview — application snapshot hero + Needs Attention to-dos + funnel + quick actions.
     private var overviewPage: some View {
         ScrollView {
-            VStack(spacing: 14) {
+            VStack(spacing: screenLayout.dashboardSectionSpacing) {
                 DashboardSnapshotHero(
                     progress: overviewHeroProgress,
                     progressCaption: overviewHeroProgressCaption,
@@ -233,23 +231,23 @@ struct DashboardView: View {
                 )
                 .dashboardCardStyle()
 
-                needsAttentionCard
-
-                VStack(alignment: .leading, spacing: 14) {
-                    DashboardSectionHeader(
-                        title: "Interview Pipeline",
-                        icon: "line.3.horizontal.decrease",
-                        tint: AppColors.primaryBlue
-                    )
-                    ApplicationFunnelChart(stages: funnelStages)
+                if screenLayout == .compactVertical {
+                    HStack(alignment: .top, spacing: 10) {
+                        needsAttentionCard
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                        overviewFunnelCard
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
+                } else {
+                    needsAttentionCard
+                    overviewFunnelCard
                 }
-                .dashboardCardStyle()
 
                 quickActionsSection
             }
             .padding(.horizontal, 16)
             .padding(.top, 2)
-            .padding(.bottom, 110)
+            .padding(.bottom, screenLayout.pageBottomInset)
         }
         .refreshable {
             dataManager.recalculateAllScores()
@@ -257,10 +255,22 @@ struct DashboardView: View {
         }
     }
 
+    private var overviewFunnelCard: some View {
+        VStack(alignment: .leading, spacing: screenLayout == .compactVertical ? 10 : 14) {
+            DashboardSectionHeader(
+                title: "Interview Pipeline",
+                icon: "line.3.horizontal.decrease",
+                tint: AppColors.primaryBlue
+            )
+            ApplicationFunnelChart(stages: funnelStages)
+        }
+        .dashboardCardStyle()
+    }
+
     /// 2) Programs — count hero + score distribution + type split + top programs.
     private var programsPage: some View {
         ScrollView {
-            VStack(spacing: 14) {
+            VStack(spacing: screenLayout.dashboardSectionSpacing) {
                 DashboardNumberHero(
                     bigNumber: "\(dataManager.programs.count)",
                     unit: "",
@@ -273,29 +283,17 @@ struct DashboardView: View {
                 )
                 .dashboardCardStyle()
 
-                VStack(alignment: .leading, spacing: 14) {
-                    DashboardSectionHeader(
-                        title: "Score Distribution",
-                        icon: "chart.bar.fill",
-                        tint: AppColors.accentOrange
-                    )
-                    ScoreDistributionChart(buckets: scoreBuckets)
+                if screenLayout == .compactVertical {
+                    HStack(alignment: .top, spacing: 10) {
+                        programsScoreDistributionCard
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                        programsTypeSplitCard
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
+                } else {
+                    programsScoreDistributionCard
+                    programsTypeSplitCard
                 }
-                .dashboardCardStyle()
-
-                VStack(alignment: .leading, spacing: 14) {
-                    DashboardSectionHeader(
-                        title: "Program Type",
-                        icon: "square.split.2x1.fill",
-                        tint: AppColors.accentTeal
-                    )
-                    ProgramTypeSplit(
-                        academic: academicCount,
-                        community: communityCount,
-                        hybrid: hybridCount
-                    )
-                }
-                .dashboardCardStyle()
 
                 if !topPrograms.isEmpty {
                     topProgramsSection
@@ -303,7 +301,7 @@ struct DashboardView: View {
             }
             .padding(.horizontal, 16)
             .padding(.top, 2)
-            .padding(.bottom, 110)
+            .padding(.bottom, screenLayout.pageBottomInset)
         }
         .refreshable {
             dataManager.recalculateAllScores()
@@ -311,10 +309,38 @@ struct DashboardView: View {
         }
     }
 
+    private var programsScoreDistributionCard: some View {
+        VStack(alignment: .leading, spacing: screenLayout == .compactVertical ? 10 : 14) {
+            DashboardSectionHeader(
+                title: "Score Distribution",
+                icon: "chart.bar.fill",
+                tint: AppColors.accentOrange
+            )
+            ScoreDistributionChart(buckets: scoreBuckets)
+        }
+        .dashboardCardStyle()
+    }
+
+    private var programsTypeSplitCard: some View {
+        VStack(alignment: .leading, spacing: screenLayout == .compactVertical ? 10 : 14) {
+            DashboardSectionHeader(
+                title: "Program Type",
+                icon: "square.split.2x1.fill",
+                tint: AppColors.accentTeal
+            )
+            ProgramTypeSplit(
+                academic: academicCount,
+                community: communityCount,
+                hybrid: hybridCount
+            )
+        }
+        .dashboardCardStyle()
+    }
+
     /// 3) Interviews — upcoming count hero + chronological timeline.
     private var interviewsPage: some View {
         ScrollView {
-            VStack(spacing: 14) {
+            VStack(spacing: screenLayout.dashboardSectionSpacing) {
                 DashboardNumberHero(
                     bigNumber: "\(upcomingInterviews.count)",
                     unit: "",
@@ -335,7 +361,7 @@ struct DashboardView: View {
             }
             .padding(.horizontal, 16)
             .padding(.top, 2)
-            .padding(.bottom, 110)
+            .padding(.bottom, screenLayout.pageBottomInset)
         }
     }
 

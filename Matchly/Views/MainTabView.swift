@@ -33,6 +33,7 @@ struct MainTabView: View {
             }
         }
         .matchlyRootContentFrame()
+        .matchlyAdaptiveLayout()
         .background(AppColors.dashboardCanvas.ignoresSafeArea())
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if !isKeyboardVisible {

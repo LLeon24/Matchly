@@ -8,6 +8,69 @@
 import SwiftUI
 import UIKit
 
+// MARK: - Adaptive layout (landscape / compact height)
+
+enum MatchlyLayoutStyle: Equatable {
+    case standard
+    case compactVertical
+
+    var heroRingSize: CGFloat { self == .compactVertical ? 118 : 210 }
+    var heroRingLineWidth: CGFloat { self == .compactVertical ? 10 : 16 }
+    var heroBigNumberFont: CGFloat { self == .compactVertical ? 42 : 80 }
+    var heroUnitFont: CGFloat { self == .compactVertical ? 11 : 13 }
+    var heroTitleFont: CGFloat { self == .compactVertical ? 17 : 24 }
+    var heroSubtitleFont: CGFloat { self == .compactVertical ? 12 : 14 }
+    var heroCaptionFont: CGFloat { self == .compactVertical ? 11 : 12 }
+    var heroStatValueFont: CGFloat { self == .compactVertical ? 16 : 20 }
+    var heroStatLabelFont: CGFloat { self == .compactVertical ? 10 : 11 }
+    var numberHeroIconSize: CGFloat { self == .compactVertical ? 56 : 76 }
+    var numberHeroIconFont: CGFloat { self == .compactVertical ? 24 : 34 }
+    var sectionTabFont: CGFloat { self == .compactVertical ? 13 : 16 }
+    var sectionTabSpacing: CGFloat { self == .compactVertical ? 6 : 9 }
+    var headerGreetingFont: CGFloat { self == .compactVertical ? 18 : 24 }
+    var headerSubtitleFont: CGFloat { self == .compactVertical ? 12 : 14 }
+    var headerAvatarSize: CGFloat { self == .compactVertical ? 36 : 48 }
+    var headerCustomizeButtonSize: CGFloat { self == .compactVertical ? 34 : 40 }
+    var headerVerticalPadding: CGFloat { self == .compactVertical ? 8 : 16 }
+    var cardVerticalPadding: CGFloat { self == .compactVertical ? 12 : 20 }
+    var cardHorizontalPadding: CGFloat { self == .compactVertical ? 14 : 20 }
+    var pageBottomInset: CGFloat { self == .compactVertical ? 12 : 24 }
+    var dashboardSectionSpacing: CGFloat { self == .compactVertical ? 10 : 14 }
+    var tabBarIconFont: CGFloat { self == .compactVertical ? 18 : 22 }
+    var tabBarTitleFont: CGFloat { self == .compactVertical ? 9 : 10 }
+    var tabBarVerticalPadding: CGFloat { self == .compactVertical ? 6 : 10 }
+}
+
+private struct MatchlyLayoutStyleKey: EnvironmentKey {
+    static let defaultValue: MatchlyLayoutStyle = .standard
+}
+
+extension EnvironmentValues {
+    var matchlyLayout: MatchlyLayoutStyle {
+        get { self[MatchlyLayoutStyleKey.self] }
+        set { self[MatchlyLayoutStyleKey.self] = newValue }
+    }
+}
+
+private struct MatchlyAdaptiveLayoutModifier: ViewModifier {
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+
+    func body(content: Content) -> some View {
+        content
+            .environment(
+                \.matchlyLayout,
+                verticalSizeClass == .compact ? .compactVertical : .standard
+            )
+    }
+}
+
+extension View {
+    /// Applies compact sizing when vertical space is limited (e.g. iPhone landscape).
+    func matchlyAdaptiveLayout() -> some View {
+        modifier(MatchlyAdaptiveLayoutModifier())
+    }
+}
+
 // MARK: - Navigation (iPad-safe)
 
 /// Single-column navigation on all devices. Prevents the blank detail pane that
@@ -89,11 +152,12 @@ private struct MatchlyReadableWidthModifier: ViewModifier {
 
 struct GlassCardStyle: ViewModifier {
     var cornerRadius: CGFloat = 24
+    @Environment(\.matchlyLayout) private var layout
 
     func body(content: Content) -> some View {
         content
-            .padding(.horizontal, 20)
-            .padding(.vertical, 20)
+            .padding(.horizontal, layout.cardHorizontalPadding)
+            .padding(.vertical, layout.cardVerticalPadding)
             .glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
     }
 }

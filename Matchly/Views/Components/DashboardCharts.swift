@@ -25,6 +25,7 @@ struct DashboardSectionTabBar: View {
     let titles: [String]
     @Binding var selection: Int
     var accent: Color = AppColors.primaryBlue
+    @Environment(\.matchlyLayout) private var layout
 
     @Namespace private var underlineNamespace
 
@@ -34,8 +35,8 @@ struct DashboardSectionTabBar: View {
                 tab(index)
             }
         }
-        .padding(.top, 6)
-        .padding(.bottom, 4)
+        .padding(.top, layout == .compactVertical ? 2 : 6)
+        .padding(.bottom, layout == .compactVertical ? 2 : 4)
         // No full-width glass pill — `.regular` glass on a flat canvas reads as a
         // heavy gray slab. Keep this control airy: hairline + sliding underline only.
         .background(alignment: .bottom) {
@@ -55,9 +56,9 @@ struct DashboardSectionTabBar: View {
                 selection = index
             }
         } label: {
-            VStack(spacing: 9) {
+            VStack(spacing: layout.sectionTabSpacing) {
                 Text(titles[index])
-                    .font(.arial(size: 16, weight: isSelected ? .bold : .medium))
+                    .font(.arial(size: layout.sectionTabFont, weight: isSelected ? .bold : .medium))
                     .foregroundColor(isSelected ? accent : .secondary)
 
                 ZStack {
@@ -94,6 +95,7 @@ struct DashboardRingHero: View {
     let title: String
     let subtitle: String
     var accentTint: Color? = nil
+    @Environment(\.matchlyLayout) private var layout
 
     private var gradientColors: [Color] {
         if let accentTint {
@@ -128,45 +130,45 @@ struct DashboardRingHero: View {
     }
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: layout == .compactVertical ? 8 : 14) {
             ZStack {
                 // Soft, tinted track (a light wash of the accent) — never flat gray.
                 Circle()
-                    .stroke((gradientColors.first ?? AppColors.primaryBlue).opacity(0.16), lineWidth: 16)
-                    .frame(width: 210, height: 210)
+                    .stroke((gradientColors.first ?? AppColors.primaryBlue).opacity(0.16), lineWidth: layout.heroRingLineWidth)
+                    .frame(width: layout.heroRingSize, height: layout.heroRingSize)
 
                 // Vibrant Activity-ring style gradient arc with rounded caps.
                 Circle()
                     .trim(from: 0, to: min(max(progress, 0), 1))
                     .stroke(
                         ringGradient,
-                        style: StrokeStyle(lineWidth: 16, lineCap: .round)
+                        style: StrokeStyle(lineWidth: layout.heroRingLineWidth, lineCap: .round)
                     )
-                    .frame(width: 210, height: 210)
+                    .frame(width: layout.heroRingSize, height: layout.heroRingSize)
                     .rotationEffect(.degrees(-90))
                     .animation(.spring(response: 0.7, dampingFraction: 0.85), value: progress)
 
                 VStack(spacing: 0) {
                     Text(bigNumber)
-                        .font(.arial(size: 80, weight: .bold))
+                        .font(.arial(size: layout.heroBigNumberFont, weight: .bold))
                         .foregroundStyle(numberGradient)
                         .minimumScaleFactor(0.5)
                         .lineLimit(1)
                     if !unit.isEmpty {
                         Text(unit)
-                            .font(.arial(size: 13, weight: .semibold))
+                            .font(.arial(size: layout.heroUnitFont, weight: .semibold))
                             .foregroundColor(tint.opacity(0.9))
                             .textCase(.uppercase)
                     }
                 }
             }
 
-            VStack(spacing: 5) {
+            VStack(spacing: layout == .compactVertical ? 3 : 5) {
                 Text(title)
-                    .font(.arial(size: 24, weight: .bold))
+                    .font(.arial(size: layout.heroTitleFont, weight: .bold))
                     .foregroundColor(.primary)
                 Text(subtitle)
-                    .font(.arial(size: 14))
+                    .font(.arial(size: layout.heroSubtitleFont))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
@@ -196,6 +198,7 @@ struct DashboardSnapshotHero: View {
     let subtitle: String
     let stats: [DashboardSnapshotStat]
     var accentTint: Color = AppColors.accentGreen
+    @Environment(\.matchlyLayout) private var layout
 
     private var gradientColors: [Color] {
         [accentTint, accentTint.opacity(0.65)]
@@ -211,83 +214,155 @@ struct DashboardSnapshotHero: View {
     }
 
     var body: some View {
-        VStack(spacing: 14) {
-            VStack(spacing: 8) {
-                ZStack {
-                    Circle()
-                        .stroke(gradientColors[0].opacity(0.16), lineWidth: 16)
-                        .frame(width: 210, height: 210)
-
-                    Circle()
-                        .trim(from: 0, to: min(max(progress, 0), 1))
-                        .stroke(
-                            ringGradient,
-                            style: StrokeStyle(lineWidth: 16, lineCap: .round)
-                        )
-                        .frame(width: 210, height: 210)
-                        .rotationEffect(.degrees(-90))
-                        .animation(.spring(response: 0.7, dampingFraction: 0.85), value: progress)
-
-                    VStack(spacing: 0) {
-                        Text(bigNumber)
-                            .font(.arial(size: 80, weight: .bold))
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: gradientColors,
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .minimumScaleFactor(0.5)
-                            .lineLimit(1)
-                        if !unit.isEmpty {
-                            Text(unit)
-                                .font(.arial(size: 13, weight: .semibold))
-                                .foregroundColor(accentTint.opacity(0.9))
-                                .textCase(.uppercase)
-                        }
-                    }
-                }
-
-                Text(progressCaption)
-                    .font(.arial(size: 12, weight: .medium))
-                    .foregroundColor(.secondary)
+        Group {
+            if layout == .compactVertical {
+                compactBody
+            } else {
+                standardBody
             }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 2)
+    }
+
+    private var standardBody: some View {
+        VStack(spacing: 14) {
+            ringBlock
 
             VStack(spacing: 5) {
                 Text(title)
-                    .font(.arial(size: 24, weight: .bold))
+                    .font(.arial(size: layout.heroTitleFont, weight: .bold))
                     .foregroundColor(.primary)
                 Text(subtitle)
-                    .font(.arial(size: 14))
+                    .font(.arial(size: layout.heroSubtitleFont))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            if !stats.isEmpty {
-                HStack(spacing: 0) {
-                    ForEach(stats) { stat in
-                        VStack(spacing: 4) {
-                            Text(stat.value)
-                                .font(.arial(size: 20, weight: .bold))
-                                .foregroundColor(stat.tint)
-                                .minimumScaleFactor(0.7)
-                                .lineLimit(1)
-                            Text(stat.label)
-                                .font(.arial(size: 11, weight: .medium))
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.8)
-                        }
-                        .frame(maxWidth: .infinity)
+            statsRow
+        }
+    }
+
+    private var compactBody: some View {
+        HStack(alignment: .center, spacing: 16) {
+            ringBlock
+                .frame(width: layout.heroRingSize + 8)
+
+            VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.arial(size: layout.heroTitleFont, weight: .bold))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                    Text(subtitle)
+                        .font(.arial(size: layout.heroSubtitleFont))
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                statsGrid
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var ringBlock: some View {
+        VStack(spacing: 6) {
+            ZStack {
+                Circle()
+                    .stroke(gradientColors[0].opacity(0.16), lineWidth: layout.heroRingLineWidth)
+                    .frame(width: layout.heroRingSize, height: layout.heroRingSize)
+
+                Circle()
+                    .trim(from: 0, to: min(max(progress, 0), 1))
+                    .stroke(
+                        ringGradient,
+                        style: StrokeStyle(lineWidth: layout.heroRingLineWidth, lineCap: .round)
+                    )
+                    .frame(width: layout.heroRingSize, height: layout.heroRingSize)
+                    .rotationEffect(.degrees(-90))
+                    .animation(.spring(response: 0.7, dampingFraction: 0.85), value: progress)
+
+                VStack(spacing: 0) {
+                    Text(bigNumber)
+                        .font(.arial(size: layout.heroBigNumberFont, weight: .bold))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: gradientColors,
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .minimumScaleFactor(0.5)
+                        .lineLimit(1)
+                    if !unit.isEmpty {
+                        Text(unit)
+                            .font(.arial(size: layout.heroUnitFont, weight: .semibold))
+                            .foregroundColor(accentTint.opacity(0.9))
+                            .textCase(.uppercase)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                     }
                 }
-                .padding(.top, 4)
+                .padding(.horizontal, 4)
+            }
+
+            Text(progressCaption)
+                .font(.arial(size: layout.heroCaptionFont, weight: .medium))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .minimumScaleFactor(0.85)
+        }
+    }
+
+    @ViewBuilder
+    private var statsRow: some View {
+        if !stats.isEmpty {
+            HStack(spacing: 0) {
+                ForEach(stats) { stat in
+                    statCell(stat)
+                }
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    @ViewBuilder
+    private var statsGrid: some View {
+        if !stats.isEmpty {
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: 8),
+                    GridItem(.flexible(), spacing: 8)
+                ],
+                spacing: 8
+            ) {
+                ForEach(stats) { stat in
+                    statCell(stat)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
         }
+    }
+
+    private func statCell(_ stat: DashboardSnapshotStat) -> some View {
+        VStack(spacing: 2) {
+            Text(stat.value)
+                .font(.arial(size: layout.heroStatValueFont, weight: .bold))
+                .foregroundColor(stat.tint)
+                .minimumScaleFactor(0.7)
+                .lineLimit(1)
+            Text(stat.label)
+                .font(.arial(size: layout.heroStatLabelFont, weight: .medium))
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 2)
     }
 }
 
@@ -300,41 +375,82 @@ struct DashboardNumberHero: View {
     let subtitle: String
     let icon: String
     let tint: Color
+    @Environment(\.matchlyLayout) private var layout
 
     var body: some View {
-        VStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill(tint.opacity(0.15))
-                    .frame(width: 76, height: 76)
-                Image(systemName: icon)
-                    .font(.arial(size: 34, weight: .semibold))
-                    .foregroundColor(tint)
-                    .symbolRenderingMode(.hierarchical)
-            }
+        Group {
+            if layout == .compactVertical {
+                HStack(alignment: .center, spacing: 16) {
+                    ZStack {
+                        Circle()
+                            .fill(tint.opacity(0.15))
+                            .frame(width: layout.numberHeroIconSize, height: layout.numberHeroIconSize)
+                        Image(systemName: icon)
+                            .font(.arial(size: layout.numberHeroIconFont, weight: .semibold))
+                            .foregroundColor(tint)
+                            .symbolRenderingMode(.hierarchical)
+                    }
 
-            HStack(alignment: .firstTextBaseline, spacing: 7) {
-                Text(bigNumber)
-                    .font(.arial(size: 80, weight: .bold))
-                    .foregroundStyle(tint.gradient)
-                    .minimumScaleFactor(0.5)
-                    .lineLimit(1)
-                if !unit.isEmpty {
-                    Text(unit)
-                        .font(.arial(size: 22, weight: .semibold))
-                        .foregroundColor(.secondary)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Text(bigNumber)
+                                .font(.arial(size: layout.heroBigNumberFont, weight: .bold))
+                                .foregroundStyle(tint.gradient)
+                                .minimumScaleFactor(0.5)
+                                .lineLimit(1)
+                            if !unit.isEmpty {
+                                Text(unit)
+                                    .font(.arial(size: layout.heroTitleFont, weight: .semibold))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        Text(title)
+                            .font(.arial(size: layout.heroTitleFont, weight: .bold))
+                            .foregroundColor(.primary)
+                            .lineLimit(1)
+                        Text(subtitle)
+                            .font(.arial(size: layout.heroSubtitleFont))
+                            .foregroundColor(.secondary)
+                            .lineLimit(2)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-            }
+            } else {
+                VStack(spacing: 14) {
+                    ZStack {
+                        Circle()
+                            .fill(tint.opacity(0.15))
+                            .frame(width: layout.numberHeroIconSize, height: layout.numberHeroIconSize)
+                        Image(systemName: icon)
+                            .font(.arial(size: layout.numberHeroIconFont, weight: .semibold))
+                            .foregroundColor(tint)
+                            .symbolRenderingMode(.hierarchical)
+                    }
 
-            VStack(spacing: 5) {
-                Text(title)
-                    .font(.arial(size: 24, weight: .bold))
-                    .foregroundColor(.primary)
-                Text(subtitle)
-                    .font(.arial(size: 14))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
+                    HStack(alignment: .firstTextBaseline, spacing: 7) {
+                        Text(bigNumber)
+                            .font(.arial(size: layout.heroBigNumberFont, weight: .bold))
+                            .foregroundStyle(tint.gradient)
+                            .minimumScaleFactor(0.5)
+                            .lineLimit(1)
+                        if !unit.isEmpty {
+                            Text(unit)
+                                .font(.arial(size: 22, weight: .semibold))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+
+                    VStack(spacing: 5) {
+                        Text(title)
+                            .font(.arial(size: layout.heroTitleFont, weight: .bold))
+                            .foregroundColor(.primary)
+                        Text(subtitle)
+                            .font(.arial(size: layout.heroSubtitleFont))
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
             }
         }
         .frame(maxWidth: .infinity)
