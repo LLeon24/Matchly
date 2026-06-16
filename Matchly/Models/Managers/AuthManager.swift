@@ -643,10 +643,9 @@ class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, ASAuthor
         if let windowScene = windowScenes.first(where: { $0.activationState == .foregroundActive }) ?? windowScenes.first {
             return UIWindow(windowScene: windowScene)
         }
-        // Last resort: return a bare window rather than crashing the app. The
-        // authorization request will fail and be handled by the delegate's error path.
-        AuthManager.logger.error("Apple Sign In: No window scene available - returning detached window")
-        return UIWindow(frame: .zero)
+        // Last resort: no window scene exists (should not happen during active sign-in).
+        AuthManager.logger.error("Apple Sign In: No window scene available")
+        preconditionFailure("Apple Sign In requires an active window scene")
     }
 }
 

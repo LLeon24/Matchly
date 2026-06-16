@@ -90,7 +90,7 @@ struct OnboardingFlowView: View {
         .fullScreenCover(isPresented: $showMainApp) {
             MainTabView()
         }
-        .onChange(of: selectedPhoto) { newItem in
+        .onChange(of: selectedPhoto) { _, newItem in
             guard let newItem else { return }
             isLoadingPhoto = true
             Task {

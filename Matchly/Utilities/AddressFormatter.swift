@@ -76,7 +76,6 @@ enum AddressFormatter {
         state: String,
         accreditationID: String?
     ) -> ResolvedAddress {
-        let hospitalLower = hospital.lowercased()
         let raw = address ?? ""
 
         if let override = campusOverride(hospital: hospital, rawAddress: raw, accreditationID: accreditationID) {

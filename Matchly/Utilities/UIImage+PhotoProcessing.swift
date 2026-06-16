@@ -15,19 +15,21 @@ enum PhotoPickerImageLoader {
     private static let maxPixelDimension: CGFloat = 2048
 
     static func loadPreparedImage(from data: Data) async -> UIImage? {
-        await Task.detached(priority: .userInitiated) {
-            UIImage.preparedForCropping(from: data, maxPixelDimension: maxPixelDimension)
+        let data = data
+        let maxPixel = maxPixelDimension
+        return await Task.detached(priority: .userInitiated) {
+            UIImage.preparedForCropping(from: data, maxPixelDimension: maxPixel)
         }.value
     }
 }
 
 extension UIImage {
-    static func preparedForCropping(from data: Data, maxPixelDimension: CGFloat) -> UIImage? {
+    nonisolated static func preparedForCropping(from data: Data, maxPixelDimension: CGFloat) -> UIImage? {
         let image = downsampledImage(from: data, maxPixelDimension: maxPixelDimension) ?? UIImage(data: data)
         return image?.fixedOrientation()
     }
 
-    static func downsampledImage(from data: Data, maxPixelDimension: CGFloat) -> UIImage? {
+    nonisolated static func downsampledImage(from data: Data, maxPixelDimension: CGFloat) -> UIImage? {
         let options: [CFString: Any] = [
             kCGImageSourceShouldCache: false,
             kCGImageSourceCreateThumbnailFromImageIfAbsent: true,
@@ -41,7 +43,7 @@ extension UIImage {
         return UIImage(cgImage: cgImage)
     }
 
-    func fixedOrientation() -> UIImage {
+    nonisolated func fixedOrientation() -> UIImage {
         if imageOrientation == .up {
             return self
         }

@@ -168,7 +168,7 @@ struct ProfileEditView: View {
         .onAppear {
             loadProfile()
         }
-        .onChange(of: selectedPhoto) { newItem in
+        .onChange(of: selectedPhoto) { _, newItem in
             guard let newItem else { return }
             isLoadingPhoto = true
             Task {

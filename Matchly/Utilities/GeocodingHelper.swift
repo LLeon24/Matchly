@@ -32,6 +32,50 @@ enum GeocodingHelper {
         let location = mapItem.location
         return location
     }
+
+    /// Resolve a program pin using the same query string as external Maps directions.
+    static func coordinate(for program: Program) async -> CLLocationCoordinate2D {
+        let query = AddressFormatter.geocodingQuery(for: program)
+
+        coordinateCacheLock.lock()
+        if let cached = coordinateCache[query] {
+            coordinateCacheLock.unlock()
+            return cached
+        }
+        coordinateCacheLock.unlock()
+
+        do {
+            let location = try await geocodeAddress(query)
+            let coordinate = location.coordinate
+            coordinateCacheLock.lock()
+            coordinateCache[query] = coordinate
+            coordinateCacheLock.unlock()
+            return coordinate
+        } catch {
+            return fallbackCoordinate(for: program)
+        }
+    }
+
+    /// Synchronous city/state fallback when geocoding is unavailable.
+    static func fallbackCoordinate(for program: Program) -> CLLocationCoordinate2D {
+        let resolved = AddressFormatter.resolved(
+            hospital: program.hospital,
+            address: program.address,
+            city: program.city,
+            state: program.state,
+            accreditationID: program.accreditationID
+        )
+        if !resolved.city.isEmpty && !resolved.state.isEmpty {
+            return coordinate(for: resolved.city, state: resolved.state)
+        }
+        if !program.state.isEmpty {
+            return coordinate(for: program.state)
+        }
+        return CLLocationCoordinate2D(latitude: 39.8283, longitude: -98.5795)
+    }
+
+    private static let coordinateCacheLock = NSLock()
+    private static var coordinateCache: [String: CLLocationCoordinate2D] = [:]
     
     // MARK: - Fallback Coordinate Lookups
     

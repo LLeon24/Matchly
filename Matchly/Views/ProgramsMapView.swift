@@ -23,13 +23,7 @@ struct ProgramsMapView: View {
     @State private var selectedProgram: Program?
     @State private var showProgramDetail = false
     @State private var mapType: MapStyle = .standard
-    
-    private var programAnnotations: [ProgramAnnotation] {
-        // Show all programs - use fallback coordinates if city/state missing
-        dataManager.programs.map { program in
-            ProgramAnnotation(program: program)
-        }
-    }
+    @State private var programAnnotations: [ProgramAnnotation] = []
     
     var body: some View {
         NavigationView {
@@ -116,12 +110,56 @@ struct ProgramsMapView: View {
                 }
             }
             .onAppear {
-                if programAnnotations.isEmpty {
-                    // Default to USA center
-                } else {
+                if programAnnotations.isEmpty && !dataManager.programs.isEmpty {
+                    programAnnotations = dataManager.programs.map {
+                        ProgramAnnotation(
+                            program: $0,
+                            coordinate: GeocodingHelper.fallbackCoordinate(for: $0)
+                        )
+                    }
                     fitAllPrograms()
                 }
             }
+            .task(id: dataManager.programs.map(\.id).sorted().joined(separator: "|")) {
+                await refreshProgramAnnotations()
+            }
+        }
+    }
+
+    private func refreshProgramAnnotations() async {
+        let programs = dataManager.programs
+        guard !programs.isEmpty else {
+            await MainActor.run { programAnnotations = [] }
+            return
+        }
+
+        let fallbacks = programs.map {
+            ProgramAnnotation(program: $0, coordinate: GeocodingHelper.fallbackCoordinate(for: $0))
+        }
+        await MainActor.run {
+            programAnnotations = fallbacks
+            fitAllPrograms()
+        }
+
+        var geocodedByID: [String: ProgramAnnotation] = [:]
+        geocodedByID.reserveCapacity(programs.count)
+
+        await withTaskGroup(of: ProgramAnnotation.self) { group in
+            for program in programs {
+                group.addTask {
+                    let coordinate = await GeocodingHelper.coordinate(for: program)
+                    return ProgramAnnotation(program: program, coordinate: coordinate)
+                }
+            }
+
+            for await annotation in group {
+                geocodedByID[annotation.program.id] = annotation
+            }
+        }
+
+        await MainActor.run {
+            programAnnotations = programs.compactMap { geocodedByID[$0.id] }
+            fitAllPrograms()
         }
     }
     
@@ -156,31 +194,10 @@ struct ProgramAnnotation: Identifiable {
     let program: Program
     let coordinate: CLLocationCoordinate2D
     
-    init(program: Program) {
+    init(program: Program, coordinate: CLLocationCoordinate2D) {
         self.id = program.id
         self.program = program
-        let resolved = AddressFormatter.resolved(
-            hospital: program.hospital,
-            address: program.address,
-            city: program.city,
-            state: program.state,
-            accreditationID: program.accreditationID
-        )
-        if !resolved.street.isEmpty {
-            self.coordinate = GeocodingHelper.coordinate(
-                for: resolved.street,
-                city: resolved.city,
-                state: resolved.state
-            )
-        } else if !resolved.city.isEmpty && !resolved.state.isEmpty {
-            self.coordinate = GeocodingHelper.coordinate(for: resolved.city, state: resolved.state)
-        } else if !program.state.isEmpty {
-            // If only state is available, use state center
-            self.coordinate = GeocodingHelper.coordinate(for: program.state)
-        } else {
-            // Fallback to center of USA if no location data
-            self.coordinate = CLLocationCoordinate2D(latitude: 39.8283, longitude: -98.5795)
-        }
+        self.coordinate = coordinate
     }
 }
 
@@ -350,7 +367,7 @@ struct ProgramMapCard: View {
             } catch {
                 programsMapLogger.error("Geocoding error: \(error.localizedDescription, privacy: .public)")
                 // Fallback: use city/state coordinates from GeocodingHelper
-                let fallbackCoordinate = GeocodingHelper.coordinate(for: program.city, state: program.state)
+                let fallbackCoordinate = GeocodingHelper.fallbackCoordinate(for: program)
                 let fallbackLocation = CLLocation(latitude: fallbackCoordinate.latitude, longitude: fallbackCoordinate.longitude)
                 let mapItem = MKMapItem(location: fallbackLocation, address: nil)
                 mapItem.name = program.hospital.isEmpty ? (program.name.isEmpty ? "Program Location" : program.name) : program.hospital
