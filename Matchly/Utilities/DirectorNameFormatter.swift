@@ -24,6 +24,7 @@ enum DirectorNameFormatter {
             return raw
         }
 
+        let tokens = raw.split(separator: " ")
         if tokens.count >= 2 {
             let last = tokens.suffix(2).joined(separator: " ")
             if looksLikePersonName(last) {
