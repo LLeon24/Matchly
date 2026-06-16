@@ -17,7 +17,7 @@ struct ProgramComparisonView: View {
     }
     
     var body: some View {
-        NavigationView {
+        MatchlyNavigationView {
             VStack(spacing: 0) {
                 if selectedPrograms.isEmpty {
                     VStack(spacing: 20) {
@@ -225,7 +225,7 @@ struct ProgramComparisonPickerView: View {
     }
     
     var body: some View {
-        NavigationView {
+        MatchlyNavigationView {
             List {
                 ForEach(dataManager.programs) { program in
                     Button(action: {

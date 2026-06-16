@@ -189,6 +189,38 @@ class AuthManager: ObservableObject {
         Self.keychainDelete(account: Self.keychainAppleUserAccount)
     }
 
+    /// Best available name for UI: auth display name, profile name, email local-part, then fallback.
+    func preferredDisplayName(profileName: String = "") -> String {
+        if let displayName = currentUser?.displayName?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !displayName.isEmpty {
+            return displayName
+        }
+        let trimmedProfile = profileName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedProfile.isEmpty {
+            return trimmedProfile
+        }
+        if let email = currentUser?.email?.trimmingCharacters(in: .whitespacesAndNewlines), !email.isEmpty {
+            let localPart = email.components(separatedBy: "@").first ?? ""
+            if !localPart.isEmpty {
+                return localPart.capitalized
+            }
+            return email
+        }
+        if let phone = currentUser?.phoneNumber, !phone.isEmpty {
+            return phone
+        }
+        return "User"
+    }
+
+    /// Persist a display name when Apple Sign In did not return one on repeat logins.
+    func updateDisplayName(_ name: String) {
+        guard var user = currentUser else { return }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        user.displayName = trimmed
+        persist(user)
+    }
+
     /// Persist `user` to UserDefaults and publish it without re-running the
     /// last-login/display-name preservation in `signIn(user:)`. Safe to call when already
     /// signed in (e.g. when filling in the CloudKit record name after it resolves).

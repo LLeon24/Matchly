@@ -244,7 +244,7 @@ struct AllSignaledProgramsView: View {
 }
 
 #Preview {
-    NavigationView {
+    MatchlyNavigationView {
         AllSignaledProgramsView()
             .environmentObject(DataManager.shared)
     }

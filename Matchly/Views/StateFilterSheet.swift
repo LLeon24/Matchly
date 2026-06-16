@@ -16,7 +16,7 @@ struct StateFilterSheet: View {
     @Environment(\.dismiss) var dismiss
     
     var body: some View {
-        NavigationView {
+        MatchlyNavigationView {
             List {
                 Section("States") {
                     ForEach(allStates, id: \.self) { state in

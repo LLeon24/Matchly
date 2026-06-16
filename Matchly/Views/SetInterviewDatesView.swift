@@ -132,7 +132,7 @@ struct ProgramNeedingInterviewDateRow: View {
 }
 
 #Preview {
-    NavigationView {
+    MatchlyNavigationView {
         SetInterviewDatesView()
             .environmentObject(DataManager.shared)
     }

@@ -324,7 +324,7 @@ struct MatchlyDataDocument: FileDocument {
 }
 
 #Preview {
-    NavigationView {
+    MatchlyNavigationView {
         DataBackupView()
             .environmentObject(DataManager.shared)
     }

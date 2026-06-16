@@ -209,7 +209,7 @@ struct ProgramsNeedingReviewView: View {
 }
 
 #Preview {
-    NavigationView {
+    MatchlyNavigationView {
         ProgramsNeedingReviewView()
             .environmentObject(DataManager.shared)
     }

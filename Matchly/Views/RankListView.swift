@@ -158,10 +158,11 @@ struct RankListView: View {
     }
     
     var body: some View {
-        NavigationView {
+        MatchlyNavigationView {
             Group {
                 if rankedPrograms.isEmpty {
                     EmptyRankListView()
+                        .matchlyRootContentFrame()
                 } else {
                     VStack(spacing: 0) {
                         filterToolbar
@@ -169,6 +170,7 @@ struct RankListView: View {
                     }
                 }
             }
+            .matchlyRootContentFrame()
             .navigationTitle("Rank List")
             .toolbar {
                 toolbarContent
@@ -298,7 +300,7 @@ struct RankListView: View {
             redFlaggedSection
         }
         .listStyle(.insetGrouped)
-        .padding(.bottom, 90)
+        .matchlyReadableWidth()
         .environment(\.editMode, isEditing ? .constant(.active) : .constant(.inactive))
     }
     
@@ -660,7 +662,7 @@ struct ExportView: View {
     }
     
     var body: some View {
-        NavigationView {
+        MatchlyNavigationView {
             VStack(spacing: 30) {
                 Text("Export Rank List")
                     .font(.arial(size: 24, weight: .bold))

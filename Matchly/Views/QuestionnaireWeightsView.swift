@@ -335,7 +335,7 @@ struct QuestionnaireWeightsView: View {
 }
 
 #Preview {
-    NavigationView {
+    MatchlyNavigationView {
         QuestionnaireWeightsView()
             .environmentObject(DataManager.shared)
     }

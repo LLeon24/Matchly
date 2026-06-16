@@ -70,6 +70,19 @@ class DataManager: ObservableObject {
         }
         return currentHash
     }
+
+    /// Cache key must include questionnaire ratings — otherwise an early save (e.g. interview
+    /// date with no survey answers) caches 0 and blocks recalculation after the survey is done.
+    private func scoreCacheKey(for program: Program, preferencesHash: Int) -> String {
+        var ratingsHasher = Hasher()
+        for section in program.questionnaire.sections + program.questionnaire.customSections {
+            for item in section.items {
+                ratingsHasher.combine(item.id)
+                ratingsHasher.combine(item.programRating)
+            }
+        }
+        return "\(program.id)-\(program.emr ?? "")-\(preferencesHash)-\(ratingsHasher.finalize())"
+    }
     
     init() {
         loadData()
@@ -301,20 +314,13 @@ class DataManager: ObservableObject {
         guard let index = programs.firstIndex(where: { $0.id == program.id }) else { return }
         
         var updatedProgram = program
-        
-        // Check cache first for score calculation
-        // EMR is part of the key so changing a program's EMR recomputes its score.
-        let cacheKey = "\(updatedProgram.id)-\(updatedProgram.emr ?? "")-\(preferences.hashValue)"
-        let newScore: Double
-        if let cachedScore = cachedScore(forKey: cacheKey) {
-            newScore = cachedScore
-        } else {
-            // Calculate score - use background thread for expensive calculations if not critical
-            newScore = updatedProgram.questionnaire.totalWeightedScore(preferences: preferences, programEMR: updatedProgram.emr)
-            setCachedScore(newScore, forKey: cacheKey)
-        }
-        
-        updatedProgram.finalScore = newScore
+        updatedProgram.finalScore = updatedProgram.questionnaire.totalWeightedScore(
+            preferences: preferences,
+            programEMR: updatedProgram.emr
+        )
+
+        let cacheKey = scoreCacheKey(for: updatedProgram, preferencesHash: preferences.hashValue)
+        setCachedScore(updatedProgram.finalScore, forKey: cacheKey)
         
         // Ensure we're on main thread for UI updates
         if Thread.isMainThread {
@@ -350,8 +356,7 @@ class DataManager: ObservableObject {
             for index in updatedPrograms.indices {
                 let program = updatedPrograms[index]
                 
-                // Check cache first (EMR included so EMR edits recompute)
-                let cacheKey = "\(program.id)-\(program.emr ?? "")-\(currentHash)"
+                let cacheKey = self.scoreCacheKey(for: program, preferencesHash: currentHash)
                 let newScore: Double
                 if let cachedScore = self.cachedScore(forKey: cacheKey) {
                     newScore = cachedScore

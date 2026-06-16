@@ -237,7 +237,7 @@ struct CategoryScoreView: View {
 }
 
 #Preview {
-    NavigationView {
+    MatchlyNavigationView {
         ProgramDetailView(program: Program(
             specialty: "Internal Medicine",
             name: "Sample Program",

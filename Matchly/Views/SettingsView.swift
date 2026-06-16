@@ -18,7 +18,7 @@ struct SettingsView: View {
     @State private var showWeights = false
     
     var body: some View {
-        NavigationView {
+        MatchlyNavigationView {
             Form {
                 profileSection
                 appInformationSection
@@ -42,7 +42,7 @@ struct SettingsView: View {
                 }
             }
             .scrollContentBackground(.hidden)
-            .padding(.bottom, 90) // Space for custom tab bar
+            .matchlyReadableWidth()
             .navigationTitle("Settings")
             .appCanvasBackground()
             .alert("Reset All Data", isPresented: $showResetAlert) {
@@ -325,29 +325,20 @@ struct SettingsView: View {
                             Text("Signed in as")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
-                            
-                            // Prioritize displayName if available, then email, then phone
-                            if let displayName = user.displayName, !displayName.isEmpty {
-                                Text(displayName)
-                                    .font(.arial(size: 15, weight: .medium))
-                                if let email = user.email, !email.isEmpty {
-                                    Text(email)
-                                        .font(.arial(size: 13))
-                                        .foregroundColor(.secondary)
-                                } else if let phone = user.phoneNumber {
-                                    Text(phone)
-                                        .font(.arial(size: 13))
-                                        .foregroundColor(.secondary)
-                                }
-                            } else if let email = user.email, !email.isEmpty {
+
+                            Text(authManager.preferredDisplayName(profileName: dataManager.preferences.profile.name))
+                                .font(.arial(size: 15, weight: .medium))
+
+                            if let email = user.email, !email.isEmpty,
+                               authManager.preferredDisplayName(profileName: dataManager.preferences.profile.name) != email {
                                 Text(email)
-                                    .font(.arial(size: 15, weight: .medium))
-                            } else if let phone = user.phoneNumber {
+                                    .font(.arial(size: 13))
+                                    .foregroundColor(.secondary)
+                            } else if let phone = user.phoneNumber,
+                                      authManager.preferredDisplayName(profileName: dataManager.preferences.profile.name) != phone {
                                 Text(phone)
-                                    .font(.arial(size: 15, weight: .medium))
-                            } else {
-                                Text("User")
-                                    .font(.arial(size: 15, weight: .medium))
+                                    .font(.arial(size: 13))
+                                    .foregroundColor(.secondary)
                             }
                             
                             Text("via \(user.provider.rawValue.capitalized)")

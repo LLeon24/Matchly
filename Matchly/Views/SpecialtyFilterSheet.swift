@@ -17,7 +17,7 @@ struct SpecialtyFilterSheet: View {
     @Environment(\.dismiss) var dismiss
     
     var body: some View {
-        NavigationView {
+        MatchlyNavigationView {
             List {
                 Section("Specialties") {
                     ForEach(allSpecialties, id: \.self) { specialty in

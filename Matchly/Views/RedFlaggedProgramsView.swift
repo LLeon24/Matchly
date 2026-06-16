@@ -247,7 +247,7 @@ struct RedFlaggedProgramsView: View {
 }
 
 #Preview {
-    NavigationView {
+    MatchlyNavigationView {
         RedFlaggedProgramsView()
             .environmentObject(DataManager.shared)
     }

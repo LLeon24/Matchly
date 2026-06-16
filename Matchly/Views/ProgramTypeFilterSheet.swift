@@ -16,7 +16,7 @@ struct ProgramTypeFilterSheet: View {
     @Environment(\.dismiss) var dismiss
     
     var body: some View {
-        NavigationView {
+        MatchlyNavigationView {
             List {
                 Section("Program Types") {
                     ForEach(programTypes, id: \.self) { type in

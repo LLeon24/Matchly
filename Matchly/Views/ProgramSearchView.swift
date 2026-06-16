@@ -39,6 +39,7 @@ struct ProgramSearchView: View {
     @State private var resultLimit = ResidencyProgramDatabase.defaultResultLimit
     @State private var hasRunSearch = false
     @State private var searchRefreshTask: Task<Void, Never>?
+    @State private var showManualEntry = false
     
     let onSelect: (ResidencyProgramInfo) -> Void
     var allowMultiSelect: Bool = false
@@ -181,10 +182,11 @@ struct ProgramSearchView: View {
     }
     
     var body: some View {
-        NavigationView {
+        MatchlyNavigationView {
             VStack(spacing: 0) {
                 searchAndFiltersView
                 resultsView
+                manualEntryFooter
             }
             .navigationTitle("Search Programs")
             .navigationBarTitleDisplayMode(.inline)
@@ -245,7 +247,36 @@ struct ProgramSearchView: View {
             } message: {
                 Text(dataManager.lastAddProgramNotice ?? "")
             }
+            .sheet(isPresented: $showManualEntry) {
+                MatchlyNavigationView {
+                    ProgramEntryView(program: nil)
+                        .environmentObject(dataManager)
+                }
+            }
         }
+    }
+
+    private var manualEntryFooter: some View {
+        VStack(spacing: 0) {
+            Divider()
+            Button(action: { showManualEntry = true }) {
+                HStack(spacing: 10) {
+                    Image(systemName: "square.and.pencil")
+                        .foregroundColor(.blue)
+                    Text("Can't find your program? Add manually")
+                        .font(.arial(size: 15, weight: .medium))
+                        .foregroundColor(.primary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 14)
+            }
+            .buttonStyle(.plain)
+        }
+        .background(.ultraThinMaterial)
     }
     
     private var searchAndFiltersView: some View {
@@ -651,9 +682,11 @@ struct ProgramSearchView: View {
             Text("No programs found")
                 .font(.headline)
                 .foregroundColor(.secondary)
-            Text("Try a different search term")
+            Text("Try a different search term, or add the program manually below.")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

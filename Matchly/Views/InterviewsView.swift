@@ -711,7 +711,7 @@ struct InterviewRow: View {
 }
 
 #Preview {
-    NavigationView {
+    MatchlyNavigationView {
         InterviewsView()
             .environmentObject(DataManager.shared)
     }

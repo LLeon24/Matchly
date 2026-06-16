@@ -26,7 +26,7 @@ struct ProgramsMapView: View {
     @State private var programAnnotations: [ProgramAnnotation] = []
     
     var body: some View {
-        NavigationView {
+        MatchlyNavigationView {
             ZStack {
                 Map(position: $cameraPosition) {
                     ForEach(programAnnotations) { annotation in
@@ -50,8 +50,7 @@ struct ProgramsMapView: View {
                     }
                 }
                 .mapStyle(mapType)
-                .ignoresSafeArea()
-                .padding(.bottom, 90) // Space for custom tab bar
+                .ignoresSafeArea(edges: [.top, .horizontal])
                 
                 // Program detail card at bottom - positioned above tab bar
                 if let program = selectedProgram {
@@ -63,7 +62,7 @@ struct ProgramsMapView: View {
                             selectedProgram = nil
                         }
                         .transition(.move(edge: .bottom).combined(with: .opacity))
-                        .padding(.bottom, 90) // Space above tab bar
+                        .padding(.bottom, 8)
                     }
                 }
                 
@@ -90,6 +89,7 @@ struct ProgramsMapView: View {
                     Spacer()
                 }
             }
+            .matchlyRootContentFrame()
             .navigationTitle("Programs Map")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -104,7 +104,7 @@ struct ProgramsMapView: View {
             }
             .sheet(isPresented: $showProgramDetail) {
                 if let program = selectedProgram {
-                    NavigationView {
+                    MatchlyNavigationView {
                         ProgramEntryView(program: program)
                     }
                 }
@@ -141,24 +141,29 @@ struct ProgramsMapView: View {
             fitAllPrograms()
         }
 
-        var geocodedByID: [String: ProgramAnnotation] = [:]
+        var geocodedByID: [String: CLLocationCoordinate2D] = [:]
         geocodedByID.reserveCapacity(programs.count)
 
-        await withTaskGroup(of: ProgramAnnotation.self) { group in
+        await withTaskGroup(of: (String, CLLocationCoordinate2D).self) { group in
             for program in programs {
                 group.addTask {
                     let coordinate = await GeocodingHelper.coordinate(for: program)
-                    return ProgramAnnotation(program: program, coordinate: coordinate)
+                    return (program.id, coordinate)
                 }
             }
 
-            for await annotation in group {
-                geocodedByID[annotation.program.id] = annotation
+            for await (programID, coordinate) in group {
+                geocodedByID[programID] = coordinate
             }
         }
 
         await MainActor.run {
-            programAnnotations = programs.compactMap { geocodedByID[$0.id] }
+            programAnnotations = programs.map { program in
+                ProgramAnnotation(
+                    program: program,
+                    coordinate: geocodedByID[program.id] ?? GeocodingHelper.fallbackCoordinate(for: program)
+                )
+            }
             fitAllPrograms()
         }
     }

@@ -25,7 +25,7 @@ struct SpecialtySelectionView: View {
     }
     
     var body: some View {
-        NavigationView {
+        MatchlyNavigationView {
             VStack(spacing: 0) {
                 // Header
                 VStack(spacing: 8) {

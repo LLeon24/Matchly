@@ -37,7 +37,7 @@ struct DashboardView: View {
                     emptyStateSection
                         .padding(.horizontal, 16)
                         .padding(.top, 12)
-                        .padding(.bottom, 100)
+                        .padding(.bottom, 12)
                 }
             } else {
                 // Clean animated-underline section selector, kept in sync with
@@ -61,6 +61,7 @@ struct DashboardView: View {
                 .tabViewStyle(.page(indexDisplayMode: .never))
             }
         }
+        .matchlyRootContentFrame()
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .navigationBar)
         .background(
@@ -74,7 +75,7 @@ struct DashboardView: View {
                 .environmentObject(dataManager)
         }
         .sheet(isPresented: $showProfileEdit) {
-            NavigationView {
+            MatchlyNavigationView {
                 ProfileEditView()
             }
         }
@@ -103,7 +104,7 @@ struct DashboardView: View {
             }
         }
         .sheet(isPresented: $showAddProgram) {
-            NavigationView {
+            MatchlyNavigationView {
                 ProgramSearchView(
                     onSelect: { _ in },
                     allowMultiSelect: true

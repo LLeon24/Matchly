@@ -18,7 +18,7 @@ struct UserSearchView: View {
     @State private var errorMessage = ""
     
     var body: some View {
-        NavigationView {
+        MatchlyNavigationView {
             Form {
                 Section {
                     HStack {

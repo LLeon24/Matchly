@@ -18,7 +18,7 @@ struct SignUpView: View {
     @State private var errorMessage: String?
     
     var body: some View {
-        NavigationView {
+        MatchlyNavigationView {
             Form {
                 Section {
                     VStack(spacing: 12) {

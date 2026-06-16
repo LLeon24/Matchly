@@ -18,7 +18,7 @@ struct EmailLoginView: View {
     @State private var showForgotPassword = false
     
     var body: some View {
-        NavigationView {
+        MatchlyNavigationView {
             Form {
                 Section {
                     VStack(spacing: 12) {

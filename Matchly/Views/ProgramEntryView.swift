@@ -72,7 +72,7 @@ struct ProgramEntryView: View {
     // New comprehensive questionnaire
     @State private var questionnaire: Questionnaire = Questionnaire()
     @State private var expandedSections: Set<String> = [] // Track which sections are expanded
-    @State private var scrollProxy: ScrollViewProxy? = nil // For auto-scrolling to next question
+    @State private var scrollProxy: ScrollViewProxy? = nil // Scroll notes into view when editing
     
     let programTypes = ["Academic", "Community", "Hybrid"]
     
@@ -380,26 +380,22 @@ struct ProgramEntryView: View {
                                     programRating: Binding(
                                         get: { questionnaire.sections[sectionIndex].items[itemIndex].programRating },
                                         set: { newValue in
-                                            let oldValue = questionnaire.sections[sectionIndex].items[itemIndex].programRating
-                                            questionnaire.sections[sectionIndex].items[itemIndex].programRating = newValue
-                                            
-                                            // Force layout refresh to prevent cutting off
+                                            var updated = questionnaire
+                                            updated.sections[sectionIndex].items[itemIndex].programRating = newValue
+                                            questionnaire = updated
+
                                             withAnimation(.easeInOut(duration: 0.2)) {
                                                 checkAndExpandNextSection(currentSectionIndex: sectionIndex, currentItemIndex: itemIndex)
-                                            }
-                                            
-                                            // Auto-scroll to next question if this question was just answered (changed from 0 to non-zero)
-                                            if oldValue == 0 && newValue > 0 {
-                                                // Post notification to trigger scroll with a slight delay
-                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                                    NotificationCenter.default.post(name: NSNotification.Name("ScrollToNextQuestion"), object: nil, userInfo: ["currentSectionId": section.id, "currentItemId": item.id])
-                                                }
                                             }
                                         }
                                     ),
                                     notes: Binding(
                                         get: { questionnaire.sections[sectionIndex].items[itemIndex].notes },
-                                        set: { questionnaire.sections[sectionIndex].items[itemIndex].notes = $0 }
+                                        set: { newValue in
+                                            var updated = questionnaire
+                                            updated.sections[sectionIndex].items[itemIndex].notes = newValue
+                                            questionnaire = updated
+                                        }
                                     ),
                                     isYesNo: section.title.contains("Red flags"),
                                     isPositiveYesNo: item.question.contains("Do you feel you could see yourself living"),
@@ -446,21 +442,18 @@ struct ProgramEntryView: View {
                                     programRating: Binding(
                                         get: { questionnaire.customSections[sectionIndex].items[itemIndex].programRating },
                                         set: { newValue in
-                                            let oldValue = questionnaire.customSections[sectionIndex].items[itemIndex].programRating
-                                            questionnaire.customSections[sectionIndex].items[itemIndex].programRating = newValue
-                                            
-                                            // Auto-scroll to next question if this question was just answered (changed from 0 to non-zero)
-                                            if oldValue == 0 && newValue > 0 {
-                                                // Post notification to trigger scroll with a slight delay
-                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                                    NotificationCenter.default.post(name: NSNotification.Name("ScrollToNextQuestion"), object: nil, userInfo: ["currentSectionId": customSection.id, "currentItemId": item.id])
-                                                }
-                                            }
+                                            var updated = questionnaire
+                                            updated.customSections[sectionIndex].items[itemIndex].programRating = newValue
+                                            questionnaire = updated
                                         }
                                     ),
                                     notes: Binding(
                                         get: { questionnaire.customSections[sectionIndex].items[itemIndex].notes },
-                                        set: { questionnaire.customSections[sectionIndex].items[itemIndex].notes = $0 }
+                                        set: { newValue in
+                                            var updated = questionnaire
+                                            updated.customSections[sectionIndex].items[itemIndex].notes = newValue
+                                            questionnaire = updated
+                                        }
                                     ),
                                     isYesNo: false
                                 )
@@ -509,7 +502,7 @@ struct ProgramEntryView: View {
             })
         }
         .sheet(isPresented: $showDatePickerSheet) {
-            NavigationView {
+            MatchlyNavigationView {
                 VStack(spacing: 20) {
                     DatePicker("Interview Date & Time", selection: $interviewDate, displayedComponents: [.date, .hourAndMinute])
                         .datePickerStyle(.wheel)
@@ -590,7 +583,7 @@ struct ProgramEntryView: View {
             .presentationDetents([.medium])
         }
         .sheet(isPresented: $showContactInfo) {
-            NavigationView {
+            MatchlyNavigationView {
                 Form {
                     Section("Address") {
                         TextField("Street Address", text: $address)
@@ -745,7 +738,7 @@ struct ProgramEntryView: View {
     }
     
     private var mainContentView: some View {
-        NavigationView {
+        MatchlyNavigationView {
             VStack(spacing: 0) {
                 // Compact Header (if program is selected)
                 if !hospital.isEmpty {
@@ -939,21 +932,10 @@ struct ProgramEntryView: View {
                     .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 10))
                 }
                 
-                // Questionnaire with ScrollViewReader for auto-scrolling
                 ScrollViewReader { proxy in
                     formContent
                         .onAppear {
                             scrollProxy = proxy
-                        }
-                        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ScrollToNextQuestion"))) { notification in
-                            if let userInfo = notification.userInfo,
-                               let currentSectionId = userInfo["currentSectionId"] as? String,
-                               let currentItemId = userInfo["currentItemId"] as? String {
-                                // Delay to ensure view updates are complete, then scroll
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                    scrollToNextQuestion(currentSectionId: currentSectionId, currentItemId: currentItemId)
-                                }
-                            }
                         }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1238,50 +1220,6 @@ struct ProgramEntryView: View {
             }
         }
     }
-    
-    // Helper function to scroll to the next question after answering
-    private func scrollToNextQuestion(currentSectionId: String, currentItemId: String) {
-        // Get all enabled sections and items in order (enabledSections already includes both standard and custom sections)
-        let allSections = questionnaire.enabledSections(preferences: dataManager.preferences)
-        var allQuestions: [(sectionId: String, itemId: String)] = []
-        
-        for section in allSections {
-            let enabledItems = questionnaire.enabledItems(for: section, preferences: dataManager.preferences)
-            for item in enabledItems {
-                allQuestions.append((sectionId: section.id, itemId: item.id))
-            }
-        }
-        
-        // Find current question index
-        guard let currentIndex = allQuestions.firstIndex(where: { $0.sectionId == currentSectionId && $0.itemId == currentItemId }) else {
-            return
-        }
-        
-        // Get next question
-        let nextIndex = currentIndex + 1
-        guard nextIndex < allQuestions.count else {
-            return // No more questions
-        }
-        
-        let nextQuestion = allQuestions[nextIndex]
-        let nextQuestionId = "\(nextQuestion.sectionId)-\(nextQuestion.itemId)"
-        
-        // Expand the section if it's collapsed
-        if !expandedSections.contains(nextQuestion.sectionId) {
-            expandedSections.insert(nextQuestion.sectionId)
-        }
-        
-        // Use ScrollViewReader (now that we're using ScrollView instead of Form)
-        // Scroll to top of next question for better visibility
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            if let proxy = self.scrollProxy {
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    proxy.scrollTo(nextQuestionId, anchor: .top)
-                }
-            }
-        }
-    }
-    
     
     // Helper function for rating colors (matching DualRatingSlider)
     private func ratingColor(for rating: Int) -> Color {

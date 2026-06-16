@@ -175,7 +175,7 @@ struct SignaledProgramsView: View {
 }
 
 #Preview {
-    NavigationView {
+    MatchlyNavigationView {
         SignaledProgramsView(signalType: .gold)
             .environmentObject(DataManager.shared)
     }

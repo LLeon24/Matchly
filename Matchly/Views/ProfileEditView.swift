@@ -12,6 +12,7 @@ import UIKit
 
 struct ProfileEditView: View {
     @EnvironmentObject var dataManager: DataManager
+    @ObservedObject private var authManager = AuthManager.shared
     @Environment(\.dismiss) var dismiss
     @State private var name: String = ""
     @State private var aamcID: String = ""
@@ -211,13 +212,14 @@ struct ProfileEditView: View {
             dataManager.preferences.profile.photoData = nil
         }
         dataManager.savePreferences()
+        authManager.updateDisplayName(dataManager.preferences.profile.name)
         dataManager.objectWillChange.send() // Force UI refresh
         dismiss()
     }
 }
 
 #Preview {
-    NavigationView {
+    MatchlyNavigationView {
         ProfileEditView()
             .environmentObject(DataManager.shared)
     }

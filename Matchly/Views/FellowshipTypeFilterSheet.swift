@@ -32,7 +32,7 @@ struct FellowshipTypeFilterSheet: View {
   }
 
   var body: some View {
-    NavigationView {
+    MatchlyNavigationView {
       List {
         if userSpecialties.isEmpty {
           Section {

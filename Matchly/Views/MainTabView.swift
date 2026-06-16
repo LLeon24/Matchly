@@ -15,32 +15,26 @@ struct MainTabView: View {
     @State private var isKeyboardVisible: Bool = false
     
     var body: some View {
-        ZStack(alignment: .bottom) {
-            // Canvas behind all tabs so Liquid Glass chrome refracts content.
-            AppColors.dashboardCanvas
-                .ignoresSafeArea()
-            
-            // Content views
-            Group {
-                if selectedTab == 0 {
-                    NavigationView {
-                        DashboardView(selectedTab: $selectedTab)
-                    }
-                    .id("dashboard-\(dashboardRefreshKey)") // Force refresh when key changes
-                } else if selectedTab == 1 {
-                    ProgramsListView()
-                } else if selectedTab == 2 {
-                    RankListView()
-                } else if selectedTab == 3 {
-                    ProgramsMapView()
-                } else if selectedTab == 4 {
-                    NavigationView {
-                        SettingsView()
-                    }
+        Group {
+            if selectedTab == 0 {
+                MatchlyNavigationView {
+                    DashboardView(selectedTab: $selectedTab)
+                        .matchlyReadableWidth()
                 }
+                .id("dashboard-\(dashboardRefreshKey)") // Force refresh when key changes
+            } else if selectedTab == 1 {
+                ProgramsListView()
+            } else if selectedTab == 2 {
+                RankListView()
+            } else if selectedTab == 3 {
+                ProgramsMapView()
+            } else if selectedTab == 4 {
+                SettingsView()
             }
-            
-            // Custom liquid glass tab bar at bottom - hide when keyboard is visible
+        }
+        .matchlyRootContentFrame()
+        .background(AppColors.dashboardCanvas.ignoresSafeArea())
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             if !isKeyboardVisible {
                 LiquidGlassTabBar(selectedTab: $selectedTab)
                     .transition(.move(edge: .bottom).combined(with: .opacity))

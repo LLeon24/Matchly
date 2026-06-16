@@ -23,10 +23,11 @@ struct ProgramsListView: View {
     }
     
     var body: some View {
-        NavigationView {
+        MatchlyNavigationView {
             Group {
                 if dataManager.programs.isEmpty {
                     EmptyProgramsView(showAddProgram: $showAddProgram)
+                        .matchlyRootContentFrame()
                 } else {
                     // Group programs by specialty
                     let groupedPrograms = Dictionary(grouping: sortedPrograms) {
@@ -77,13 +78,14 @@ struct ProgramsListView: View {
                         }
                     }
                     .listStyle(.insetGrouped)
-                    .padding(.bottom, 90) // Space for custom tab bar
+                    .matchlyReadableWidth()
                     .refreshable {
                         dataManager.recalculateAllScores()
                         dataManager.objectWillChange.send()
                     }
                 }
             }
+            .matchlyRootContentFrame()
             .navigationTitle("My Programs")
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -397,6 +399,7 @@ struct EmptyProgramsView: View {
     
     var body: some View {
         VStack(spacing: 24) {
+            Spacer(minLength: 0)
             ZStack {
                 Circle()
                     .fill(
@@ -445,7 +448,10 @@ struct EmptyProgramsView: View {
             }
             .buttonStyle(.glassProminent)
             .tint(AppColors.primaryBlue)
+            
+            Spacer(minLength: 0)
         }
+        .padding(.horizontal, 24)
     }
 }
 

@@ -12,7 +12,7 @@ struct WeightsSetupView: View {
     @State private var showMainApp = false
     
     var body: some View {
-        NavigationView {
+        MatchlyNavigationView {
             VStack(spacing: 30) {
                 Spacer()
                 

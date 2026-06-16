@@ -8,6 +8,25 @@
 import SwiftUI
 import UIKit
 
+// MARK: - Navigation (iPad-safe)
+
+/// Single-column navigation on all devices. Prevents the blank detail pane that
+/// appears when `NavigationView` uses the iPad split style in landscape.
+struct MatchlyNavigationView<Content: View>: View {
+    @ViewBuilder private var content: () -> Content
+
+    init(@ViewBuilder content: @escaping () -> Content) {
+        self.content = content
+    }
+
+    var body: some View {
+        NavigationView {
+            content()
+        }
+        .navigationViewStyle(.stack)
+    }
+}
+
 // MARK: - Liquid Glass (iOS 26)
 
 extension View {
@@ -44,6 +63,27 @@ extension View {
     /// Full-screen app canvas so glass chrome has content to refract.
     func appCanvasBackground() -> some View {
         background(AppColors.dashboardCanvas.ignoresSafeArea())
+    }
+
+    /// Ensures tab roots and empty states expand to fill the screen in every orientation.
+    func matchlyRootContentFrame() -> some View {
+        frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    /// Centers readable-width content on iPad / wide landscape while still filling the canvas.
+    func matchlyReadableWidth(_ maxWidth: CGFloat = 960) -> some View {
+        modifier(MatchlyReadableWidthModifier(maxWidth: maxWidth))
+    }
+}
+
+private struct MatchlyReadableWidthModifier: ViewModifier {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    let maxWidth: CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            .frame(maxWidth: horizontalSizeClass == .regular ? maxWidth : .infinity)
+            .frame(maxWidth: .infinity)
     }
 }
 

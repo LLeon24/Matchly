@@ -21,7 +21,7 @@ struct InviteManagementView: View {
     }
     
     var body: some View {
-        NavigationView {
+        MatchlyNavigationView {
             List {
                 // Received Invites
                 if !pendingReceivedInvites.isEmpty {

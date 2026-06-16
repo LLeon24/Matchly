@@ -532,7 +532,7 @@ struct EditQuestionView: View {
 }
 
 #Preview {
-    NavigationView {
+    MatchlyNavigationView {
         QuestionnaireCustomizationView()
             .environmentObject(DataManager.shared)
     }

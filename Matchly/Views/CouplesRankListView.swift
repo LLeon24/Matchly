@@ -291,7 +291,7 @@ struct AddCouplesRankPairView: View {
     @State private var notes = ""
     
     var body: some View {
-        NavigationView {
+        MatchlyNavigationView {
             Form {
                 Section("Your Program") {
                     Toggle("No Match", isOn: $user1NoMatch)
@@ -387,7 +387,7 @@ struct CouplesPreferencesView: View {
     }
     
     var body: some View {
-        NavigationView {
+        MatchlyNavigationView {
             Form {
                 Section("Geographic Preferences") {
                     Picker("Priority", selection: $geographicPriority) {

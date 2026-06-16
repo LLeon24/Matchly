@@ -185,6 +185,22 @@ struct CouplesMatchingView: View {
                     } header: {
                         Text("Link Options")
                     }
+
+                    Section {
+                        Button(action: regenerateCoupleCode) {
+                            HStack {
+                                Image(systemName: "arrow.clockwise")
+                                    .foregroundColor(.blue)
+                                Text("Generate New Code")
+                            }
+                        }
+
+                        Button(role: .destructive, action: cancelCoupleSetup) {
+                            Text("Cancel Setup")
+                        }
+                    } footer: {
+                        Text("Generate a new code if you shared the old one by mistake. Cancel removes this pending invite so you can start over.")
+                    }
                 }
             } else {
                 // No couple set up
@@ -323,6 +339,19 @@ struct CouplesMatchingView: View {
         dataManager.preferences.couplesRankPairs = []
         dataManager.savePreferences()
     }
+
+    private func cancelCoupleSetup() {
+        unlinkCouple()
+    }
+
+    private func regenerateCoupleCode() {
+        guard var couple = dataManager.preferences.couple, !couple.isLinked else { return }
+        let newCode = Couple.generateCoupleCode()
+        couple.coupleCode = newCode
+        couple.inviteLink = Couple.generateInviteLink(code: newCode)
+        dataManager.preferences.couple = couple
+        dataManager.savePreferences()
+    }
 }
 
 struct FeatureRow: View {
@@ -352,7 +381,7 @@ struct LinkPartnerView: View {
     @State private var useLink = false
     
     var body: some View {
-        NavigationView {
+        MatchlyNavigationView {
             Form {
                 Section {
                     Picker("Link Method", selection: $useLink) {
