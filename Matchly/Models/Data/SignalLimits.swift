@@ -341,7 +341,7 @@ struct SignalLimits {
         }) {
             return key
         }
-        if let (alias, canonical) = specialtyAliases.first(where: {
+        if let (_, canonical) = specialtyAliases.first(where: {
             $0.key.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current) == folded
         }), erasLimits[canonical] != nil {
             return canonical

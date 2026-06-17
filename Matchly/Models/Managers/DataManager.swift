@@ -212,6 +212,14 @@ class DataManager: ObservableObject {
         }
     }
     
+    func updateDashboardCustomization(layout: DashboardLayout, dashboardPreferences: DashboardPreferences) {
+        var updated = preferences
+        updated.dashboardLayout = layout
+        updated.dashboardPreferences = dashboardPreferences
+        preferences = updated
+        savePreferences()
+    }
+    
     func savePreferences() {
         // Cancel previous save operation
         savePreferencesWorkItem?.cancel()
@@ -349,7 +357,7 @@ class DataManager: ObservableObject {
         var pulledPreferences = false
         var pushedLocal = false
 
-        if let cloudPrograms = cloud.programs {
+        if cloud.programs != nil {
             if programs.isEmpty || cloudProgramsAt > localProgramsAt {
                 pulledPrograms = true
             } else if localProgramsAt > cloudProgramsAt {
@@ -369,7 +377,7 @@ class DataManager: ObservableObject {
             pushedLocal = true
         }
 
-        if let cloudPreferences = cloud.preferences {
+        if cloud.preferences != nil {
             if !hasMeaningfulLocalPreferences || cloudPreferencesAt > localPreferencesAt {
                 pulledPreferences = true
             } else if localPreferencesAt > cloudPreferencesAt {

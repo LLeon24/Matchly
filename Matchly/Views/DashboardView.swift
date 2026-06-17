@@ -27,12 +27,26 @@ struct DashboardView: View {
     private var layout: DashboardLayout {
         dataManager.preferences.dashboardLayout
     }
+
+    private var dashboardPreferences: DashboardPreferences {
+        dataManager.preferences.dashboardPreferences
+    }
+
+    /// Changes when layout or header prefs change — forces dashboard pages to refresh.
+    private var dashboardCustomizationToken: String {
+        let layout = dataManager.preferences.dashboardLayout
+        let prefs = dataManager.preferences.dashboardPreferences
+        let disabled = layout.disabledSections.sorted().joined(separator: ",")
+        let order = layout.sectionOrder.joined(separator: ",")
+        return "\(order)|\(disabled)|\(prefs.greetingStyle.rawValue)|\(prefs.headerSubtitleMode.rawValue)"
+    }
     
     var body: some View {
         VStack(spacing: 0) {
             // Persistent compact header (greeting + profile + customize) that stays
             // pinned above the swipeable section pages — the premium "command bar".
             headerBar
+                .id(dashboardCustomizationToken)
 
             if dataManager.programs.isEmpty {
                 ScrollView {
@@ -56,10 +70,13 @@ struct DashboardView: View {
                 TabView(selection: $selectedSection) {
                     overviewPage
                         .tag(0)
+                        .id("overview-\(dashboardCustomizationToken)")
                     programsPage
                         .tag(1)
+                        .id("programs-\(dashboardCustomizationToken)")
                     interviewsPage
                         .tag(2)
+                        .id("interviews-\(dashboardCustomizationToken)")
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
             }
@@ -211,17 +228,22 @@ struct DashboardView: View {
 
     /// Clean, contextual subtitle under the greeting — date, motivational line, or specialty count.
     private var headerSubtitle: String {
-        let prefs = dataManager.preferences.dashboardPreferences
-        if prefs.showMotivationalMessage {
+        switch dashboardPreferences.headerSubtitleMode {
+        case .motivational:
             return getMotivationalMessage()
-        }
-        if prefs.showSpecialtyCount && !dataManager.preferences.specialties.isEmpty {
+        case .specialtyCount:
             let count = dataManager.preferences.specialties.count
+            guard count > 0 else {
+                let formatter = DateFormatter()
+                formatter.dateFormat = "EEEE, MMMM d"
+                return formatter.string(from: Date())
+            }
             return "Tracking \(count) specialt\(count == 1 ? "y" : "ies")"
+        case .date:
+            let formatter = DateFormatter()
+            formatter.dateFormat = "EEEE, MMMM d"
+            return formatter.string(from: Date())
         }
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEEE, MMMM d"
-        return formatter.string(from: Date())
     }
 
     // MARK: - Section Pages
@@ -1146,7 +1168,7 @@ struct DashboardView: View {
     }
     
     private func getGreeting() -> String {
-        let prefs = dataManager.preferences.dashboardPreferences
+        let prefs = dashboardPreferences
         let name = dataManager.preferences.profile.name
         
         switch prefs.greetingStyle {

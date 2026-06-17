@@ -30,7 +30,7 @@ struct DashboardCustomizationView: View {
     @State private var overviewOrder: [String] = []
     @State private var programsOrder: [String] = []
     @State private var interviewsOrder: [String] = []
-    @State private var enabledSections: Set<String> = []
+    @State private var disabledSections: Set<String> = []
 
     private static let allSections: [DashboardSectionInfo] = [
 DashboardSectionInfo(
@@ -134,12 +134,15 @@ DashboardSectionInfo(
                         }
                     }
 
-                    Toggle("Motivational Subtitle", isOn: $draftPreferences.showMotivationalMessage)
-                    Toggle("Show Specialty Count", isOn: $draftPreferences.showSpecialtyCount)
+                    Picker("Header Subtitle", selection: $draftPreferences.headerSubtitleMode) {
+                        ForEach(DashboardPreferences.HeaderSubtitleMode.allCases, id: \.self) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
                 } header: {
                     Text("Header Bar")
                 } footer: {
-                    Text("Controls the greeting and subtitle under your name. When both subtitle options are off, today's date is shown.")
+                    Text("Controls the greeting line and the subtitle under your name on the dashboard.")
                 }
 
                 sectionGroup(
@@ -206,12 +209,12 @@ DashboardSectionInfo(
                 if let section = Self.allSections.first(where: { $0.id == sectionId }) {
                     DashboardSectionRow(
                         section: section,
-                        isEnabled: enabledSections.contains(sectionId),
+                        isEnabled: !disabledSections.contains(sectionId),
                         onToggle: {
-                            if enabledSections.contains(sectionId) {
-                                enabledSections.remove(sectionId)
+                            if disabledSections.contains(sectionId) {
+                                disabledSections.remove(sectionId)
                             } else {
-                                enabledSections.insert(sectionId)
+                                disabledSections.insert(sectionId)
                             }
                         }
                     )
@@ -243,11 +246,7 @@ DashboardSectionInfo(
         ensureGroupOrder(&programsOrder, ids: DashboardLayout.programsSectionIDs)
         ensureGroupOrder(&interviewsOrder, ids: DashboardLayout.interviewsSectionIDs)
 
-        if layout.enabledSections.isEmpty {
-            enabledSections = DashboardLayout.defaultSections
-        } else {
-            enabledSections = DashboardLayout.normalizeEnabledSections(layout.enabledSections)
-        }
+        disabledSections = DashboardLayout.normalizeSectionIDs(layout.disabledSections)
     }
 
     private func ensureGroupOrder(_ order: inout [String], ids: Set<String>) {
@@ -262,18 +261,19 @@ DashboardSectionInfo(
         overviewOrder = DashboardLayout.defaultSectionOrder.filter { DashboardLayout.overviewSectionIDs.contains($0) }
         programsOrder = DashboardLayout.defaultSectionOrder.filter { DashboardLayout.programsSectionIDs.contains($0) }
         interviewsOrder = DashboardLayout.defaultSectionOrder.filter { DashboardLayout.interviewsSectionIDs.contains($0) }
-        enabledSections = DashboardLayout.defaultSections
+        disabledSections = []
     }
 
     private func saveCustomization() {
         var updatedLayout = dataManager.preferences.dashboardLayout
         updatedLayout.sectionOrder = overviewOrder + programsOrder + interviewsOrder
-        updatedLayout.enabledSections = enabledSections
+        updatedLayout.disabledSections = DashboardLayout.normalizeSectionIDs(disabledSections)
 
-        dataManager.preferences.dashboardLayout = updatedLayout
-        dataManager.preferences.dashboardPreferences = draftPreferences
-        dataManager.savePreferences()
-        dataManager.objectWillChange.send()
+        var prefs = draftPreferences
+        prefs.showMotivationalMessage = prefs.headerSubtitleMode == .motivational
+        prefs.showSpecialtyCount = prefs.headerSubtitleMode == .specialtyCount
+
+        dataManager.updateDashboardCustomization(layout: updatedLayout, dashboardPreferences: prefs)
     }
 }
 

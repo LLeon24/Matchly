@@ -226,8 +226,18 @@ struct DashboardSnapshotHero: View {
     }
 
     private var standardBody: some View {
-        VStack(spacing: 14) {
-            ringBlock
+        let heroMidSpacing: CGFloat = 12
+        return VStack(spacing: 0) {
+            heroRing
+
+            Text(progressCaption)
+                .font(.arial(size: layout.heroCaptionFont, weight: .medium))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .minimumScaleFactor(0.85)
+                .padding(.top, heroMidSpacing)
+                .padding(.bottom, heroMidSpacing)
 
             VStack(spacing: 5) {
                 Text(title)
@@ -270,53 +280,60 @@ struct DashboardSnapshotHero: View {
     }
 
     private var ringBlock: some View {
-        VStack(spacing: 6) {
-            ZStack {
-                Circle()
-                    .stroke(gradientColors[0].opacity(0.16), lineWidth: layout.heroRingLineWidth)
-                    .frame(width: layout.heroRingSize, height: layout.heroRingSize)
-
-                Circle()
-                    .trim(from: 0, to: min(max(progress, 0), 1))
-                    .stroke(
-                        ringGradient,
-                        style: StrokeStyle(lineWidth: layout.heroRingLineWidth, lineCap: .round)
-                    )
-                    .frame(width: layout.heroRingSize, height: layout.heroRingSize)
-                    .rotationEffect(.degrees(-90))
-                    .animation(.spring(response: 0.7, dampingFraction: 0.85), value: progress)
-
-                VStack(spacing: 0) {
-                    Text(bigNumber)
-                        .font(.arial(size: layout.heroBigNumberFont, weight: .bold))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: gradientColors,
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .minimumScaleFactor(0.5)
-                        .lineLimit(1)
-                    if !unit.isEmpty {
-                        Text(unit)
-                            .font(.arial(size: layout.heroUnitFont, weight: .semibold))
-                            .foregroundColor(accentTint.opacity(0.9))
-                            .textCase(.uppercase)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                    }
-                }
-                .padding(.horizontal, 4)
-            }
-
-            Text(progressCaption)
-                .font(.arial(size: layout.heroCaptionFont, weight: .medium))
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-                .minimumScaleFactor(0.85)
+        VStack(spacing: 8) {
+            heroRing
+            progressCaptionLabel
         }
+    }
+
+    private var heroRing: some View {
+        ZStack {
+            Circle()
+                .stroke(gradientColors[0].opacity(0.16), lineWidth: layout.heroRingLineWidth)
+                .frame(width: layout.heroRingSize, height: layout.heroRingSize)
+
+            Circle()
+                .trim(from: 0, to: min(max(progress, 0), 1))
+                .stroke(
+                    ringGradient,
+                    style: StrokeStyle(lineWidth: layout.heroRingLineWidth, lineCap: .round)
+                )
+                .frame(width: layout.heroRingSize, height: layout.heroRingSize)
+                .rotationEffect(.degrees(-90))
+                .animation(.spring(response: 0.7, dampingFraction: 0.85), value: progress)
+
+            VStack(spacing: 0) {
+                Text(bigNumber)
+                    .font(.arial(size: layout.heroBigNumberFont, weight: .bold))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: gradientColors,
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .minimumScaleFactor(0.5)
+                    .lineLimit(1)
+                if !unit.isEmpty {
+                    Text(unit)
+                        .font(.arial(size: layout.heroUnitFont, weight: .semibold))
+                        .foregroundColor(accentTint.opacity(0.9))
+                        .textCase(.uppercase)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+            }
+            .padding(.horizontal, 4)
+        }
+    }
+
+    private var progressCaptionLabel: some View {
+        Text(progressCaption)
+            .font(.arial(size: layout.heroCaptionFont, weight: .medium))
+            .foregroundColor(.secondary)
+            .multilineTextAlignment(.center)
+            .lineLimit(2)
+            .minimumScaleFactor(0.85)
     }
 
     @ViewBuilder

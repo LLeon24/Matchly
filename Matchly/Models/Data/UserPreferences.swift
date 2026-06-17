@@ -67,6 +67,15 @@ struct DashboardPreferences: Codable, Hashable {
     
     // Greeting style
     var greetingStyle: GreetingStyle = .timeBased
+
+    /// What appears under the greeting in the dashboard header bar.
+    var headerSubtitleMode: HeaderSubtitleMode = .motivational
+    
+    enum HeaderSubtitleMode: String, Codable, CaseIterable {
+        case date = "Today's Date"
+        case motivational = "Motivational"
+        case specialtyCount = "Specialty Count"
+    }
     
     enum WelcomeHeaderStyle: String, Codable, CaseIterable {
         case `default` = "Default"
@@ -87,8 +96,8 @@ struct DashboardLayout: Codable, Hashable {
     /// Ordered list of section IDs (determines display order within each dashboard tab).
     var sectionOrder: [String] = Self.defaultSectionOrder
 
-    /// Which sections are enabled (empty = all enabled by default).
-    var enabledSections: Set<String> = []
+    /// Section IDs the user turned off. Empty means every section is visible.
+    var disabledSections: Set<String> = []
 
     static let defaultSectionOrder: [String] = [
         // Overview tab
@@ -150,14 +159,25 @@ struct DashboardLayout: Codable, Hashable {
         return normalized
     }
 
-    static func normalizeEnabledSections(_ sections: Set<String>) -> Set<String> {
+    static func normalizeSectionIDs(_ ids: Set<String>) -> Set<String> {
         var normalized = Set<String>()
-        for id in sections {
+        for id in ids {
             if let mapped = normalizeSectionID(id) {
                 normalized.insert(mapped)
             }
         }
         return normalized
+    }
+
+    static func normalizeEnabledSections(_ sections: Set<String>) -> Set<String> {
+        normalizeSectionIDs(sections)
+    }
+
+    /// Converts a legacy enabled-sections set into the newer disabled-sections model.
+    static func disabledSections(fromLegacyEnabledSections enabled: Set<String>) -> Set<String> {
+        if enabled.isEmpty { return [] }
+        let normalizedEnabled = normalizeSectionIDs(enabled)
+        return defaultSections.subtracting(normalizedEnabled)
     }
 
     func orderedSectionIDs(in group: Set<String>) -> [String] {
@@ -167,11 +187,8 @@ struct DashboardLayout: Codable, Hashable {
 
     func isSectionEnabled(_ sectionId: String) -> Bool {
         guard let normalized = Self.normalizeSectionID(sectionId) else { return false }
-        if enabledSections.isEmpty {
-            return Self.defaultSections.contains(normalized)
-        }
-        let normalizedEnabled = Self.normalizeEnabledSections(enabledSections)
-        return normalizedEnabled.contains(normalized)
+        if disabledSections.isEmpty { return true }
+        return !Self.normalizeSectionIDs(disabledSections).contains(normalized)
     }
 }
 
@@ -223,6 +240,15 @@ extension DashboardPreferences {
         self.showQuickStats = try container.decodeIfPresent(Bool.self, forKey: .showQuickStats) ?? false
         self.showMotivationalMessage = try container.decodeIfPresent(Bool.self, forKey: .showMotivationalMessage) ?? true
         self.greetingStyle = try container.decodeIfPresent(GreetingStyle.self, forKey: .greetingStyle) ?? .timeBased
+        if let mode = try container.decodeIfPresent(DashboardPreferences.HeaderSubtitleMode.self, forKey: .headerSubtitleMode) {
+            self.headerSubtitleMode = mode
+        } else if self.showMotivationalMessage {
+            self.headerSubtitleMode = .motivational
+        } else if self.showSpecialtyCount {
+            self.headerSubtitleMode = .specialtyCount
+        } else {
+            self.headerSubtitleMode = .date
+        }
     }
 }
 
@@ -242,13 +268,38 @@ extension DashboardPreferences.GreetingStyle {
     }
 }
 
+extension DashboardPreferences.HeaderSubtitleMode {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try? container.decode(String.self)
+        self = raw.flatMap(DashboardPreferences.HeaderSubtitleMode.init(rawValue:)) ?? .motivational
+    }
+}
+
 extension DashboardLayout {
+    private enum CodingKeys: String, CodingKey {
+        case sectionOrder
+        case disabledSections
+        case enabledSections
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let rawOrder = try container.decodeIfPresent([String].self, forKey: .sectionOrder) ?? DashboardLayout.defaultSectionOrder
         self.sectionOrder = Self.normalizeSectionOrder(rawOrder)
-        let rawEnabled = try container.decodeIfPresent(Set<String>.self, forKey: .enabledSections) ?? []
-        self.enabledSections = rawEnabled.isEmpty ? [] : Self.normalizeEnabledSections(rawEnabled)
+
+        if let disabled = try container.decodeIfPresent(Set<String>.self, forKey: .disabledSections) {
+            self.disabledSections = Self.normalizeSectionIDs(disabled)
+        } else {
+            let legacyEnabled = try container.decodeIfPresent(Set<String>.self, forKey: .enabledSections) ?? []
+            self.disabledSections = Self.disabledSections(fromLegacyEnabledSections: legacyEnabled)
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(sectionOrder, forKey: .sectionOrder)
+        try container.encode(disabledSections, forKey: .disabledSections)
     }
 }
 
