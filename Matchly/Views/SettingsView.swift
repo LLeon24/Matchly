@@ -43,6 +43,7 @@ struct SettingsView: View {
             }
             .scrollContentBackground(.hidden)
             .matchlyReadableWidth()
+            .matchlyScrollTabBarClearance()
             .navigationTitle("Settings")
             .appCanvasBackground()
             .alert("Reset All Data", isPresented: $showResetAlert) {

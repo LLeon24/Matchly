@@ -38,8 +38,9 @@ struct DashboardView: View {
                     emptyStateSection
                         .padding(.horizontal, 16)
                         .padding(.top, 12)
-                        .padding(.bottom, 12)
+                        .padding(.bottom, screenLayout.pageBottomInset)
                 }
+                .matchlyScrollTabBarClearance()
             } else {
                 // Clean animated-underline section selector, kept in sync with
                 // the paged TabView below.
@@ -249,6 +250,7 @@ struct DashboardView: View {
             .padding(.top, 2)
             .padding(.bottom, screenLayout.pageBottomInset)
         }
+        .matchlyScrollTabBarClearance()
         .refreshable {
             dataManager.recalculateAllScores()
             dataManager.objectWillChange.send()
@@ -303,6 +305,7 @@ struct DashboardView: View {
             .padding(.top, 2)
             .padding(.bottom, screenLayout.pageBottomInset)
         }
+        .matchlyScrollTabBarClearance()
         .refreshable {
             dataManager.recalculateAllScores()
             dataManager.objectWillChange.send()
@@ -363,6 +366,7 @@ struct DashboardView: View {
             .padding(.top, 2)
             .padding(.bottom, screenLayout.pageBottomInset)
         }
+        .matchlyScrollTabBarClearance()
     }
 
     private var interviewsTimelineCard: some View {

@@ -301,6 +301,7 @@ struct RankListView: View {
         }
         .listStyle(.insetGrouped)
         .matchlyReadableWidth()
+        .matchlyScrollTabBarClearance()
         .environment(\.editMode, isEditing ? .constant(.active) : .constant(.inactive))
     }
     

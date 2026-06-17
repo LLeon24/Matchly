@@ -72,7 +72,10 @@ struct ProgramEntryView: View {
     // New comprehensive questionnaire
     @State private var questionnaire: Questionnaire = Questionnaire()
     @State private var expandedSections: Set<String> = [] // Track which sections are expanded
-    @State private var scrollProxy: ScrollViewProxy? = nil // Scroll notes into view when editing
+    @State private var scrollProxy: ScrollViewProxy? = nil // Notes + questionnaire auto-scroll
+
+    /// Positions the next question below mid-screen so the just-answered question stays visible above.
+    private static let nextQuestionScrollAnchor = UnitPoint(x: 0.5, y: 0.42)
     
     let programTypes = ["Academic", "Community", "Hybrid"]
     
@@ -250,11 +253,12 @@ struct ProgramEntryView: View {
                 }
                 .padding(.horizontal, 20)
                 
-                // Bottom padding for tab bar
-                Color.clear.frame(height: keyboardHeight > 0 ? 20 : 90)
+                // Extra clearance when the keyboard is open
+                Color.clear.frame(height: keyboardHeight > 0 ? 20 : 0)
             }
             .padding(.bottom, 8)
         }
+        .matchlyScrollTabBarClearance()
         .scrollDismissesKeyboard(.interactively)
         .background(AppColors.dashboardCanvas)
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { notification in
@@ -380,12 +384,19 @@ struct ProgramEntryView: View {
                                     programRating: Binding(
                                         get: { questionnaire.sections[sectionIndex].items[itemIndex].programRating },
                                         set: { newValue in
+                                            let oldValue = questionnaire.sections[sectionIndex].items[itemIndex].programRating
                                             var updated = questionnaire
                                             updated.sections[sectionIndex].items[itemIndex].programRating = newValue
                                             questionnaire = updated
 
                                             withAnimation(.easeInOut(duration: 0.2)) {
                                                 checkAndExpandNextSection(currentSectionIndex: sectionIndex, currentItemIndex: itemIndex)
+                                            }
+
+                                            if oldValue == 0 && newValue > 0 {
+                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                                    scrollToNextQuestion(currentSectionId: section.id, currentItemId: item.id)
+                                                }
                                             }
                                         }
                                     ),
@@ -442,9 +453,16 @@ struct ProgramEntryView: View {
                                     programRating: Binding(
                                         get: { questionnaire.customSections[sectionIndex].items[itemIndex].programRating },
                                         set: { newValue in
+                                            let oldValue = questionnaire.customSections[sectionIndex].items[itemIndex].programRating
                                             var updated = questionnaire
                                             updated.customSections[sectionIndex].items[itemIndex].programRating = newValue
                                             questionnaire = updated
+
+                                            if oldValue == 0 && newValue > 0 {
+                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                                    scrollToNextQuestion(currentSectionId: customSection.id, currentItemId: item.id)
+                                                }
+                                            }
                                         }
                                     ),
                                     notes: Binding(
@@ -1131,6 +1149,43 @@ struct ProgramEntryView: View {
         return false
     }
     
+    /// Scrolls to the next enabled question while keeping the answered question visible above it.
+    private func scrollToNextQuestion(currentSectionId: String, currentItemId: String) {
+        let allSections = questionnaire.enabledSections(preferences: dataManager.preferences)
+        var allQuestions: [(sectionId: String, itemId: String)] = []
+
+        for section in allSections {
+            let enabledItems = questionnaire.enabledItems(for: section, preferences: dataManager.preferences)
+            for item in enabledItems {
+                allQuestions.append((sectionId: section.id, itemId: item.id))
+            }
+        }
+
+        guard let currentIndex = allQuestions.firstIndex(where: {
+            $0.sectionId == currentSectionId && $0.itemId == currentItemId
+        }) else {
+            return
+        }
+
+        let nextIndex = currentIndex + 1
+        guard nextIndex < allQuestions.count else { return }
+
+        let nextQuestion = allQuestions[nextIndex]
+        let nextQuestionId = "\(nextQuestion.sectionId)-\(nextQuestion.itemId)"
+
+        if !expandedSections.contains(nextQuestion.sectionId) {
+            expandedSections.insert(nextQuestion.sectionId)
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            if let proxy = scrollProxy {
+                withAnimation(.easeInOut(duration: 0.35)) {
+                    proxy.scrollTo(nextQuestionId, anchor: Self.nextQuestionScrollAnchor)
+                }
+            }
+        }
+    }
+
     // Helper function to check if we should auto-expand next section
     private func checkAndExpandNextSection(currentSectionIndex: Int, currentItemIndex: Int) {
         guard currentSectionIndex < questionnaire.sections.count else { return }

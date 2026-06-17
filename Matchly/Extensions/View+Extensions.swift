@@ -34,7 +34,9 @@ enum MatchlyLayoutStyle: Equatable {
     var headerVerticalPadding: CGFloat { self == .compactVertical ? 8 : 16 }
     var cardVerticalPadding: CGFloat { self == .compactVertical ? 12 : 20 }
     var cardHorizontalPadding: CGFloat { self == .compactVertical ? 14 : 20 }
-    var pageBottomInset: CGFloat { self == .compactVertical ? 12 : 24 }
+    var pageBottomInset: CGFloat { self == .compactVertical ? 12 : 16 }
+    /// Space to keep scroll content above the floating tab bar.
+    var tabBarScrollClearance: CGFloat { self == .compactVertical ? 72 : 92 }
     var dashboardSectionSpacing: CGFloat { self == .compactVertical ? 10 : 14 }
     var tabBarIconFont: CGFloat { self == .compactVertical ? 18 : 22 }
     var tabBarTitleFont: CGFloat { self == .compactVertical ? 9 : 10 }
@@ -136,6 +138,23 @@ extension View {
     /// Centers readable-width content on iPad / wide landscape while still filling the canvas.
     func matchlyReadableWidth(_ maxWidth: CGFloat = 960) -> some View {
         modifier(MatchlyReadableWidthModifier(maxWidth: maxWidth))
+    }
+
+    /// Ensures scrollable tab content can scroll fully above the floating tab bar.
+    func matchlyScrollTabBarClearance() -> some View {
+        modifier(MatchlyScrollTabBarClearanceModifier())
+    }
+}
+
+private struct MatchlyScrollTabBarClearanceModifier: ViewModifier {
+    @Environment(\.matchlyLayout) private var layout
+
+    func body(content: Content) -> some View {
+        content.safeAreaInset(edge: .bottom, spacing: 0) {
+            Color.clear
+                .frame(height: layout.tabBarScrollClearance)
+                .accessibilityHidden(true)
+        }
     }
 }
 

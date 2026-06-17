@@ -79,6 +79,7 @@ struct ProgramsListView: View {
                     }
                     .listStyle(.insetGrouped)
                     .matchlyReadableWidth()
+                    .matchlyScrollTabBarClearance()
                     .refreshable {
                         dataManager.recalculateAllScores()
                         dataManager.objectWillChange.send()
