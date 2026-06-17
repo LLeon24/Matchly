@@ -209,8 +209,16 @@ struct DashboardView: View {
         return initials.isEmpty ? nil : initials
     }
 
-    /// Clean, contextual subtitle: today's date (e.g. "Saturday, June 13").
+    /// Clean, contextual subtitle under the greeting — date, motivational line, or specialty count.
     private var headerSubtitle: String {
+        let prefs = dataManager.preferences.dashboardPreferences
+        if prefs.showMotivationalMessage {
+            return getMotivationalMessage()
+        }
+        if prefs.showSpecialtyCount && !dataManager.preferences.specialties.isEmpty {
+            let count = dataManager.preferences.specialties.count
+            return "Tracking \(count) specialt\(count == 1 ? "y" : "ies")"
+        }
         let formatter = DateFormatter()
         formatter.dateFormat = "EEEE, MMMM d"
         return formatter.string(from: Date())
@@ -222,31 +230,19 @@ struct DashboardView: View {
     private var overviewPage: some View {
         ScrollView {
             VStack(spacing: screenLayout.dashboardSectionSpacing) {
-                DashboardSnapshotHero(
-                    progress: overviewHeroProgress,
-                    progressCaption: overviewHeroProgressCaption,
-                    bigNumber: overviewHeroBigNumber,
-                    unit: overviewHeroUnit,
-                    title: "Your Interview Season",
-                    subtitle: overviewHeroSubtitle,
-                    stats: overviewHeroStats,
-                    accentTint: overviewHeroAccentTint
-                )
-                .dashboardCardStyle()
-
-                if screenLayout == .compactVertical {
-                    HStack(alignment: .top, spacing: 10) {
-                        needsAttentionCard
-                            .frame(maxWidth: .infinity, alignment: .topLeading)
-                        overviewFunnelCard
-                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                ForEach(overviewDisplayBlocks) { block in
+                    switch block {
+                    case .pairedAttentionAndPipeline:
+                        HStack(alignment: .top, spacing: 10) {
+                            needsAttentionCard
+                                .frame(maxWidth: .infinity, alignment: .topLeading)
+                            overviewFunnelCard
+                                .frame(maxWidth: .infinity, alignment: .topLeading)
+                        }
+                    case .section(let sectionId):
+                        overviewSectionView(for: sectionId)
                     }
-                } else {
-                    needsAttentionCard
-                    overviewFunnelCard
                 }
-
-                quickActionsSection
             }
             .padding(.horizontal, 16)
             .padding(.top, 2)
@@ -256,6 +252,69 @@ struct DashboardView: View {
         .refreshable {
             dataManager.recalculateAllScores()
             dataManager.objectWillChange.send()
+        }
+    }
+
+    private enum OverviewDisplayBlock: Identifiable {
+        case section(String)
+        case pairedAttentionAndPipeline
+
+        var id: String {
+            switch self {
+            case .section(let sectionId): return sectionId
+            case .pairedAttentionAndPipeline: return "pairedAttentionAndPipeline"
+            }
+        }
+    }
+
+    private var overviewDisplayBlocks: [OverviewDisplayBlock] {
+        let visible = layout.orderedSectionIDs(in: DashboardLayout.overviewSectionIDs)
+            .filter { shouldShowSection($0) }
+        var blocks: [OverviewDisplayBlock] = []
+        var index = 0
+        while index < visible.count {
+            let sectionId = visible[index]
+            if screenLayout == .compactVertical,
+               sectionId == "needsAttention",
+               index + 1 < visible.count,
+               visible[index + 1] == "interviewPipeline" {
+                blocks.append(.pairedAttentionAndPipeline)
+                index += 2
+            } else {
+                blocks.append(.section(sectionId))
+                index += 1
+            }
+        }
+        return blocks
+    }
+
+    @ViewBuilder
+    private func overviewSectionView(for sectionId: String) -> some View {
+        switch sectionId {
+        case "overviewHero":
+            DashboardSnapshotHero(
+                progress: overviewHeroProgress,
+                progressCaption: overviewHeroProgressCaption,
+                bigNumber: overviewHeroBigNumber,
+                unit: overviewHeroUnit,
+                title: "Your Interview Season",
+                subtitle: overviewHeroSubtitle,
+                stats: overviewHeroStats,
+                accentTint: overviewHeroAccentTint
+            )
+            .dashboardCardStyle()
+        case "needsAttention":
+            needsAttentionCard
+        case "interviewPipeline":
+            overviewFunnelCard
+        case "quickStats":
+            quickStatsSection
+        case "quickActions":
+            quickActionsSection
+        case "recentActivity":
+            recentActivitySection
+        default:
+            EmptyView()
         }
     }
 
@@ -288,14 +347,10 @@ struct DashboardView: View {
                 )
                 .dashboardCardStyle()
 
-                programsScoreDistributionCard
-
-                if dataManager.programs.count >= 2 {
-                    programsCompareCard
-                }
-
-                if !topPrograms.isEmpty {
-                    topProgramsSection
+                ForEach(layout.orderedSectionIDs(in: DashboardLayout.programsSectionIDs), id: \.self) { sectionId in
+                    if shouldShowSection(sectionId) {
+                        programsSectionView(for: sectionId)
+                    }
                 }
             }
             .padding(.horizontal, 16)
@@ -306,6 +361,26 @@ struct DashboardView: View {
         .refreshable {
             dataManager.recalculateAllScores()
             dataManager.objectWillChange.send()
+        }
+    }
+
+    @ViewBuilder
+    private func programsSectionView(for sectionId: String) -> some View {
+        switch sectionId {
+        case "programsScoreDist":
+            programsScoreDistributionCard
+        case "programsCompare":
+            if dataManager.programs.count >= 2 {
+                programsCompareCard
+            }
+        case "topPrograms":
+            if !topPrograms.isEmpty {
+                topProgramsSection
+            }
+        case "analytics":
+            analyticsSection
+        default:
+            EmptyView()
         }
     }
 
@@ -373,10 +448,12 @@ struct DashboardView: View {
                 )
                 .dashboardCardStyle()
 
-                if upcomingInterviews.isEmpty {
-                    interviewsEmptyCard
-                } else {
-                    interviewsTimelineCard
+                if shouldShowSection("upcomingInterviews") {
+                    if upcomingInterviews.isEmpty {
+                        interviewsEmptyCard
+                    } else {
+                        interviewsTimelineCard
+                    }
                 }
             }
             .padding(.horizontal, 16)
@@ -2083,59 +2160,25 @@ struct DashboardView: View {
     }
     
     // MARK: - Dashboard Layout Helpers
-    private struct DashboardSection {
-        let id: String
-        let view: AnyView
-    }
-    
-    private func getOrderedSections() -> [DashboardSection] {
-        // Build sections dictionary - handle AnyView returns properly
-        var allSections: [String: AnyView] = [:]
-        
-        allSections["welcome"] = AnyView(welcomeHeader)
-        allSections["quickActions"] = AnyView(quickActionsSection)
-        allSections["nextSteps"] = AnyView(nextStepsSection)
-        allSections["quickStats"] = AnyView(quickStatsSection)
-        allSections["analytics"] = AnyView(analyticsSection)
-        allSections["topPrograms"] = AnyView(topProgramsSection)
-        allSections["upcomingInterviews"] = AnyView(upcomingInterviewsSection)
-        allSections["recentActivity"] = AnyView(recentActivitySection)
-        
-        // Get ordered section IDs from preferences, or use default order
-        // Prioritize key metrics at top (information hierarchy principle)
-        let defaultOrder = ["welcome", "quickStats", "quickActions", "nextSteps", "analytics", "topPrograms", "upcomingInterviews", "recentActivity"]
-        let orderedIds = layout.sectionOrder.isEmpty ? defaultOrder : layout.sectionOrder
-        
-        // Build ordered sections array
-        var orderedSections: [DashboardSection] = []
-        for id in orderedIds {
-            if let view = allSections[id] {
-                orderedSections.append(DashboardSection(id: id, view: view))
-            }
-        }
-        
-        // Add any sections not in the order list at the end
-        for (id, view) in allSections {
-            if !orderedIds.contains(id) {
-                orderedSections.append(DashboardSection(id: id, view: view))
-            }
-        }
-        
-        return orderedSections
-    }
-    
+
     private func shouldShowSection(_ sectionId: String) -> Bool {
-        // Check if section is enabled in preferences
         guard layout.isSectionEnabled(sectionId) else { return false }
-        
-        // Additional conditional logic for specific sections
+
         switch sectionId {
-        case "nextSteps", "analytics", "recentActivity":
+        case "needsAttention", "interviewPipeline", "overviewHero", "quickActions", "quickStats":
+            return true
+        case "analytics":
             return !dataManager.programs.isEmpty
+        case "recentActivity":
+            return !getRecentPrograms().isEmpty
         case "topPrograms":
             return !topPrograms.isEmpty
+        case "programsScoreDist":
+            return !dataManager.programs.isEmpty
+        case "programsCompare":
+            return dataManager.programs.count >= 2
         case "upcomingInterviews":
-            return !upcomingInterviews.isEmpty
+            return true
         default:
             return true
         }

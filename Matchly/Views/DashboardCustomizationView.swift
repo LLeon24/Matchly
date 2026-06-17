@@ -1,0 +1,318 @@
+//
+//  DashboardCustomizationView.swift
+//  Matchly
+//
+//  Created on 11/23/25.
+//
+
+import SwiftUI
+import Combine
+
+private enum DashboardCustomizationTab: String {
+    case overview = "Overview"
+    case programs = "Programs"
+    case interviews = "Interviews"
+}
+
+private struct DashboardSectionInfo: Identifiable {
+    let id: String
+    let title: String
+    let icon: String
+    let description: String
+    let tab: DashboardCustomizationTab
+}
+
+struct DashboardCustomizationView: View {
+    @EnvironmentObject var dataManager: DataManager
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var draftPreferences = DashboardPreferences()
+    @State private var overviewOrder: [String] = []
+    @State private var programsOrder: [String] = []
+    @State private var interviewsOrder: [String] = []
+    @State private var enabledSections: Set<String> = []
+
+    private static let allSections: [DashboardSectionInfo] = [
+DashboardSectionInfo(
+            id: "overviewHero",
+            title: "Interview Season",
+            icon: "sparkles",
+            description: "Snapshot hero with progress and key stats",
+            tab: .overview
+        ),
+DashboardSectionInfo(
+            id: "needsAttention",
+            title: "Needs Attention",
+            icon: "bell.badge.fill",
+            description: "Actionable to-dos and reminders",
+            tab: .overview
+        ),
+DashboardSectionInfo(
+            id: "interviewPipeline",
+            title: "Interview Pipeline",
+            icon: "line.3.horizontal.decrease",
+            description: "Funnel from invites through ranking",
+            tab: .overview
+        ),
+DashboardSectionInfo(
+            id: "quickStats",
+            title: "Key Metrics",
+            icon: "chart.bar.fill",
+            description: "Programs, reviews, interviews, top program",
+            tab: .overview
+        ),
+DashboardSectionInfo(
+            id: "quickActions",
+            title: "Quick Actions",
+            icon: "bolt.fill",
+            description: "Add Program, My Programs, Rank List",
+            tab: .overview
+        ),
+DashboardSectionInfo(
+            id: "recentActivity",
+            title: "Recent Activity",
+            icon: "clock.fill",
+            description: "Recently added or updated programs",
+            tab: .overview
+        ),
+DashboardSectionInfo(
+            id: "programsScoreDist",
+            title: "Score Distribution",
+            icon: "chart.bar.fill",
+            description: "How your program scores are spread",
+            tab: .programs
+        ),
+DashboardSectionInfo(
+            id: "programsCompare",
+            title: "Compare Programs",
+            icon: "square.grid.2x2",
+            description: "Shortcut to side-by-side comparison",
+            tab: .programs
+        ),
+DashboardSectionInfo(
+            id: "topPrograms",
+            title: "Top Programs",
+            icon: "trophy.fill",
+            description: "Preview of your highest-ranked programs",
+            tab: .programs
+        ),
+DashboardSectionInfo(
+            id: "analytics",
+            title: "Analytics & Insights",
+            icon: "chart.line.uptrend.xyaxis",
+            description: "Scores, completion, signals, specialty breakdown",
+            tab: .programs
+        ),
+DashboardSectionInfo(
+            id: "upcomingInterviews",
+            title: "Interview Timeline",
+            icon: "calendar.badge.clock",
+            description: "Chronological list of upcoming interviews",
+            tab: .interviews
+        )
+    ]
+
+    var body: some View {
+        MatchlyNavigationView {
+            List {
+                Section {
+                    Text("Choose what appears on each dashboard tab and reorder sections to match your workflow. The greeting bar at the top is always visible.")
+                        .font(.arial(size: 13))
+                        .foregroundColor(.secondary)
+                        .padding(.vertical, 4)
+                        .glassPanelStyle(cornerRadius: 14)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                        .listRowBackground(Color.clear)
+                } header: {
+                    Text("Dashboard Layout")
+                }
+
+                Section {
+                    Picker("Greeting Style", selection: $draftPreferences.greetingStyle) {
+                        ForEach(DashboardPreferences.GreetingStyle.allCases, id: \.self) { style in
+                            Text(style.rawValue).tag(style)
+                        }
+                    }
+
+                    Toggle("Motivational Subtitle", isOn: $draftPreferences.showMotivationalMessage)
+                    Toggle("Show Specialty Count", isOn: $draftPreferences.showSpecialtyCount)
+                } header: {
+                    Text("Header Bar")
+                } footer: {
+                    Text("Controls the greeting and subtitle under your name. When both subtitle options are off, today's date is shown.")
+                }
+
+                sectionGroup(
+                    title: "Overview Tab",
+                    footer: "Sections on the Overview page. On smaller phones, Needs Attention and Interview Pipeline may appear side by side when adjacent.",
+                    order: $overviewOrder
+                )
+
+                sectionGroup(
+                    title: "Programs Tab",
+                    footer: "Sections below the Programs Tracked hero.",
+                    order: $programsOrder
+                )
+
+                sectionGroup(
+                    title: "Interviews Tab",
+                    footer: "Timeline below the Upcoming Interviews hero.",
+                    order: $interviewsOrder
+                )
+
+                Section {
+                    Button("Reset to Defaults") {
+                        resetToDefaults()
+                    }
+                    .foregroundColor(.red)
+                }
+            }
+            .environment(\.editMode, .constant(.active))
+            .navigationTitle("Customize Dashboard")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        saveCustomization()
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                    .buttonStyle(.glassProminent)
+                    .tint(AppColors.primaryBlue)
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .appCanvasBackground()
+            .onAppear {
+                loadCurrentSettings()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func sectionGroup(
+        title: String,
+        footer: String,
+        order: Binding<[String]>
+    ) -> some View {
+        Section {
+            ForEach(order.wrappedValue, id: \.self) { sectionId in
+                if let section = Self.allSections.first(where: { $0.id == sectionId }) {
+                    DashboardSectionRow(
+                        section: section,
+                        isEnabled: enabledSections.contains(sectionId),
+                        onToggle: {
+                            if enabledSections.contains(sectionId) {
+                                enabledSections.remove(sectionId)
+                            } else {
+                                enabledSections.insert(sectionId)
+                            }
+                        }
+                    )
+                }
+            }
+            .onMove { source, destination in
+                order.wrappedValue.move(fromOffsets: source, toOffset: destination)
+            }
+        } header: {
+            Text(title)
+        } footer: {
+            Text(footer)
+        }
+    }
+
+    private func loadCurrentSettings() {
+        draftPreferences = dataManager.preferences.dashboardPreferences
+
+        let layout = dataManager.preferences.dashboardLayout
+        let normalizedOrder = DashboardLayout.normalizeSectionOrder(
+            layout.sectionOrder.isEmpty ? DashboardLayout.defaultSectionOrder : layout.sectionOrder
+        )
+
+        overviewOrder = normalizedOrder.filter { DashboardLayout.overviewSectionIDs.contains($0) }
+        programsOrder = normalizedOrder.filter { DashboardLayout.programsSectionIDs.contains($0) }
+        interviewsOrder = normalizedOrder.filter { DashboardLayout.interviewsSectionIDs.contains($0) }
+
+        ensureGroupOrder(&overviewOrder, ids: DashboardLayout.overviewSectionIDs)
+        ensureGroupOrder(&programsOrder, ids: DashboardLayout.programsSectionIDs)
+        ensureGroupOrder(&interviewsOrder, ids: DashboardLayout.interviewsSectionIDs)
+
+        if layout.enabledSections.isEmpty {
+            enabledSections = DashboardLayout.defaultSections
+        } else {
+            enabledSections = DashboardLayout.normalizeEnabledSections(layout.enabledSections)
+        }
+    }
+
+    private func ensureGroupOrder(_ order: inout [String], ids: Set<String>) {
+        for id in ids where !order.contains(id) {
+            order.append(id)
+        }
+        order.removeAll { !ids.contains($0) }
+    }
+
+    private func resetToDefaults() {
+        draftPreferences = DashboardPreferences()
+        overviewOrder = DashboardLayout.defaultSectionOrder.filter { DashboardLayout.overviewSectionIDs.contains($0) }
+        programsOrder = DashboardLayout.defaultSectionOrder.filter { DashboardLayout.programsSectionIDs.contains($0) }
+        interviewsOrder = DashboardLayout.defaultSectionOrder.filter { DashboardLayout.interviewsSectionIDs.contains($0) }
+        enabledSections = DashboardLayout.defaultSections
+    }
+
+    private func saveCustomization() {
+        var updatedLayout = dataManager.preferences.dashboardLayout
+        updatedLayout.sectionOrder = overviewOrder + programsOrder + interviewsOrder
+        updatedLayout.enabledSections = enabledSections
+
+        dataManager.preferences.dashboardLayout = updatedLayout
+        dataManager.preferences.dashboardPreferences = draftPreferences
+        dataManager.savePreferences()
+        dataManager.objectWillChange.send()
+    }
+}
+
+private struct DashboardSectionRow: View {
+    let section: DashboardSectionInfo
+    let isEnabled: Bool
+    let onToggle: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: section.icon)
+                .font(.arial(size: 18))
+                .foregroundColor(isEnabled ? AppColors.primaryBlue : .gray)
+                .frame(width: 24)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(section.title)
+                    .font(.arial(size: 15, weight: .medium))
+                    .foregroundColor(isEnabled ? .primary : .secondary)
+
+                Text(section.description)
+                    .font(.arial(size: 12))
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            Toggle("", isOn: Binding(
+                get: { isEnabled },
+                set: { _ in onToggle() }
+            ))
+            .labelsHidden()
+        }
+        .opacity(isEnabled ? 1.0 : 0.6)
+        .contentShape(Rectangle())
+    }
+}
+
+#Preview {
+    DashboardCustomizationView()
+        .environmentObject(DataManager.shared)
+}

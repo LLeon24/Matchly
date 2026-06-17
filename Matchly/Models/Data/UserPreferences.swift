@@ -84,39 +84,94 @@ struct DashboardPreferences: Codable, Hashable {
 }
 
 struct DashboardLayout: Codable, Hashable {
-    // Ordered list of section IDs (determines display order)
-    var sectionOrder: [String] = [
-        "welcome",
-        "quickActions",
-        "nextSteps",
-        "quickStats",
-        "analytics",
-        "topPrograms",
-        "upcomingInterviews",
-        "recentActivity"
-    ]
-    
-    // Which sections are enabled (empty = all enabled by default)
+    /// Ordered list of section IDs (determines display order within each dashboard tab).
+    var sectionOrder: [String] = Self.defaultSectionOrder
+
+    /// Which sections are enabled (empty = all enabled by default).
     var enabledSections: Set<String> = []
-    
-    // Default enabled sections (all enabled by default)
-    static let defaultSections: Set<String> = [
-        "welcome",
-        "quickActions",
-        "nextSteps",
+
+    static let defaultSectionOrder: [String] = [
+        // Overview tab
+        "overviewHero",
+        "needsAttention",
+        "interviewPipeline",
         "quickStats",
-        "analytics",
+        "quickActions",
+        "recentActivity",
+        // Programs tab
+        "programsScoreDist",
+        "programsCompare",
         "topPrograms",
-        "upcomingInterviews",
-        "recentActivity"
+        "analytics",
+        // Interviews tab
+        "upcomingInterviews"
     ]
-    
-    func isSectionEnabled(_ sectionId: String) -> Bool {
-        // If enabledSections is empty, all sections are enabled by default
-        if enabledSections.isEmpty {
-            return Self.defaultSections.contains(sectionId)
+
+    static let overviewSectionIDs: Set<String> = [
+        "overviewHero", "needsAttention", "interviewPipeline",
+        "quickStats", "quickActions", "recentActivity"
+    ]
+
+    static let programsSectionIDs: Set<String> = [
+        "programsScoreDist", "programsCompare", "topPrograms", "analytics"
+    ]
+
+    static let interviewsSectionIDs: Set<String> = [
+        "upcomingInterviews"
+    ]
+
+    static let defaultSections: Set<String> = Set(defaultSectionOrder)
+
+    /// Maps legacy section IDs from the pre-tab dashboard to the current model.
+    private static let legacySectionMigration: [String: String] = [
+        "welcome": "overviewHero",
+        "nextSteps": "needsAttention"
+    ]
+
+    static func normalizeSectionID(_ id: String) -> String? {
+        if let mapped = legacySectionMigration[id] {
+            return mapped
         }
-        return enabledSections.contains(sectionId)
+        guard defaultSections.contains(id) else { return nil }
+        return id
+    }
+
+    static func normalizeSectionOrder(_ order: [String]) -> [String] {
+        var normalized: [String] = []
+        for id in order {
+            guard let mapped = normalizeSectionID(id) else { continue }
+            if !normalized.contains(mapped) {
+                normalized.append(mapped)
+            }
+        }
+        for id in defaultSectionOrder where !normalized.contains(id) {
+            normalized.append(id)
+        }
+        return normalized
+    }
+
+    static func normalizeEnabledSections(_ sections: Set<String>) -> Set<String> {
+        var normalized = Set<String>()
+        for id in sections {
+            if let mapped = normalizeSectionID(id) {
+                normalized.insert(mapped)
+            }
+        }
+        return normalized
+    }
+
+    func orderedSectionIDs(in group: Set<String>) -> [String] {
+        let order = sectionOrder.isEmpty ? Self.defaultSectionOrder : Self.normalizeSectionOrder(sectionOrder)
+        return order.filter { group.contains($0) }
+    }
+
+    func isSectionEnabled(_ sectionId: String) -> Bool {
+        guard let normalized = Self.normalizeSectionID(sectionId) else { return false }
+        if enabledSections.isEmpty {
+            return Self.defaultSections.contains(normalized)
+        }
+        let normalizedEnabled = Self.normalizeEnabledSections(enabledSections)
+        return normalizedEnabled.contains(normalized)
     }
 }
 
@@ -190,9 +245,10 @@ extension DashboardPreferences.GreetingStyle {
 extension DashboardLayout {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        // `sectionOrder` has a non-trivial default; fall back to a fresh instance's value.
-        self.sectionOrder = try container.decodeIfPresent([String].self, forKey: .sectionOrder) ?? DashboardLayout().sectionOrder
-        self.enabledSections = try container.decodeIfPresent(Set<String>.self, forKey: .enabledSections) ?? []
+        let rawOrder = try container.decodeIfPresent([String].self, forKey: .sectionOrder) ?? DashboardLayout.defaultSectionOrder
+        self.sectionOrder = Self.normalizeSectionOrder(rawOrder)
+        let rawEnabled = try container.decodeIfPresent(Set<String>.self, forKey: .enabledSections) ?? []
+        self.enabledSections = rawEnabled.isEmpty ? [] : Self.normalizeEnabledSections(rawEnabled)
     }
 }
 
