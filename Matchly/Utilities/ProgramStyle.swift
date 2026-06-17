@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 /// Color for a program's final score (0–100 scale).
 func scoreColor(_ score: Double) -> Color {
@@ -16,11 +17,26 @@ func scoreColor(_ score: Double) -> Color {
     return .red
 }
 
+/// UIKit twin of `scoreColor` for PDF / share rendering.
+func scoreUIColor(_ score: Double) -> UIColor {
+    UIColor(scoreColor(score))
+}
+
 /// Color for a program's rank position in the rank list.
 func rankColor(_ rank: Int) -> Color {
     if rank <= 3 { return .green }
     if rank <= 10 { return .blue }
     return .gray
+}
+
+/// UIKit twin of `rankColor` for PDF / share rendering.
+func rankUIColor(_ rank: Int) -> UIColor {
+    UIColor(rankColor(rank))
+}
+
+/// Specialty accent as UIKit color.
+func specialtyUIColor(for specialty: String) -> UIColor {
+    UIColor(SpecialtyFormatter.color(for: specialty))
 }
 
 /// Accent color for a program type (Academic / Community / Hybrid).

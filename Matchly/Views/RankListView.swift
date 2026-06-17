@@ -677,6 +677,22 @@ struct ExportView: View {
         )
     }
     
+    private var groupedPrograms: [String: [Program]] {
+        Dictionary(grouping: programs) { $0.specialty }
+    }
+
+    private var sortedSpecialties: [String] {
+        groupedPrograms.keys.sorted()
+    }
+
+    private var groupedRedFlagged: [String: [Program]] {
+        Dictionary(grouping: redFlaggedPrograms) { $0.specialty }
+    }
+
+    private var sortedRedFlaggedSpecialties: [String] {
+        groupedRedFlagged.keys.sorted()
+    }
+
     var body: some View {
         MatchlyNavigationView {
             VStack(spacing: 24) {
@@ -690,19 +706,21 @@ struct ExportView: View {
                         .padding(.horizontal)
                 }
                 .padding(.top)
-                
+
+                exportPreviewHeader
+
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         if !programs.isEmpty {
-                            exportSection(title: "Ranked Programs", programs: programs, startRank: 1)
+                            ForEach(sortedSpecialties, id: \.self) { specialty in
+                                exportSpecialtySection(
+                                    specialty: specialty,
+                                    programs: groupedPrograms[specialty] ?? []
+                                )
+                            }
                         }
                         if !redFlaggedPrograms.isEmpty {
-                            exportSection(
-                                title: "Red Flagged Programs",
-                                programs: redFlaggedPrograms,
-                                startRank: programs.count + 1,
-                                titleColor: .red
-                            )
+                            exportRedFlaggedSection
                         }
                     }
                     .padding()
@@ -753,47 +771,71 @@ struct ExportView: View {
         }
     }
 
-    @ViewBuilder
-    private func exportSection(
-        title: String,
-        programs: [Program],
-        startRank: Int,
-        titleColor: Color = .secondary
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.arial(size: 13, weight: .semibold))
-                .foregroundColor(titleColor)
+    private var exportPreviewHeader: some View {
+        HStack(spacing: 14) {
+            Image("MatchlyIcon")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 44, height: 44)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                )
 
-            ForEach(Array(programs.enumerated()), id: \.element.id) { offset, program in
-                let rank = startRank + offset
-                HStack(alignment: .top) {
-                    Text("\(rank).")
-                        .font(.arial(size: 16, weight: .semibold))
-                        .frame(width: 32, alignment: .leading)
-                    
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(HospitalNameFormatter.format(program.hospital.isEmpty ? program.name : program.hospital))
-                            .font(.arial(size: 16, weight: .medium))
-                        if let acgmeID = program.accreditationID, !acgmeID.isEmpty {
-                            Text("ID: \(acgmeID)")
-                                .font(.arial(size: 12))
-                                .foregroundColor(.secondary)
-                        }
-                        if !program.specialty.isEmpty {
-                            Text(program.specialty)
-                                .font(.arial(size: 12))
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    
-                    Spacer()
-                    
-                    Text(String(format: "%.1f", program.finalScore))
-                        .font(.arial(size: 14, weight: .semibold))
-                        .foregroundColor(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Matchly")
+                    .font(.arial(size: 18, weight: .bold))
+                    .foregroundColor(.white)
+                Text("Residency Rank List")
+                    .font(.arial(size: 12))
+                    .foregroundColor(.white.opacity(0.9))
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(AppColors.primaryGradient)
+        )
+        .padding(.horizontal)
+    }
+
+    @ViewBuilder
+    private func exportSpecialtySection(specialty: String, programs: [Program]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "stethoscope")
+                    .font(.arial(size: 12))
+                    .foregroundColor(SpecialtyFormatter.color(for: specialty))
+                Text(SpecialtyFormatter.displayNameWithAbbreviation(specialty))
+                    .font(.arial(size: 13, weight: .semibold))
+                    .foregroundColor(SpecialtyFormatter.color(for: specialty))
+            }
+
+            ForEach(Array(programs.enumerated()), id: \.element.id) { index, program in
+                RankListItemView(rank: index + 1, program: program)
+            }
+        }
+    }
+
+    private var exportRedFlaggedSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.arial(size: 12))
+                    .foregroundColor(.red)
+                Text("Red Flagged Programs")
+                    .font(.arial(size: 13, weight: .semibold))
+                    .foregroundColor(.red)
+            }
+
+            ForEach(sortedRedFlaggedSpecialties, id: \.self) { specialty in
+                ForEach(Array((groupedRedFlagged[specialty] ?? []).enumerated()), id: \.element.id) { index, program in
+                    RankListItemView(rank: index + 1, program: program)
                 }
-                .padding(.vertical, 4)
             }
         }
     }

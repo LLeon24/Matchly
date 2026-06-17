@@ -4,6 +4,7 @@
 //
 
 import UIKit
+import SwiftUI
 
 enum RankListPDFExporter {
     struct Configuration {
@@ -72,16 +73,18 @@ private struct DrawState {
     mutating func drawDocument() {
         beginPage()
         drawHeader()
-        drawTableHeader()
 
-        for (index, program) in configuration.programs.enumerated() {
-            drawProgramRow(rank: index + 1, program: program, isRedFlagged: false)
+        let grouped = Dictionary(grouping: configuration.programs) { $0.specialty }
+        for specialty in grouped.keys.sorted() {
+            guard let programs = grouped[specialty] else { continue }
+            drawSpecialtySection(specialty: specialty, programs: programs)
         }
 
         if !configuration.redFlaggedPrograms.isEmpty {
-            drawSectionTitle("Red Flagged Programs", color: Colors.red)
+            y += 6
+            drawSpecialtyHeader(title: "Red Flagged Programs", accent: Colors.red)
             for (index, program) in configuration.redFlaggedPrograms.enumerated() {
-                let rank = configuration.programs.count + index + 1
+                let rank = configuration.redFlaggedPrograms.count > 1 ? index + 1 : 1
                 drawProgramRow(rank: rank, program: program, isRedFlagged: true)
             }
         }
@@ -104,29 +107,37 @@ private struct DrawState {
         if y + height > pageRect.height - margin - footerReserve {
             drawFooter()
             beginPage()
-            drawTableHeader()
         }
     }
 
     mutating func drawHeader() {
-        let headerHeight: CGFloat = 92
+        let headerHeight: CGFloat = 88
         let headerRect = CGRect(x: margin, y: y, width: contentWidth, height: headerHeight)
-        let path = UIBezierPath(roundedRect: headerRect, cornerRadius: 12)
-        Colors.brandBlue.setFill()
-        path.fill()
 
-        let title = "Matchly"
-        let subtitle = "Residency Rank List"
+        guard let cgContext = UIGraphicsGetCurrentContext() else { return }
+        cgContext.saveGState()
+        drawBrandGradient(in: headerRect, cornerRadius: 14)
+
+        let logoSize: CGFloat = 52
+        let logoRect = CGRect(
+            x: headerRect.minX + 16,
+            y: headerRect.midY - logoSize / 2,
+            width: logoSize,
+            height: logoSize
+        )
+        drawMatchlyLogo(in: logoRect)
+
+        let textX = logoRect.maxX + 14
         let titleAttributes: [NSAttributedString.Key: Any] = [
-            .font: Fonts.bold(22),
+            .font: Fonts.bold(20),
             .foregroundColor: UIColor.white
         ]
         let subtitleAttributes: [NSAttributedString.Key: Any] = [
-            .font: Fonts.regular(13),
-            .foregroundColor: UIColor.white.withAlphaComponent(0.9)
+            .font: Fonts.regular(12),
+            .foregroundColor: UIColor.white.withAlphaComponent(0.92)
         ]
-        title.draw(at: CGPoint(x: headerRect.minX + 18, y: headerRect.minY + 16), withAttributes: titleAttributes)
-        subtitle.draw(at: CGPoint(x: headerRect.minX + 18, y: headerRect.minY + 44), withAttributes: subtitleAttributes)
+        "Matchly".draw(at: CGPoint(x: textX, y: headerRect.minY + 18), withAttributes: titleAttributes)
+        "Residency Rank List".draw(at: CGPoint(x: textX, y: headerRect.minY + 42), withAttributes: subtitleAttributes)
 
         var metaLines: [String] = []
         let trimmedName = configuration.applicantName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -142,46 +153,40 @@ private struct DrawState {
 
         let meta = metaLines.joined(separator: "  •  ")
         let metaAttributes: [NSAttributedString.Key: Any] = [
-            .font: Fonts.regular(10),
-            .foregroundColor: UIColor.white.withAlphaComponent(0.85)
+            .font: Fonts.regular(9),
+            .foregroundColor: UIColor.white.withAlphaComponent(0.88)
         ]
-        let metaRect = CGRect(x: headerRect.minX + 18, y: headerRect.maxY - 24, width: headerRect.width - 36, height: 16)
+        let metaRect = CGRect(x: textX, y: headerRect.maxY - 22, width: headerRect.maxX - textX - 12, height: 14)
         meta.draw(in: metaRect, withAttributes: metaAttributes)
 
-        y += headerHeight + 18
+        cgContext.restoreGState()
+        y += headerHeight + 16
     }
 
-    mutating func drawTableHeader() {
-        ensureSpace(28)
-        let rowHeight: CGFloat = 24
-        let rect = CGRect(x: margin, y: y, width: contentWidth, height: rowHeight)
-        let path = UIBezierPath(roundedRect: rect, cornerRadius: 6)
-        Colors.tableHeaderBackground.setFill()
-        path.fill()
-
-        drawColumnHeaders(in: rect)
-        y += rowHeight + 6
+    mutating func drawSpecialtySection(specialty: String, programs: [Program]) {
+        let displayName = specialty.isEmpty
+            ? "Programs"
+            : SpecialtyFormatter.displayNameWithAbbreviation(specialty)
+        drawSpecialtyHeader(title: displayName, accent: specialtyUIColor(for: specialty))
+        for (index, program) in programs.enumerated() {
+            drawProgramRow(rank: index + 1, program: program, isRedFlagged: false)
+        }
+        y += 4
     }
 
-    func drawColumnHeaders(in rect: CGRect) {
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: Fonts.semibold(10),
-            .foregroundColor: Colors.secondaryText
-        ]
-        "Rank".draw(in: CGRect(x: rect.minX + 10, y: rect.minY + 6, width: 34, height: 14), withAttributes: attributes)
-        "Program".draw(in: CGRect(x: rect.minX + 48, y: rect.minY + 6, width: 280, height: 14), withAttributes: attributes)
-        "Location".draw(in: CGRect(x: rect.minX + 330, y: rect.minY + 6, width: 150, height: 14), withAttributes: attributes)
-        "Score".draw(in: CGRect(x: rect.maxX - 58, y: rect.minY + 6, width: 48, height: 14), withAttributes: attributes)
-    }
-
-    mutating func drawSectionTitle(_ title: String, color: UIColor) {
-        ensureSpace(34)
-        y += 8
+    mutating func drawSpecialtyHeader(title: String, accent: UIColor) {
+        ensureSpace(30)
+        y += 4
+        let iconConfig = UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
+        if let icon = UIImage(systemName: "stethoscope", withConfiguration: iconConfig)?
+            .withTintColor(accent, renderingMode: .alwaysOriginal) {
+            icon.draw(in: CGRect(x: margin, y: y + 1, width: 14, height: 14))
+        }
         let attributes: [NSAttributedString.Key: Any] = [
             .font: Fonts.semibold(12),
-            .foregroundColor: color
+            .foregroundColor: accent
         ]
-        title.draw(at: CGPoint(x: margin, y: y), withAttributes: attributes)
+        title.draw(at: CGPoint(x: margin + 18, y: y), withAttributes: attributes)
         y += 22
     }
 
@@ -190,77 +195,184 @@ private struct DrawState {
             program.hospital.isEmpty ? (program.name.isEmpty ? "Unnamed Program" : program.name) : program.hospital
         )
         let location = formattedLocation(for: program)
-        let detail = formattedDetailLine(for: program, isRedFlagged: isRedFlagged)
+        let metaLine = formattedMetaLine(for: program, isRedFlagged: isRedFlagged)
 
         let titleAttributes: [NSAttributedString.Key: Any] = [
             .font: Fonts.semibold(11),
             .foregroundColor: Colors.primaryText
         ]
-        let detailAttributes: [NSAttributedString.Key: Any] = [
+        let metaAttributes: [NSAttributedString.Key: Any] = [
             .font: Fonts.regular(9),
             .foregroundColor: Colors.secondaryText
         ]
-        let locationAttributes: [NSAttributedString.Key: Any] = [
-            .font: Fonts.regular(10),
-            .foregroundColor: Colors.secondaryText
-        ]
         let scoreAttributes: [NSAttributedString.Key: Any] = [
-            .font: Fonts.bold(12),
+            .font: Fonts.bold(13),
             .foregroundColor: scoreUIColor(program.finalScore)
         ]
-        let rankAttributes: [NSAttributedString.Key: Any] = [
-            .font: Fonts.bold(13),
-            .foregroundColor: rankUIColor(rank)
+        let ptsAttributes: [NSAttributedString.Key: Any] = [
+            .font: Fonts.regular(8),
+            .foregroundColor: Colors.secondaryText
         ]
 
-        let titleHeight = height(for: hospital, width: 270, attributes: titleAttributes)
-        let detailHeight = detail.isEmpty ? 0 : height(for: detail, width: 270, attributes: detailAttributes) + 2
-        let rowHeight = max(44, titleHeight + detailHeight + 16)
+        let titleWidth = contentWidth - 118
+        let titleHeight = height(for: hospital, width: titleWidth, attributes: titleAttributes)
+        let metaHeight = metaLine.isEmpty ? 0 : height(for: metaLine, width: titleWidth, attributes: metaAttributes) + 2
+        let specialtyPillHeight: CGFloat = program.specialty.isEmpty ? 0 : 18
+        let rowHeight = max(58, 14 + titleHeight + specialtyPillHeight + metaHeight + 14)
 
-        ensureSpace(rowHeight + 4)
+        ensureSpace(rowHeight + 6)
 
         let rect = CGRect(x: margin, y: y, width: contentWidth, height: rowHeight)
-        let background = UIBezierPath(roundedRect: rect, cornerRadius: 8)
-        (rank % 2 == 0 ? Colors.rowBackgroundEven : Colors.rowBackgroundOdd).setFill()
+        let background = UIBezierPath(roundedRect: rect, cornerRadius: 10)
+        Colors.cardBackground.setFill()
         background.fill()
 
         if isRedFlagged {
             let accent = UIBezierPath(
                 roundedRect: CGRect(x: rect.minX, y: rect.minY, width: 4, height: rect.height),
-                cornerRadius: 2
+                byRoundingCorners: [.topLeft, .bottomLeft],
+                cornerRadii: CGSize(width: 10, height: 10)
             )
             Colors.red.setFill()
             accent.fill()
         }
 
-        "\(rank)".draw(
-            in: CGRect(x: rect.minX + 10, y: rect.minY + 12, width: 30, height: 18),
-            withAttributes: rankAttributes
+        let badgeCenter = CGPoint(x: rect.minX + 34, y: rect.minY + 28)
+        drawRankBadge(rank: rank, center: badgeCenter, isRedFlagged: isRedFlagged)
+
+        let scoreText = String(format: "%.1f", program.finalScore)
+        let scoreSize = scoreText.size(withAttributes: scoreAttributes)
+        scoreText.draw(
+            at: CGPoint(x: badgeCenter.x - scoreSize.width / 2, y: rect.minY + 46),
+            withAttributes: scoreAttributes
+        )
+        let ptsText = "pts"
+        let ptsSize = ptsText.size(withAttributes: ptsAttributes)
+        ptsText.draw(
+            at: CGPoint(x: badgeCenter.x - ptsSize.width / 2, y: rect.minY + 60),
+            withAttributes: ptsAttributes
         )
 
+        var textY = rect.minY + 12
+        let textX = rect.minX + 68
         hospital.draw(
-            in: CGRect(x: rect.minX + 48, y: rect.minY + 10, width: 270, height: titleHeight + 2),
+            in: CGRect(x: textX, y: textY, width: titleWidth, height: titleHeight + 2),
             withAttributes: titleAttributes
         )
+        textY += titleHeight + 4
 
-        if !detail.isEmpty {
-            detail.draw(
-                in: CGRect(x: rect.minX + 48, y: rect.minY + 12 + titleHeight, width: 270, height: detailHeight),
-                withAttributes: detailAttributes
+        if !program.specialty.isEmpty {
+            let pillWidth = drawSpecialtyPill(
+                specialty: program.specialty,
+                origin: CGPoint(x: textX, y: textY)
+            )
+            textY += specialtyPillHeight + 4
+            _ = pillWidth
+        }
+
+        if !metaLine.isEmpty {
+            metaLine.draw(
+                in: CGRect(x: textX, y: textY, width: titleWidth, height: metaHeight),
+                withAttributes: metaAttributes
             )
         }
 
-        location.draw(
-            in: CGRect(x: rect.minX + 330, y: rect.minY + 12, width: 150, height: rowHeight - 16),
-            withAttributes: locationAttributes
-        )
+        if !location.isEmpty && location != "—" {
+            let locationAttributes: [NSAttributedString.Key: Any] = [
+                .font: Fonts.regular(9),
+                .foregroundColor: Colors.secondaryText
+            ]
+            let locationSize = location.size(withAttributes: locationAttributes)
+            location.draw(
+                at: CGPoint(x: rect.maxX - locationSize.width - 12, y: rect.minY + 12),
+                withAttributes: locationAttributes
+            )
+        }
 
-        NSString(format: "%.1f", program.finalScore).draw(
-            in: CGRect(x: rect.maxX - 58, y: rect.minY + 12, width: 48, height: 18),
-            withAttributes: scoreAttributes
-        )
+        y += rowHeight + 6
+    }
 
-        y += rowHeight + 4
+    func drawRankBadge(rank: Int, center: CGPoint, isRedFlagged: Bool) {
+        let badgeColor = isRedFlagged ? Colors.red : rankUIColor(rank)
+        let radius: CGFloat = 20
+        let circle = UIBezierPath(
+            arcCenter: center,
+            radius: radius,
+            startAngle: 0,
+            endAngle: .pi * 2,
+            clockwise: true
+        )
+        badgeColor.withAlphaComponent(0.15).setFill()
+        circle.fill()
+
+        let symbolName = rank <= 3 && !isRedFlagged ? "trophy.fill" : "star.fill"
+        let iconConfig = UIImage.SymbolConfiguration(pointSize: 9, weight: .semibold)
+        if let icon = UIImage(systemName: symbolName, withConfiguration: iconConfig)?
+            .withTintColor(badgeColor, renderingMode: .alwaysOriginal) {
+            icon.draw(in: CGRect(x: center.x - 5, y: center.y - 12, width: 10, height: 10))
+        }
+
+        let rankAttributes: [NSAttributedString.Key: Any] = [
+            .font: Fonts.bold(12),
+            .foregroundColor: badgeColor
+        ]
+        let rankText = "\(rank)"
+        let rankSize = rankText.size(withAttributes: rankAttributes)
+        rankText.draw(
+            at: CGPoint(x: center.x - rankSize.width / 2, y: center.y - 1),
+            withAttributes: rankAttributes
+        )
+    }
+
+    @discardableResult
+    func drawSpecialtyPill(specialty: String, origin: CGPoint) -> CGFloat {
+        let accent = specialtyUIColor(for: specialty)
+        let abbrev = SpecialtyFormatter.abbreviation(for: specialty)
+        let text = "  \(abbrev)  "
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: Fonts.semibold(8),
+            .foregroundColor: accent
+        ]
+        let textSize = text.size(withAttributes: attributes)
+        let pillRect = CGRect(x: origin.x, y: origin.y, width: textSize.width + 8, height: 16)
+        let pill = UIBezierPath(roundedRect: pillRect, cornerRadius: 4)
+        accent.withAlphaComponent(0.15).setFill()
+        pill.fill()
+        text.draw(at: CGPoint(x: origin.x + 4, y: origin.y + 2), withAttributes: attributes)
+        return pillRect.width
+    }
+
+    func drawBrandGradient(in rect: CGRect, cornerRadius: CGFloat) {
+        let path = UIBezierPath(roundedRect: rect, cornerRadius: cornerRadius)
+        path.addClip()
+        guard let context = UIGraphicsGetCurrentContext() else { return }
+        let colors = [Colors.brandBlue.cgColor, Colors.brandTeal.cgColor] as CFArray
+        guard let gradient = CGGradient(
+            colorsSpace: CGColorSpaceCreateDeviceRGB(),
+            colors: colors,
+            locations: [0, 1]
+        ) else { return }
+        context.drawLinearGradient(
+            gradient,
+            start: CGPoint(x: rect.minX, y: rect.minY),
+            end: CGPoint(x: rect.maxX, y: rect.maxY),
+            options: []
+        )
+    }
+
+    func drawMatchlyLogo(in rect: CGRect) {
+        guard let image = UIImage(named: "MatchlyIcon") else { return }
+        guard let cgContext = UIGraphicsGetCurrentContext() else { return }
+        cgContext.saveGState()
+        let clipPath = UIBezierPath(roundedRect: rect, cornerRadius: 12)
+        clipPath.addClip()
+        image.draw(in: rect)
+        cgContext.restoreGState()
+
+        let border = UIBezierPath(roundedRect: rect, cornerRadius: 12)
+        UIColor.white.withAlphaComponent(0.25).setStroke()
+        border.lineWidth = 1
+        border.stroke()
     }
 
     mutating func drawFooter() {
@@ -285,11 +397,8 @@ private struct DrawState {
         return "—"
     }
 
-    func formattedDetailLine(for program: Program, isRedFlagged: Bool) -> String {
+    func formattedMetaLine(for program: Program, isRedFlagged: Bool) -> String {
         var parts: [String] = []
-        if !program.specialty.isEmpty {
-            parts.append(SpecialtyFormatter.displayNameWithAbbreviation(program.specialty))
-        }
         if let acgmeID = program.accreditationID, !acgmeID.isEmpty {
             parts.append("ID \(acgmeID)")
         }
@@ -321,10 +430,9 @@ private struct DrawState {
 
 private enum Colors {
     static let brandBlue = UIColor(red: 0.0, green: 0.48, blue: 0.65, alpha: 1.0)
-    static let pageBackground = UIColor.white
-    static let tableHeaderBackground = UIColor(white: 0.94, alpha: 1.0)
-    static let rowBackgroundEven = UIColor(white: 0.97, alpha: 1.0)
-    static let rowBackgroundOdd = UIColor.white
+    static let brandTeal = UIColor(red: 0.2, green: 0.7, blue: 0.8, alpha: 1.0)
+    static let pageBackground = UIColor(white: 0.98, alpha: 1.0)
+    static let cardBackground = UIColor.white
     static let primaryText = UIColor(white: 0.12, alpha: 1.0)
     static let secondaryText = UIColor(white: 0.45, alpha: 1.0)
     static let red = UIColor.systemRed
@@ -342,17 +450,4 @@ private enum Fonts {
     static func bold(_ size: CGFloat) -> UIFont {
         UIFont(name: "Arial-BoldMT", size: size) ?? .boldSystemFont(ofSize: size)
     }
-}
-
-private func scoreUIColor(_ score: Double) -> UIColor {
-    if score >= 80 { return .systemGreen }
-    if score >= 60 { return Colors.brandBlue }
-    if score >= 40 { return .systemOrange }
-    return .systemRed
-}
-
-private func rankUIColor(_ rank: Int) -> UIColor {
-    if rank <= 3 { return .systemGreen }
-    if rank <= 10 { return Colors.brandBlue }
-    return Colors.secondaryText
 }
