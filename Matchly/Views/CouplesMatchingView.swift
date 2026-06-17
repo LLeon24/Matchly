@@ -25,6 +25,9 @@ struct CouplesMatchingView: View {
     @State private var showUnlinkConfirm = false
     @State private var linkErrorMessage: String?
     @State private var isLinkingFromScan = false
+    @State private var isPublishingInvite = false
+    @State private var invitePublishError: String?
+    @State private var inviteIsPublished = false
     
     var body: some View {
         Form {
@@ -131,6 +134,8 @@ struct CouplesMatchingView: View {
                                 .font(.arial(size: 13))
                                 .foregroundColor(.secondary)
                                 .multilineTextAlignment(.center)
+
+                            invitePublishStatusView
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
@@ -262,7 +267,10 @@ struct CouplesMatchingView: View {
             if let couple = dataManager.preferences.couple {
                 CoupleInviteQRSheet(
                     couple: couple,
-                    inviterName: couple.user1Name
+                    inviterName: couple.user1Name,
+                    onAppear: {
+                        Task { await publishPendingInviteIfNeeded(force: true) }
+                    }
                 )
             }
         }
@@ -282,12 +290,18 @@ struct CouplesMatchingView: View {
         }
         .task {
             await refreshPendingCoupleLinkIfNeeded()
-            await ensurePendingCoupleCodeIsRegistered()
+            await publishPendingInviteIfNeeded()
             await coupleSync.startMonitoringIfNeeded(dataManager: dataManager)
             await CoupleNotificationService.shared.requestAuthorizationIfNeeded()
             if let code = deepLinkHandler.pendingCoupleCode {
                 await handleDeepLinkCode(code)
             }
+        }
+        .onChange(of: authManager.cloudKitUserRecordName) { _, _ in
+            Task { await publishPendingInviteIfNeeded() }
+        }
+        .onChange(of: authManager.cloudAccountStatus) { _, _ in
+            Task { await publishPendingInviteIfNeeded() }
         }
         .onChange(of: deepLinkHandler.pendingCoupleCode) { _, newCode in
             guard let newCode else { return }
@@ -402,17 +416,68 @@ struct CouplesMatchingView: View {
         }
     }
 
-    private func ensurePendingCoupleCodeIsRegistered() async {
-        guard let couple = dataManager.preferences.couple,
-              !couple.isLinked,
-              authManager.isCloudKitAvailable else { return }
+    @ViewBuilder
+    private var invitePublishStatusView: some View {
+        if isPublishingInvite {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Publishing invite to iCloud…")
+                    .font(.arial(size: 12))
+                    .foregroundColor(.secondary)
+            }
+        } else if let invitePublishError {
+            VStack(spacing: 6) {
+                Text(invitePublishError)
+                    .font(.arial(size: 11))
+                    .foregroundColor(.orange)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
 
-        if let existing = try? await CoupleLinkingService.fetchRegistration(for: couple.coupleCode),
-           existing.inviterRecordName == authManager.cloudKitUserRecordName {
+                Button("Retry Publishing Invite") {
+                    Task { await publishPendingInviteIfNeeded(force: true) }
+                }
+                .font(.arial(size: 12, weight: .semibold))
+            }
+        } else if inviteIsPublished {
+            Label("Invite ready for your partner", systemImage: "checkmark.circle.fill")
+                .font(.arial(size: 12, weight: .medium))
+                .foregroundColor(.green)
+        } else if !authManager.isCloudKitAvailable, let message = authManager.cloudUnavailableMessage {
+            Text(message)
+                .font(.arial(size: 12))
+                .foregroundColor(.orange)
+                .multilineTextAlignment(.center)
+        }
+    }
+
+    private func publishPendingInviteIfNeeded(force: Bool = false) async {
+        guard let couple = dataManager.preferences.couple, !couple.isLinked else {
+            inviteIsPublished = false
+            invitePublishError = nil
             return
         }
 
-        registerCoupleCodeInCloud(couple)
+        if inviteIsPublished, !force { return }
+
+        isPublishingInvite = true
+        invitePublishError = nil
+        defer { isPublishingInvite = false }
+
+        do {
+            try await CoupleLinkingService.registerInviteIfNeeded(
+                couple: couple,
+                authManager: authManager
+            )
+            inviteIsPublished = true
+            invitePublishError = nil
+        } catch let error as CoupleLinkingError {
+            inviteIsPublished = false
+            invitePublishError = error.localizedDescription
+        } catch {
+            inviteIsPublished = false
+            invitePublishError = CoupleLinkingService.mapError(error).localizedDescription
+        }
     }
 
     private func refreshPendingCoupleLinkIfNeeded() async {
@@ -440,20 +505,8 @@ struct CouplesMatchingView: View {
     }
 
     private func registerCoupleCodeInCloud(_ couple: Couple) {
-        guard authManager.isCloudKitAvailable,
-              let inviterRecordName = authManager.cloudKitUserRecordName else { return }
-
         Task {
-            do {
-                try await CoupleLinkingService.registerPendingCouple(
-                    couple: couple,
-                    inviterRecordName: inviterRecordName,
-                    inviterName: couple.user1Name,
-                    inviterEmail: couple.user1Email
-                )
-            } catch {
-                // Registration is best-effort; local code still works for sharing manually.
-            }
+            await publishPendingInviteIfNeeded(force: true)
         }
     }
     

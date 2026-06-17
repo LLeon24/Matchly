@@ -99,11 +99,16 @@ class AuthManager: ObservableObject {
     /// `isCloudKitAvailable`. Defaults to `.couldNotDetermine` until the first check resolves.
     @Published var cloudAccountStatus: CKAccountStatus = .couldNotDetermine
 
+    /// Resolved CloudKit user record name, even before it is copied onto `currentUser`.
+    @Published private(set) var resolvedCloudKitRecordName: String?
+
     /// `true` only when CloudKit is usable (user signed into iCloud + capability enabled).
     var isCloudKitAvailable: Bool { cloudAccountStatus == .available }
 
     /// The resolved CloudKit user record name for the signed-in account, if available.
-    var cloudKitUserRecordName: String? { currentUser?.cloudKitUserRecordName }
+    var cloudKitUserRecordName: String? {
+        currentUser?.cloudKitUserRecordName ?? resolvedCloudKitRecordName
+    }
 
     /// The stable Apple login id persisted in the Keychain (survives UserDefaults clears).
     var storedAppleUserID: String? { Self.keychainRead(account: Self.keychainAppleUserAccount) }
@@ -182,6 +187,7 @@ class AuthManager: ObservableObject {
     
     func signOut() {
         self.currentUser = nil
+        self.resolvedCloudKitRecordName = nil
         self.authState = .signedOut
         self.cloudAccountStatus = .couldNotDetermine
         self.currentAppleNonce = nil
@@ -480,10 +486,12 @@ class AuthManager: ObservableObject {
             let recordID = try await container.userRecordID()
             let recordName = recordID.recordName
             await MainActor.run {
-                guard var user = self.currentUser else { return }
-                if user.cloudKitUserRecordName != recordName {
-                    user.cloudKitUserRecordName = recordName
-                    self.persist(user)
+                self.resolvedCloudKitRecordName = recordName
+                if var user = self.currentUser {
+                    if user.cloudKitUserRecordName != recordName {
+                        user.cloudKitUserRecordName = recordName
+                        self.persist(user)
+                    }
                 }
             }
             Self.logger.info("Resolved CloudKit user record id")

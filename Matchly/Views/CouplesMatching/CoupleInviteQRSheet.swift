@@ -8,6 +8,7 @@ import SwiftUI
 struct CoupleInviteQRSheet: View {
     let couple: Couple
     let inviterName: String
+    var onAppear: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
 
     private var inviteURL: URL? {
@@ -70,6 +71,9 @@ struct CoupleInviteQRSheet: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") { dismiss() }
                 }
+            }
+            .onAppear {
+                onAppear?()
             }
         }
     }

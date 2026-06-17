@@ -28,6 +28,10 @@ enum CoupleLinkingService {
     private static let logger = Logger(subsystem: "com.matchly", category: "CoupleLinking")
     private static let container = CKContainer(identifier: AuthManager.cloudKitContainerID)
 
+    private static func recordID(for code: String) -> CKRecord.ID {
+        CKRecord.ID(recordName: code.uppercased())
+    }
+
     static func registerPendingCouple(
         couple: Couple,
         inviterRecordName: String,
@@ -35,24 +39,125 @@ enum CoupleLinkingService {
         inviterEmail: String?
     ) async throws {
         let code = couple.coupleCode.uppercased()
-        let recordID = CKRecord.ID(recordName: code)
-        let record = CKRecord(recordType: recordType, recordID: recordID)
+        let database = container.publicCloudDatabase
+
+        // Required before writing to the public database.
+        _ = try await container.userRecordID()
+
+        let record: CKRecord
+        do {
+            let existing = try await database.record(for: recordID(for: code))
+            if let existingInviter = existing["inviterRecordName"] as? String,
+               existingInviter != inviterRecordName {
+                throw CoupleLinkingError.codeAlreadyClaimed
+            }
+            record = existing
+        } catch let error as CKError where error.code == .unknownItem {
+            record = CKRecord(recordType: recordType, recordID: recordID(for: code))
+        }
+
         record["code"] = code as CKRecordValue
         record["coupleID"] = couple.id as CKRecordValue
         record["inviterRecordName"] = inviterRecordName as CKRecordValue
         record["inviterName"] = inviterName as CKRecordValue
         if let inviterEmail, !inviterEmail.isEmpty {
             record["inviterEmail"] = inviterEmail as CKRecordValue
+        } else {
+            record["inviterEmail"] = nil
         }
         record["status"] = "pending" as CKRecordValue
-        record["createdAt"] = Date() as CKRecordValue
+        if record["createdAt"] == nil {
+            record["createdAt"] = Date() as CKRecordValue
+        }
 
-        _ = try await save(record)
+        do {
+            _ = try await save(record)
+        } catch {
+            throw mapError(error)
+        }
+
         logger.info("Registered couple code \(code, privacy: .public)")
     }
 
+    /// Maps CloudKit and other infrastructure errors into user-facing linking errors.
+    static func mapError(_ error: Error) -> CoupleLinkingError {
+        if let linking = error as? CoupleLinkingError { return linking }
+
+        if let ckError = error as? CKError {
+            if ckError.code == .partialFailure,
+               let partial = ckError.partialErrorsByItemID?.values.first {
+                return mapError(partial)
+            }
+
+            switch ckError.code {
+            case .notAuthenticated:
+                return .iCloudRequired
+            case .permissionFailure:
+                return .cloudKitPermissionDenied
+            case .invalidArguments, .serverRejectedRequest:
+                return .cloudKitFailed(
+                    "CloudKit rejected the invite (\(ckError.code.rawValue)). In CloudKit Dashboard, open Schema → Record Types → CoupleCodeInvite and confirm fields match: code, coupleID, inviterRecordName, inviterName, status, createdAt. Then check Security Roles for _icloud Write/Create and _world Read."
+                )
+            case .networkUnavailable, .networkFailure, .serviceUnavailable, .requestRateLimited, .zoneBusy:
+                return .cloudKitFailed("Network or iCloud service issue. Check your connection and try again.")
+            case .managedAccountRestricted:
+                return .cloudKitFailed("This iCloud account is restricted from using CloudKit.")
+            case .badContainer, .missingEntitlement:
+                return .cloudKitFailed("CloudKit container misconfigured. Confirm iCloud.com.matchly.Matchly is enabled in Xcode Signing & Capabilities.")
+            default:
+                return .cloudKitFailed("\(ckError.localizedDescription) (CK \(ckError.code.rawValue))")
+            }
+        }
+
+        return .cloudKitFailed(error.localizedDescription)
+    }
+
+    /// Waits for CloudKit identity when needed, then publishes the invite code to the public database.
+    static func registerInviteIfNeeded(
+        couple: Couple,
+        authManager: AuthManager
+    ) async throws {
+        guard !couple.isLinked else { return }
+
+        guard authManager.isCloudKitAvailable else {
+            throw CoupleLinkingError.iCloudRequired
+        }
+
+        await authManager.refreshCloudKitIdentity()
+
+        var inviterRecordName = authManager.cloudKitUserRecordName
+        if inviterRecordName == nil {
+            for _ in 0..<10 {
+                await authManager.refreshCloudKitIdentity()
+                inviterRecordName = authManager.cloudKitUserRecordName
+                if inviterRecordName != nil { break }
+                try await Task.sleep(nanoseconds: 400_000_000)
+            }
+        }
+
+        guard let inviterRecordName else {
+            throw CoupleLinkingError.identityUnavailable
+        }
+
+        if let existing = try? await fetchRegistration(for: couple.coupleCode),
+           existing.inviterRecordName == inviterRecordName {
+            return
+        }
+
+        do {
+            try await registerPendingCouple(
+                couple: couple,
+                inviterRecordName: inviterRecordName,
+                inviterName: couple.user1Name,
+                inviterEmail: couple.user1Email
+            )
+        } catch {
+            throw mapError(error)
+        }
+    }
+
     static func deleteRegistration(for code: String) async {
-        let recordID = CKRecord.ID(recordName: code.uppercased())
+        let recordID = recordID(for: code)
         do {
             try await container.publicCloudDatabase.deleteRecord(withID: recordID)
         } catch {
@@ -61,9 +166,8 @@ enum CoupleLinkingService {
     }
 
     static func fetchRegistration(for code: String) async throws -> CoupleCodeRegistration? {
-        let recordID = CKRecord.ID(recordName: code.uppercased())
         do {
-            let record = try await container.publicCloudDatabase.record(for: recordID)
+            let record = try await container.publicCloudDatabase.record(for: recordID(for: code))
             return parse(record)
         } catch let error as CKError where error.code == .unknownItem {
             return nil
@@ -93,8 +197,7 @@ enum CoupleLinkingService {
             return existing
         }
 
-        let recordID = CKRecord.ID(recordName: normalizedCode)
-        let record = try await container.publicCloudDatabase.record(for: recordID)
+        let record = try await container.publicCloudDatabase.record(for: recordID(for: normalizedCode))
         record["status"] = "linked" as CKRecordValue
         record["partnerRecordName"] = partnerRecordName as CKRecordValue
         record["partnerName"] = partnerName as CKRecordValue
@@ -114,6 +217,11 @@ enum CoupleLinkingService {
         try await withCheckedThrowingContinuation { continuation in
             container.publicCloudDatabase.save(record) { saved, error in
                 if let error {
+                    if let ckError = error as? CKError {
+                        logger.error("CloudKit save failed: \(ckError.localizedDescription, privacy: .public) code=\(ckError.code.rawValue, privacy: .public)")
+                    } else {
+                        logger.error("CloudKit save failed: \(error.localizedDescription, privacy: .public)")
+                    }
                     continuation.resume(throwing: error)
                 } else if let saved {
                     continuation.resume(returning: saved)
@@ -153,12 +261,19 @@ enum CoupleLinkingError: LocalizedError {
     case codeAlreadyClaimed
     case iCloudRequired
     case identityUnavailable
+    case inviteNotPublished
+    case cloudKitPermissionDenied
+    case cloudKitFailed(String)
     case unexpectedResponse
 
     var errorDescription: String? {
         switch self {
         case .codeNotFound:
-            return "No partner found with that code. Ask them to show their QR code in Matchly first."
+            return """
+            No partner found with that code. Ask them to open Couples Matching and wait until \
+            their invite is ready, then try again. Both phones must be signed into iCloud and \
+            running the same app build (both from Xcode, or both from TestFlight).
+            """
         case .cannotLinkOwnCode:
             return "You cannot link with your own code. Share your QR code with your partner instead."
         case .codeAlreadyClaimed:
@@ -166,7 +281,17 @@ enum CoupleLinkingError: LocalizedError {
         case .iCloudRequired:
             return "Sign in to iCloud on this device to link with your partner."
         case .identityUnavailable:
-            return "Could not verify your iCloud identity. Please sign in with Apple and try again."
+            return "Could not verify your iCloud identity. Sign in with Apple, confirm iCloud is enabled in Settings, then try again."
+        case .inviteNotPublished:
+            return "Could not publish your invite to iCloud. Confirm iCloud is enabled and try again in a moment."
+        case .cloudKitPermissionDenied:
+            return """
+            CloudKit denied creating your invite. In CloudKit Dashboard → Schema → Security Roles → \
+            _icloud → CoupleCodeInvite, check Create (Read and Write alone are not enough). Also set \
+            _world to Read. Save, tap Generate New Code, then Retry Publishing Invite.
+            """
+        case .cloudKitFailed(let message):
+            return message
         case .unexpectedResponse:
             return "Could not complete partner linking. Please try again."
         }
