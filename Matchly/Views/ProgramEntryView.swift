@@ -64,7 +64,9 @@ struct ProgramEntryView: View {
     
     // ERAS Signaling
     @State private var signalType: SignalType = .none
+    @State private var signalNote: String = ""
     @State private var showSignalLimitAlert = false
+    @State private var showSignalClearedAlert = false
     @State private var signalLimitMessage = ""
     @State private var showDatePickerSheet = false
     
@@ -164,6 +166,12 @@ struct ProgramEntryView: View {
                     .glassEffect(.regular, in: .rect(cornerRadius: 16))
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
+
+                    if shouldShowSignalNoteSection {
+                        signalNoteSection
+                            .padding(.horizontal, 20)
+                            .padding(.top, 8)
+                    }
                 }
                 
                 // EMR selection - white card design
@@ -504,6 +512,7 @@ struct ProgramEntryView: View {
                 contactPhone = mapped.contactPhone ?? ""
                 programCoordinator = mapped.programCoordinator ?? ""
                 isIMGFriendly = mapped.isIMGFriendly
+                revalidateSignalAssignment()
                 showProgramSearch = false
             })
             .matchlyExpandedSheet()
@@ -574,6 +583,7 @@ struct ProgramEntryView: View {
                                     isIMGFriendly: isIMGFriendly,
                                     emr: emr,
                                     signalType: signalType,
+                                    signalNote: trimmedSignalNote,
                                     finalScore: finalScore
                                 )
                                 if program == nil {
@@ -668,6 +678,11 @@ struct ProgramEntryView: View {
             } message: {
                 Text(signalLimitMessage)
             }
+            .alert("Signal Updated", isPresented: $showSignalClearedAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(signalLimitMessage)
+            }
             .alert(
                 "Already in List",
                 isPresented: Binding(
@@ -711,6 +726,11 @@ struct ProgramEntryView: View {
             .onChange(of: interviewDate) { _, _ in debouncedCheckForUnsavedChanges() }
             .onChange(of: hasInterviewDate) { _, _ in debouncedCheckForUnsavedChanges() }
             .onChange(of: signalType) { _, _ in debouncedCheckForUnsavedChanges() }
+            .onChange(of: signalNote) { _, _ in debouncedCheckForUnsavedChanges() }
+            .onChange(of: specialty) { _, _ in
+                revalidateSignalAssignment()
+                debouncedCheckForUnsavedChanges()
+            }
             .onChange(of: questionnaire) { _, _ in debouncedCheckForUnsavedChanges() }
             .onChange(of: emr) { _, _ in debouncedCheckForUnsavedChanges() }
     }
@@ -874,7 +894,11 @@ struct ProgramEntryView: View {
                         HStack(spacing: 8) {
                             // Signal indicator
                             if signalType != .none {
-                                let isTiered = SignalLimits.isTiered(for: specialty.isEmpty ? "Unknown" : specialty)
+                                let signalAccreditationID = currentSignalAccreditationID
+                                let isTiered = SignalLimits.isTiered(
+                                    for: specialty.isEmpty ? "Unknown" : specialty,
+                                    accreditationID: signalAccreditationID
+                                )
                                 let signalText = isTiered 
                                     ? (signalType == .gold ? "Gold Signal" : "Silver Signal")
                                     : "Signal"
@@ -1009,7 +1033,7 @@ struct ProgramEntryView: View {
         
         // Load signal type
         signalType = program.signalType
-        
+        signalNote = program.signalNote ?? ""
         
         // Load questionnaire
         questionnaire = program.questionnaire
@@ -1048,6 +1072,7 @@ struct ProgramEntryView: View {
             isIMGFriendly: isIMGFriendly,
             emr: emr,
             signalType: signalType,
+            signalNote: trimmedSignalNote,
             finalScore: questionnaire.totalWeightedScore(preferences: dataManager.preferences, programEMR: emr)
         )
         
@@ -1075,8 +1100,8 @@ struct ProgramEntryView: View {
     private func checkForUnsavedChanges() -> Bool {
         guard let program = program else {
             // For new programs, check if any fields are filled (quick checks)
-            return !name.isEmpty || !hospital.isEmpty || !city.isEmpty || !state.isEmpty || 
-                   !notes.isEmpty || hasInterviewDate || signalType != .none || emr != nil ||
+            return !name.isEmpty || !hospital.isEmpty || !city.isEmpty || !state.isEmpty ||
+                   !notes.isEmpty || hasInterviewDate || signalType != .none || !signalNote.isEmpty || emr != nil ||
                    questionnaire.sections.contains { section in
                        section.items.contains { $0.programRating > 0 }
                    }
@@ -1091,9 +1116,9 @@ struct ProgramEntryView: View {
         }
         
         // Quick string comparisons first
-        if program.name != name || program.hospital != hospital || program.city != city || 
+        if program.name != name || program.hospital != hospital || program.city != city ||
            program.state != state || program.notes != notes || program.signalType != signalType ||
-           program.emr != emr {
+           program.signalNote != trimmedSignalNote || program.emr != emr {
             return true
         }
         
@@ -1271,9 +1296,11 @@ struct ProgramEntryView: View {
     
     private var combinedInterviewAndSignalingSection: some View {
         let finalSpecialty = specialty.isEmpty ? (program?.specialty ?? dataManager.preferences.specialties.first ?? "Unknown") : specialty
-        let isTiered = !finalSpecialty.isEmpty && finalSpecialty != "Unknown" ? SignalLimits.isTiered(for: finalSpecialty) : true
-        
-        return HStack(alignment: .center, spacing: 10) {
+        let signalAccreditationID = currentSignalAccreditationID
+        let signalConfig = SignalLimits.configuration(for: finalSpecialty, accreditationID: signalAccreditationID)
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 10) {
             // Interview Date - flexible width that can shrink
             HStack(alignment: .center, spacing: 8) {
                 Image(systemName: "calendar")
@@ -1307,82 +1334,59 @@ struct ProgramEntryView: View {
             .layoutPriority(1)
             
             // Divider
-            Rectangle()
-                .fill(Color(.separator))
-                .frame(width: 1, height: 18)
+            if signalConfig.participates {
+                Rectangle()
+                    .fill(Color(.separator))
+                    .frame(width: 1, height: 18)
+            }
             
-            // ERAS Signaling - compact single line with proper constraints
-            HStack(alignment: .center, spacing: 5) {
-                Image(systemName: "star.fill")
-                    .font(.arial(size: 12))
-                    .foregroundColor(
-                        signalType == .gold ? (isTiered ? .yellow : .blue) : 
-                        (signalType == .silver ? Color(white: 0.6) : .secondary)
-                    )
-                    .frame(width: 14, height: 14)
-                
-                if isTiered {
-                    HStack(spacing: 3) {
-                        Button(action: {
-                            if signalType == .gold {
-                                signalType = .none
-                            } else {
-                                let result = dataManager.canAssignSignal(type: .gold, specialty: finalSpecialty, excludingProgramId: program?.id)
-                                if result.canAssign {
-                                    signalType = .gold
-                                    dataManager.objectWillChange.send()
-                                } else {
-                                    signalLimitMessage = result.reason ?? "Signal limit reached"
-                                    showSignalLimitAlert = true
-                                }
-                            }
-                        }) {
-                            Text("Gold")
-                                .font(.arial(size: 10, weight: .semibold))
-                                .foregroundColor(signalType == .gold ? .yellow : .secondary)
-                                .fixedSize(horizontal: true, vertical: false)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 3)
-                                .glassChipStyle(
-                                    tint: signalType == .gold ? .yellow : nil,
-                                    interactive: true
-                                )
-                        }
-                        .buttonStyle(.plain)
-                        
-                        Button(action: {
-                            if signalType == .silver {
-                                signalType = .none
-                            } else {
-                                let result = dataManager.canAssignSignal(type: .silver, specialty: finalSpecialty, excludingProgramId: program?.id)
-                                if result.canAssign {
-                                    signalType = .silver
-                                    dataManager.objectWillChange.send()
-                                } else {
-                                    signalLimitMessage = result.reason ?? "Signal limit reached"
-                                    showSignalLimitAlert = true
-                                }
-                            }
-                        }) {
-                            Text("Silver")
-                                .font(.arial(size: 10, weight: .semibold))
-                                .foregroundColor(signalType == .silver ? .primary : .secondary)
-                                .fixedSize(horizontal: true, vertical: false)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 3)
-                                .glassChipStyle(
-                                    tint: signalType == .silver ? .gray : nil,
-                                    interactive: true
-                                )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                } else {
+            if signalConfig.participates {
+                signalingControls(
+                    finalSpecialty: finalSpecialty,
+                    signalAccreditationID: signalAccreditationID,
+                    signalConfig: signalConfig
+                )
+            }
+            }
+
+            if signalConfig.usesResidencyCAS {
+                Text("Signals are tracked for planning. EM and OB/GYN apply through ResidencyCAS—verify limits in your portal.")
+                    .font(.arial(size: 9))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func signalingControls(
+        finalSpecialty: String,
+        signalAccreditationID: String?,
+        signalConfig: SignalConfiguration
+    ) -> some View {
+        let isTiered = signalConfig.isTiered
+
+        HStack(alignment: .center, spacing: 5) {
+            Image(systemName: "star.fill")
+                .font(.arial(size: 12))
+                .foregroundColor(
+                    signalType == .gold ? (isTiered ? .yellow : .blue) :
+                    (signalType == .silver ? Color(white: 0.6) : .secondary)
+                )
+                .frame(width: 14, height: 14)
+
+            if isTiered {
+                HStack(spacing: 3) {
                     Button(action: {
                         if signalType == .gold {
                             signalType = .none
                         } else {
-                            let result = dataManager.canAssignSignal(type: .gold, specialty: finalSpecialty, excludingProgramId: program?.id)
+                            let result = dataManager.canAssignSignal(
+                                type: .gold,
+                                specialty: finalSpecialty,
+                                excludingProgramId: program?.id,
+                                accreditationID: signalAccreditationID
+                            )
                             if result.canAssign {
                                 signalType = .gold
                                 dataManager.objectWillChange.send()
@@ -1392,24 +1396,86 @@ struct ProgramEntryView: View {
                             }
                         }
                     }) {
-                        Text("Signal")
+                        Text("Gold")
                             .font(.arial(size: 10, weight: .semibold))
-                            .foregroundColor(signalType == .gold ? AppColors.primaryBlue : .secondary)
+                            .foregroundColor(signalType == .gold ? .yellow : .secondary)
+                            .fixedSize(horizontal: true, vertical: false)
                             .padding(.horizontal, 7)
                             .padding(.vertical, 3)
                             .glassChipStyle(
-                                tint: signalType == .gold ? AppColors.primaryBlue : nil,
+                                tint: signalType == .gold ? .yellow : nil,
+                                interactive: true
+                            )
+                    }
+                    .buttonStyle(.plain)
+
+                    Button(action: {
+                        if signalType == .silver {
+                            signalType = .none
+                        } else {
+                            let result = dataManager.canAssignSignal(
+                                type: .silver,
+                                specialty: finalSpecialty,
+                                excludingProgramId: program?.id,
+                                accreditationID: signalAccreditationID
+                            )
+                            if result.canAssign {
+                                signalType = .silver
+                                dataManager.objectWillChange.send()
+                            } else {
+                                signalLimitMessage = result.reason ?? "Signal limit reached"
+                                showSignalLimitAlert = true
+                            }
+                        }
+                    }) {
+                        Text("Silver")
+                            .font(.arial(size: 10, weight: .semibold))
+                            .foregroundColor(signalType == .silver ? .primary : .secondary)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .glassChipStyle(
+                                tint: signalType == .silver ? .gray : nil,
                                 interactive: true
                             )
                     }
                     .buttonStyle(.plain)
                 }
+            } else {
+                Button(action: {
+                    if signalType == .gold {
+                        signalType = .none
+                    } else {
+                        let result = dataManager.canAssignSignal(
+                            type: .gold,
+                            specialty: finalSpecialty,
+                            excludingProgramId: program?.id,
+                            accreditationID: signalAccreditationID
+                        )
+                        if result.canAssign {
+                            signalType = .gold
+                            dataManager.objectWillChange.send()
+                        } else {
+                            signalLimitMessage = result.reason ?? "Signal limit reached"
+                            showSignalLimitAlert = true
+                        }
+                    }
+                }) {
+                    Text("Signal")
+                        .font(.arial(size: 10, weight: .semibold))
+                        .foregroundColor(signalType == .gold ? AppColors.primaryBlue : .secondary)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .glassChipStyle(
+                            tint: signalType == .gold ? AppColors.primaryBlue : nil,
+                            interactive: true
+                        )
+                }
+                .buttonStyle(.plain)
             }
-            .layoutPriority(2)
-            
-            // Compact usage display - single line with proper spacing
+
             if !finalSpecialty.isEmpty && finalSpecialty != "Unknown" {
-                let usage = calculateSignalUsage(for: finalSpecialty)
+                let usage = calculateSignalUsage(for: finalSpecialty, accreditationID: signalAccreditationID)
                 Text(isTiered ? "\(usage.goldUsed)/\(usage.goldLimit)G \(usage.silverUsed)/\(usage.silverLimit)S" : "\(usage.goldUsed)/\(usage.goldLimit)")
                     .font(.arial(size: 8, weight: .medium))
                     .foregroundColor(.secondary)
@@ -1418,11 +1484,82 @@ struct ProgramEntryView: View {
                     .padding(.leading, 3)
             }
         }
+        .layoutPriority(2)
+    }
+
+    private var trimmedSignalNote: String? {
+        let trimmed = signalNote.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private var currentSignalAccreditationID: String? {
+        if let accreditationID, !accreditationID.isEmpty { return accreditationID }
+        return program?.accreditationID
+    }
+
+    private var shouldShowSignalNoteSection: Bool {
+        let finalSpecialty = specialty.isEmpty ? (program?.specialty ?? "") : specialty
+        let config = SignalLimits.configuration(for: finalSpecialty, accreditationID: currentSignalAccreditationID)
+        return config.participates && (config.requiresSignalStatement || signalType != .none)
+    }
+
+    private var signalNoteSection: some View {
+        let finalSpecialty = specialty.isEmpty ? (program?.specialty ?? "") : specialty
+        let config = SignalLimits.configuration(for: finalSpecialty, accreditationID: currentSignalAccreditationID)
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "text.quote")
+                    .foregroundColor(.secondary)
+                Text(config.requiresSignalStatement ? "Signal Statement" : "Signal Notes")
+                    .font(.arial(size: 14, weight: .semibold))
+                if config.requiresSignalStatement {
+                    Text("Required")
+                        .font(.arial(size: 10, weight: .bold))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.orange.opacity(0.15))
+                        .foregroundColor(.orange)
+                        .clipShape(Capsule())
+                }
+            }
+
+            TextField(
+                "Why this program? (for your ERAS / ResidencyCAS application)",
+                text: $signalNote,
+                axis: .vertical
+            )
+            .lineLimit(3...6)
+            .font(.arial(size: 14))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+    }
+
+    private func revalidateSignalAssignment() {
+        let finalSpecialty = specialty.isEmpty ? (program?.specialty ?? dataManager.preferences.specialties.first ?? "Unknown") : specialty
+        let sanitized = dataManager.sanitizedSignalType(
+            signalType,
+            specialty: finalSpecialty,
+            accreditationID: currentSignalAccreditationID
+        )
+        guard sanitized != signalType else { return }
+        signalType = sanitized
+        if sanitized == .none {
+            signalNote = ""
+            signalLimitMessage = "The signal was cleared because this specialty uses different signaling rules."
+            showSignalClearedAlert = true
+        }
     }
     
     // Helper function to calculate signal usage including current selection
-    private func calculateSignalUsage(for specialty: String) -> (goldUsed: Int, goldLimit: Int, silverUsed: Int, silverLimit: Int) {
-        let baseUsage = dataManager.getSignalUsage(for: specialty)
+    private func calculateSignalUsage(
+        for specialty: String,
+        accreditationID: String? = nil
+    ) -> (goldUsed: Int, goldLimit: Int, silverUsed: Int, silverLimit: Int) {
+        let baseUsage = dataManager.getSignalUsage(for: specialty, accreditationID: accreditationID)
         
         // Adjust counts based on current selection vs saved state
         var goldUsed = baseUsage.goldUsed

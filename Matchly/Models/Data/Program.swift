@@ -49,6 +49,8 @@ struct Program: Identifiable, Codable {
     
     // ERAS Signaling
     var signalType: SignalType = .none
+    /// Optional ERAS / ResidencyCAS signal statement text (e.g. Anesthesiology).
+    var signalNote: String?
     
     var finalScore: Double
     
@@ -157,6 +159,7 @@ struct Program: Identifiable, Codable {
         isIMGFriendly: Bool? = nil,
         emr: String? = nil,
         signalType: SignalType = .none,
+        signalNote: String? = nil,
         finalScore: Double = 0.0
     ) {
         self.id = id
@@ -186,6 +189,7 @@ struct Program: Identifiable, Codable {
         self.isIMGFriendly = isIMGFriendly
         self.emr = emr
         self.signalType = signalType
+        self.signalNote = signalNote
         self.finalScore = finalScore
     }
 }
@@ -325,6 +329,7 @@ extension Program {
         self.isIMGFriendly = try container.decodeIfPresent(Bool.self, forKey: .isIMGFriendly)
         self.emr = try container.decodeIfPresent(String.self, forKey: .emr)
         self.signalType = try container.decodeIfPresent(SignalType.self, forKey: .signalType) ?? .none
+        self.signalNote = try container.decodeIfPresent(String.self, forKey: .signalNote)
         self.finalScore = try container.decodeIfPresent(Double.self, forKey: .finalScore) ?? 0.0
     }
 }

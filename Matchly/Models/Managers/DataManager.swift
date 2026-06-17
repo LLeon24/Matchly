@@ -8,6 +8,9 @@
 import Foundation
 import Combine
 import OSLog
+#if canImport(UIKit)
+import UIKit
+#endif
 
 class DataManager: ObservableObject {
     static let shared = DataManager()
@@ -23,9 +26,12 @@ class DataManager: ObservableObject {
     
     private let programsKey = "saved_programs"
     private let preferencesKey = "user_preferences"
+    private let localProgramsUpdatedAtKey = "local_programs_updated_at"
+    private let localPreferencesUpdatedAtKey = "local_preferences_updated_at"
     private let cloudSync = CloudSyncManager.shared
     private static let logger = Logger(subsystem: "com.matchly", category: "DataManager")
     private var cancellables = Set<AnyCancellable>()
+    private var isApplyingRemoteCloudSnapshot = false
     
     // Performance optimization: Debounce save operations
     private var saveProgramsWorkItem: DispatchWorkItem?
@@ -86,8 +92,29 @@ class DataManager: ObservableObject {
     
     init() {
         loadData()
-        loadFromCloudIfAvailable()
+        bootstrapLocalSyncTimestampsIfNeeded()
         observeCatalogReadiness()
+        observeCloudSyncTriggers()
+        validateAndSanitizeSignals()
+        DispatchQueue.main.async { [weak self] in
+            self?.mergeWithCloudIfNeeded(trigger: "launch")
+        }
+    }
+
+    private func observeCloudSyncTriggers() {
+        NotificationCenter.default.publisher(for: .matchlyCloudDataDidChange)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.mergeWithCloudIfNeeded(trigger: "icloud-external")
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.mergeWithCloudIfNeeded(trigger: "foreground")
+            }
+            .store(in: &cancellables)
     }
 
     private func observeCatalogReadiness() {
@@ -110,11 +137,21 @@ class DataManager: ObservableObject {
             do {
                 let encoded = try JSONEncoder().encode(self.programs)
                 UserDefaults.standard.set(encoded, forKey: self.programsKey)
-                
+                if !self.isApplyingRemoteCloudSnapshot {
+                    self.touchLocalProgramsTimestamp()
+                }
+
                 // Auto-sync to iCloud if available (async to avoid blocking)
-                if self.cloudSync.isCloudAvailable {
+                if self.cloudSync.isCloudAvailable, !self.isApplyingRemoteCloudSnapshot {
+                    let snapshot = self.programs
+                    let prefs = self.preferences
+                    let updatedAt = self.localProgramsUpdatedAt ?? Date()
                     DispatchQueue.global(qos: .utility).async {
-                        self.cloudSync.syncToCloud(programs: self.programs, preferences: self.preferences)
+                        self.cloudSync.syncProgramsToCloud(
+                            programs: snapshot,
+                            preferences: prefs,
+                            programsUpdatedAt: updatedAt
+                        )
                     }
                 }
                 self.scheduleCoupleCloudPublish()
@@ -136,12 +173,21 @@ class DataManager: ObservableObject {
         do {
             let encoded = try JSONEncoder().encode(programs)
             UserDefaults.standard.set(encoded, forKey: programsKey)
-            
+            if !isApplyingRemoteCloudSnapshot {
+                touchLocalProgramsTimestamp()
+            }
+
             // Auto-sync to iCloud if available (async to avoid blocking)
-            if cloudSync.isCloudAvailable {
+            if cloudSync.isCloudAvailable, !isApplyingRemoteCloudSnapshot {
+                let snapshot = programs
+                let prefs = preferences
+                let updatedAt = localProgramsUpdatedAt ?? Date()
                 DispatchQueue.global(qos: .utility).async { [weak self] in
-                    guard let self = self else { return }
-                    self.cloudSync.syncToCloud(programs: self.programs, preferences: self.preferences)
+                    self?.cloudSync.syncProgramsToCloud(
+                        programs: snapshot,
+                        preferences: prefs,
+                        programsUpdatedAt: updatedAt
+                    )
                 }
             }
             scheduleCoupleCloudPublish()
@@ -176,14 +222,24 @@ class DataManager: ObservableObject {
             do {
                 let encoded = try JSONEncoder().encode(self.preferences)
                 UserDefaults.standard.set(encoded, forKey: self.preferencesKey)
-                
+
                 // Invalidate score cache when preferences change
                 self.clearScoreCache()
-                
+                if !self.isApplyingRemoteCloudSnapshot {
+                    self.touchLocalPreferencesTimestamp()
+                }
+
                 // Auto-sync to iCloud if available (async to avoid blocking)
-                if self.cloudSync.isCloudAvailable {
+                if self.cloudSync.isCloudAvailable, !self.isApplyingRemoteCloudSnapshot {
+                    let snapshot = self.programs
+                    let prefs = self.preferences
+                    let updatedAt = self.localPreferencesUpdatedAt ?? Date()
                     DispatchQueue.global(qos: .utility).async {
-                        self.cloudSync.syncToCloud(programs: self.programs, preferences: self.preferences)
+                        self.cloudSync.syncPreferencesToCloud(
+                            programs: snapshot,
+                            preferences: prefs,
+                            preferencesUpdatedAt: updatedAt
+                        )
                     }
                 }
                 self.scheduleCoupleCloudPublish()
@@ -236,22 +292,147 @@ class DataManager: ObservableObject {
         Self.logger.info("Removed \(removed, privacy: .public) duplicate saved program(s)")
     }
     
-    private func loadFromCloudIfAvailable() {
-        guard cloudSync.isCloudAvailable else { return }
-        
-        let cloudData = cloudSync.loadFromCloud()
-        
-        // Only use cloud data if local data is empty or older
-        if programs.isEmpty, let cloudPrograms = cloudData.programs {
+    private func bootstrapLocalSyncTimestampsIfNeeded() {
+        if localProgramsUpdatedAt == nil, !programs.isEmpty {
+            touchLocalProgramsTimestamp()
+        }
+        if localPreferencesUpdatedAt == nil, hasMeaningfulLocalPreferences {
+            touchLocalPreferencesTimestamp()
+        }
+    }
+
+    private var hasMeaningfulLocalPreferences: Bool {
+        !preferences.specialties.isEmpty || !preferences.profile.name.isEmpty
+    }
+
+    private var localProgramsUpdatedAt: Date? {
+        storedDate(forKey: localProgramsUpdatedAtKey)
+    }
+
+    private var localPreferencesUpdatedAt: Date? {
+        storedDate(forKey: localPreferencesUpdatedAtKey)
+    }
+
+    private func storedDate(forKey key: String) -> Date? {
+        let interval = UserDefaults.standard.double(forKey: key)
+        guard interval > 0 else { return nil }
+        return Date(timeIntervalSince1970: interval)
+    }
+
+    private func touchLocalProgramsTimestamp(_ date: Date = Date()) {
+        UserDefaults.standard.set(date.timeIntervalSince1970, forKey: localProgramsUpdatedAtKey)
+    }
+
+    private func touchLocalPreferencesTimestamp(_ date: Date = Date()) {
+        UserDefaults.standard.set(date.timeIntervalSince1970, forKey: localPreferencesUpdatedAtKey)
+    }
+
+    private func setLocalProgramsTimestamp(_ date: Date) {
+        UserDefaults.standard.set(date.timeIntervalSince1970, forKey: localProgramsUpdatedAtKey)
+    }
+
+    private func setLocalPreferencesTimestamp(_ date: Date) {
+        UserDefaults.standard.set(date.timeIntervalSince1970, forKey: localPreferencesUpdatedAtKey)
+    }
+
+    @discardableResult
+    func mergeWithCloudIfNeeded(trigger: String) -> CloudSyncMergeOutcome {
+        guard cloudSync.isCloudAvailable, !isApplyingRemoteCloudSnapshot else { return .noChange }
+
+        let cloud = cloudSync.loadFromCloud()
+        let localProgramsAt = localProgramsUpdatedAt ?? .distantPast
+        let localPreferencesAt = localPreferencesUpdatedAt ?? .distantPast
+        let cloudProgramsAt = cloud.programsUpdatedAt ?? .distantPast
+        let cloudPreferencesAt = cloud.preferencesUpdatedAt ?? .distantPast
+
+        var pulledPrograms = false
+        var pulledPreferences = false
+        var pushedLocal = false
+
+        if let cloudPrograms = cloud.programs {
+            if programs.isEmpty || cloudProgramsAt > localProgramsAt {
+                pulledPrograms = true
+            } else if localProgramsAt > cloudProgramsAt {
+                cloudSync.syncProgramsToCloud(
+                    programs: programs,
+                    preferences: preferences,
+                    programsUpdatedAt: localProgramsAt
+                )
+                pushedLocal = true
+            }
+        } else if !programs.isEmpty, localProgramsAt > .distantPast {
+            cloudSync.syncProgramsToCloud(
+                programs: programs,
+                preferences: preferences,
+                programsUpdatedAt: localProgramsAt
+            )
+            pushedLocal = true
+        }
+
+        if let cloudPreferences = cloud.preferences {
+            if !hasMeaningfulLocalPreferences || cloudPreferencesAt > localPreferencesAt {
+                pulledPreferences = true
+            } else if localPreferencesAt > cloudPreferencesAt {
+                cloudSync.syncPreferencesToCloud(
+                    programs: programs,
+                    preferences: preferences,
+                    preferencesUpdatedAt: localPreferencesAt
+                )
+                pushedLocal = true
+            }
+        } else if hasMeaningfulLocalPreferences {
+            cloudSync.syncPreferencesToCloud(
+                programs: programs,
+                preferences: preferences,
+                preferencesUpdatedAt: localPreferencesAt
+            )
+            pushedLocal = true
+        }
+
+        guard pulledPrograms || pulledPreferences else {
+            if pushedLocal {
+                Self.logger.info("Pushed newer local data to iCloud (\(trigger, privacy: .public))")
+            }
+            return pushedLocal ? .pushedLocal : .noChange
+        }
+
+        isApplyingRemoteCloudSnapshot = true
+        defer { isApplyingRemoteCloudSnapshot = false }
+
+        if pulledPrograms, let cloudPrograms = cloud.programs {
             programs = cloudPrograms
-            savePrograms()
+            persistProgramsToDisk()
+            setLocalProgramsTimestamp(cloudProgramsAt == .distantPast ? Date() : cloudProgramsAt)
+            deduplicateSavedPrograms()
         }
-        
-        if preferences.specialties.isEmpty && preferences.profile.name.isEmpty,
-           let cloudPreferences = cloudData.preferences {
+
+        if pulledPreferences, let cloudPreferences = cloud.preferences {
             preferences = cloudPreferences
-            savePreferences()
+            persistPreferencesToDisk()
+            setLocalPreferencesTimestamp(cloudPreferencesAt == .distantPast ? Date() : cloudPreferencesAt)
         }
+
+        recalculateAllScores()
+        objectWillChange.send()
+        Self.logger.info("Applied iCloud merge (\(trigger, privacy: .public)): programs=\(pulledPrograms, privacy: .public), preferences=\(pulledPreferences, privacy: .public)")
+
+        switch (pulledPrograms, pulledPreferences) {
+        case (true, true): return .pulledBoth
+        case (true, false): return .pulledPrograms
+        case (false, true): return .pulledPreferences
+        case (false, false): return .noChange
+        }
+    }
+
+    private func persistProgramsToDisk() {
+        guard let encoded = try? JSONEncoder().encode(programs) else { return }
+        UserDefaults.standard.set(encoded, forKey: programsKey)
+    }
+
+    private func persistPreferencesToDisk() {
+        guard let encoded = try? JSONEncoder().encode(preferences) else { return }
+        UserDefaults.standard.set(encoded, forKey: preferencesKey)
+        clearScoreCache()
     }
     
     @discardableResult
@@ -457,23 +638,140 @@ class DataManager: ObservableObject {
     }
     
     // MARK: - Signal Tracking
+
+    struct SignalBudgetSummary: Identifiable {
+        let id: String
+        let displayName: String
+        let isTiered: Bool
+        let goldUsed: Int
+        let goldLimit: Int
+        let silverUsed: Int
+        let silverLimit: Int
+        let usesResidencyCAS: Bool
+        let requiresSignalStatement: Bool
+
+        var goldRemaining: Int { max(0, goldLimit - goldUsed) }
+        var silverRemaining: Int { max(0, silverLimit - silverUsed) }
+        var totalRemaining: Int {
+            isTiered ? goldRemaining + silverRemaining : goldRemaining
+        }
+    }
+
+    func relevantSignalBuckets() -> [String] {
+        var buckets = Set(
+            programs.map { SignalLimits.signalBucket(for: $0.specialty, accreditationID: $0.accreditationID) }
+        )
+        for specialty in preferences.specialties {
+            let bucket = SignalLimits.signalBucket(for: specialty)
+            if SignalLimits.participatesInSignaling(for: specialty) {
+                buckets.insert(bucket)
+            }
+        }
+        return buckets
+            .filter { SignalLimits.participatesInSignaling(for: $0) }
+            .sorted()
+    }
+
+    func signalBudgetSummaries() -> [SignalBudgetSummary] {
+        relevantSignalBuckets().map { bucket in
+            let usage = getSignalUsage(for: bucket)
+            let config = SignalLimits.configuration(for: bucket)
+            return SignalBudgetSummary(
+                id: bucket,
+                displayName: bucket,
+                isTiered: config.isTiered,
+                goldUsed: usage.goldUsed,
+                goldLimit: usage.goldLimit,
+                silverUsed: usage.silverUsed,
+                silverLimit: usage.silverLimit,
+                usesResidencyCAS: config.usesResidencyCAS,
+                requiresSignalStatement: config.requiresSignalStatement
+            )
+        }
+    }
+
+    func sanitizedSignalType(
+        _ type: SignalType,
+        specialty: String,
+        accreditationID: String? = nil
+    ) -> SignalType {
+        let config = SignalLimits.configuration(for: specialty, accreditationID: accreditationID)
+        guard config.participates else { return .none }
+        switch type {
+        case .none:
+            return .none
+        case .silver:
+            return config.isTiered ? .silver : .none
+        case .gold:
+            return .gold
+        }
+    }
+
+    func validateAndSanitizeSignals() {
+        var changed = false
+        for index in programs.indices {
+            let program = programs[index]
+            guard program.signalType != .none else { continue }
+            let sanitized = sanitizedSignalType(
+                program.signalType,
+                specialty: program.specialty,
+                accreditationID: program.accreditationID
+            )
+            if sanitized != program.signalType || (sanitized == .none && program.signalNote != nil) {
+                programs[index].signalType = sanitized
+                if sanitized == .none {
+                    programs[index].signalNote = nil
+                }
+                changed = true
+            }
+        }
+        if changed {
+            savePrograms()
+            objectWillChange.send()
+        }
+    }
+
+    private func programsInSignalBucket(
+        for specialty: String,
+        accreditationID: String? = nil,
+        excludingProgramId: String? = nil
+    ) -> [Program] {
+        let bucket = SignalLimits.signalBucket(for: specialty, accreditationID: accreditationID)
+        var matches = programs.filter {
+            SignalLimits.signalBucket(for: $0.specialty, accreditationID: $0.accreditationID) == bucket
+        }
+        if let excludingProgramId {
+            matches = matches.filter { $0.id != excludingProgramId }
+        }
+        return matches
+    }
     
-    func getSignalCounts(for specialty: String) -> (gold: Int, silver: Int) {
-        let specialtyPrograms = programs.filter { $0.specialty == specialty }
+    func getSignalCounts(for specialty: String, accreditationID: String? = nil) -> (gold: Int, silver: Int) {
+        let specialtyPrograms = programsInSignalBucket(for: specialty, accreditationID: accreditationID)
         let goldCount = specialtyPrograms.filter { $0.signalType == .gold }.count
         let silverCount = specialtyPrograms.filter { $0.signalType == .silver }.count
         return (gold: goldCount, silver: silverCount)
     }
     
-    func canAssignSignal(type: SignalType, specialty: String, excludingProgramId: String? = nil) -> (canAssign: Bool, reason: String?) {
-        let isTiered = SignalLimits.isTiered(for: specialty)
-        let limits = SignalLimits.limits(for: specialty)
-        
-        // Get counts excluding the current program (if editing)
-        var specialtyPrograms = programs.filter { $0.specialty == specialty }
-        if let excludingId = excludingProgramId {
-            specialtyPrograms = specialtyPrograms.filter { $0.id != excludingId }
+    func canAssignSignal(
+        type: SignalType,
+        specialty: String,
+        excludingProgramId: String? = nil,
+        accreditationID: String? = nil
+    ) -> (canAssign: Bool, reason: String?) {
+        let config = SignalLimits.configuration(for: specialty, accreditationID: accreditationID)
+        guard config.participates else {
+            return (false, "Program signaling isn't tracked for \(specialty) in Matchly.")
         }
+
+        let isTiered = config.isTiered
+        let limits = (gold: config.goldLimit, silver: config.silverLimit)
+        
+        let specialtyPrograms = programsInSignalBucket(
+            for: specialty,
+            accreditationID: accreditationID,
+            excludingProgramId: excludingProgramId
+        )
         
         let goldCount = specialtyPrograms.filter { $0.signalType == .gold }.count
         let silverCount = specialtyPrograms.filter { $0.signalType == .silver }.count
@@ -509,10 +807,15 @@ class DataManager: ObservableObject {
         }
     }
     
-    func getSignalUsage(for specialty: String) -> (goldUsed: Int, goldLimit: Int, silverUsed: Int, silverLimit: Int) {
-        let isTiered = SignalLimits.isTiered(for: specialty)
-        let limits = SignalLimits.limits(for: specialty)
-        let counts = getSignalCounts(for: specialty)
+    func getSignalUsage(for specialty: String, accreditationID: String? = nil) -> (goldUsed: Int, goldLimit: Int, silverUsed: Int, silverLimit: Int) {
+        let config = SignalLimits.configuration(for: specialty, accreditationID: accreditationID)
+        guard config.participates else {
+            return (goldUsed: 0, goldLimit: 0, silverUsed: 0, silverLimit: 0)
+        }
+
+        let isTiered = config.isTiered
+        let limits = (gold: config.goldLimit, silver: config.silverLimit)
+        let counts = getSignalCounts(for: specialty, accreditationID: accreditationID)
         
         if isTiered {
             return (goldUsed: counts.gold, goldLimit: limits.gold, silverUsed: counts.silver, silverLimit: limits.silver)

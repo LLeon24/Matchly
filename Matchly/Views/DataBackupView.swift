@@ -87,7 +87,7 @@ struct DataBackupView: View {
                 Text("Cloud Backup")
             } footer: {
                 if cloudSync.isCloudAvailable {
-                    Text("Your data will be automatically synced across all your devices signed in to the same iCloud account.")
+                    Text("Matchly automatically syncs when you open the app and when another device updates iCloud. Use Sync Now to merge immediately.")
                 } else {
                     Text("Enable iCloud in Settings > [Your Name] > iCloud to sync your data across devices.")
                 }
@@ -220,10 +220,20 @@ struct DataBackupView: View {
     }
     
     private func syncToCloud() {
-        cloudSync.syncToCloud(programs: dataManager.programs, preferences: dataManager.preferences)
-        if cloudSync.syncError != nil {
-            showCloudSyncAlert = true
+        let outcome = dataManager.mergeWithCloudIfNeeded(trigger: "manual")
+        switch outcome {
+        case .noChange:
+            importErrorMessage = cloudSync.syncError ?? "Already up to date with iCloud."
+        case .pulledPrograms:
+            importErrorMessage = "Downloaded newer programs from iCloud."
+        case .pulledPreferences:
+            importErrorMessage = "Downloaded newer preferences from iCloud."
+        case .pulledBoth:
+            importErrorMessage = "Downloaded newer data from iCloud."
+        case .pushedLocal:
+            importErrorMessage = cloudSync.syncError ?? "Uploaded newer local data to iCloud."
         }
+        showCloudSyncAlert = true
     }
     
     private func exportData() {

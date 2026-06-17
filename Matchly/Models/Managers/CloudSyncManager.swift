@@ -9,6 +9,25 @@ import Foundation
 import Combine
 import OSLog
 
+extension Notification.Name {
+    static let matchlyCloudDataDidChange = Notification.Name("matchlyCloudDataDidChange")
+}
+
+struct CloudSyncPayload {
+    let programs: [Program]?
+    let preferences: UserPreferences?
+    let programsUpdatedAt: Date?
+    let preferencesUpdatedAt: Date?
+}
+
+enum CloudSyncMergeOutcome: Equatable {
+    case noChange
+    case pulledPrograms
+    case pulledPreferences
+    case pulledBoth
+    case pushedLocal
+}
+
 class CloudSyncManager: ObservableObject {
     static let shared = CloudSyncManager()
     
@@ -19,6 +38,8 @@ class CloudSyncManager: ObservableObject {
     private let store = NSUbiquitousKeyValueStore.default
     private let programsKey = "cloud_programs"
     private let preferencesKey = "cloud_preferences"
+    private let programsUpdatedAtKey = "cloud_programs_updated_at"
+    private let preferencesUpdatedAtKey = "cloud_preferences_updated_at"
     private static let logger = Logger(subsystem: "com.matchly", category: "CloudSyncManager")
     
     private init() {
@@ -34,6 +55,62 @@ class CloudSyncManager: ObservableObject {
     // MARK: - iCloud Sync
     
     func syncToCloud(programs: [Program], preferences: UserPreferences) {
+        syncToCloud(
+            programs: programs,
+            preferences: preferences,
+            programsUpdatedAt: Date(),
+            preferencesUpdatedAt: Date()
+        )
+    }
+
+    func syncToCloud(
+        programs: [Program],
+        preferences: UserPreferences,
+        programsUpdatedAt: Date,
+        preferencesUpdatedAt: Date
+    ) {
+        uploadToCloud(
+            programs: programs,
+            preferences: preferences,
+            programsUpdatedAt: programsUpdatedAt,
+            preferencesUpdatedAt: preferencesUpdatedAt
+        )
+    }
+
+    func syncProgramsToCloud(
+        programs: [Program],
+        preferences: UserPreferences,
+        programsUpdatedAt: Date
+    ) {
+        let existingPreferencesUpdatedAt = date(forKey: preferencesUpdatedAtKey) ?? programsUpdatedAt
+        uploadToCloud(
+            programs: programs,
+            preferences: preferences,
+            programsUpdatedAt: programsUpdatedAt,
+            preferencesUpdatedAt: existingPreferencesUpdatedAt
+        )
+    }
+
+    func syncPreferencesToCloud(
+        programs: [Program],
+        preferences: UserPreferences,
+        preferencesUpdatedAt: Date
+    ) {
+        let existingProgramsUpdatedAt = date(forKey: programsUpdatedAtKey) ?? preferencesUpdatedAt
+        uploadToCloud(
+            programs: programs,
+            preferences: preferences,
+            programsUpdatedAt: existingProgramsUpdatedAt,
+            preferencesUpdatedAt: preferencesUpdatedAt
+        )
+    }
+
+    private func uploadToCloud(
+        programs: [Program],
+        preferences: UserPreferences,
+        programsUpdatedAt: Date,
+        preferencesUpdatedAt: Date
+    ) {
         DispatchQueue.main.async { [weak self] in
             self?.isSyncing = true
             self?.syncError = nil
@@ -80,6 +157,8 @@ class CloudSyncManager: ObservableObject {
             // Store data
             store.set(programsData, forKey: programsKey)
             store.set(preferencesData, forKey: preferencesKey)
+            store.set(programsUpdatedAt.timeIntervalSince1970, forKey: programsUpdatedAtKey)
+            store.set(preferencesUpdatedAt.timeIntervalSince1970, forKey: preferencesUpdatedAtKey)
             
             // Synchronize (this is synchronous but should be quick)
             let syncResult = store.synchronize()
@@ -109,31 +188,48 @@ class CloudSyncManager: ObservableObject {
         }
     }
     
-    func loadFromCloud() -> (programs: [Program]?, preferences: UserPreferences?) {
+    func loadFromCloud() -> CloudSyncPayload {
         guard isCloudAvailable else {
             Self.logger.warning("Cannot load from iCloud: iCloud not available")
-            return (nil, nil)
+            return CloudSyncPayload(programs: nil, preferences: nil, programsUpdatedAt: nil, preferencesUpdatedAt: nil)
         }
-        
+
         // Synchronize first to get latest data
         store.synchronize()
-        
-        guard let programsData = store.data(forKey: programsKey),
-              let preferencesData = store.data(forKey: preferencesKey) else {
+
+        let programs = decodePrograms(from: store.data(forKey: programsKey))
+        let preferences = decodePreferences(from: store.data(forKey: preferencesKey))
+        let programsUpdatedAt = date(forKey: programsUpdatedAtKey)
+        let preferencesUpdatedAt = date(forKey: preferencesUpdatedAtKey)
+
+        if programs == nil && preferences == nil {
             Self.logger.info("No iCloud data found (this is normal for first-time users)")
-            return (nil, nil)
+        } else {
+            Self.logger.info("Loaded cloud snapshot: programs=\(programs?.count ?? 0, privacy: .public)")
         }
-        
-        do {
-            let programs = try JSONDecoder().decode([Program].self, from: programsData)
-            let preferences = try JSONDecoder().decode(UserPreferences.self, from: preferencesData)
-            Self.logger.info("Successfully loaded from iCloud: \(programs.count, privacy: .public) programs")
-            return (programs, preferences)
-        } catch {
-            syncError = "Failed to decode cloud data: \(error.localizedDescription)"
-            Self.logger.error("Failed to decode iCloud data: \(error.localizedDescription, privacy: .public)")
-            return (nil, nil)
-        }
+
+        return CloudSyncPayload(
+            programs: programs,
+            preferences: preferences,
+            programsUpdatedAt: programsUpdatedAt,
+            preferencesUpdatedAt: preferencesUpdatedAt
+        )
+    }
+
+    private func decodePrograms(from data: Data?) -> [Program]? {
+        guard let data else { return nil }
+        return try? JSONDecoder().decode([Program].self, from: data)
+    }
+
+    private func decodePreferences(from data: Data?) -> UserPreferences? {
+        guard let data else { return nil }
+        return try? JSONDecoder().decode(UserPreferences.self, from: data)
+    }
+
+    private func date(forKey key: String) -> Date? {
+        let interval = store.double(forKey: key)
+        guard interval > 0 else { return nil }
+        return Date(timeIntervalSince1970: interval)
     }
     
     @objc private func cloudDataChanged(_ notification: Notification) {
@@ -146,8 +242,10 @@ class CloudSyncManager: ObservableObject {
             Self.logger.info("Cloud data changed externally")
         }
         
-        // Could trigger a reload here if needed
-        // For now, user can manually sync or restart app
+        // Notify the app to merge newer cloud data into the local store.
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .matchlyCloudDataDidChange, object: nil)
+        }
     }
     
     private func reasonDescription(for reason: Int) -> String {
@@ -202,6 +300,18 @@ class CloudSyncManager: ObservableObject {
             status += "Last sync: Never"
         }
         
+        if let programsUpdatedAt = date(forKey: programsUpdatedAtKey) {
+            let formatter = RelativeDateTimeFormatter()
+            formatter.unitsStyle = .full
+            status += "\nPrograms updated: \(formatter.localizedString(for: programsUpdatedAt, relativeTo: Date()))"
+        }
+
+        if let preferencesUpdatedAt = date(forKey: preferencesUpdatedAtKey) {
+            let formatter = RelativeDateTimeFormatter()
+            formatter.unitsStyle = .full
+            status += "\nPreferences updated: \(formatter.localizedString(for: preferencesUpdatedAt, relativeTo: Date()))"
+        }
+
         // Check data sizes if available
         if let programsData = store.data(forKey: programsKey) {
             let sizeMB = Double(programsData.count) / 1_000_000.0

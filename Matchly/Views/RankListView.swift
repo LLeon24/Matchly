@@ -176,7 +176,11 @@ struct RankListView: View {
                 toolbarContent
             }
             .sheet(isPresented: $showExportSheet) {
-                ExportView(programs: rankedPrograms)
+                ExportView(
+                    programs: regularPrograms,
+                    redFlaggedPrograms: redFlagged,
+                    applicantName: dataManager.preferences.profile.name
+                )
             }
             .onAppear {
                 loadManualOrder()
@@ -626,11 +630,29 @@ struct EmptyRankListView: View {
 struct ExportView: View {
     @Environment(\.dismiss) var dismiss
     let programs: [Program]
+    let redFlaggedPrograms: [Program]
+    let applicantName: String?
     @State private var showShareSheet = false
+    @State private var shareItems: [Any] = []
+    @State private var exportError: String?
+
+    init(
+        programs: [Program],
+        redFlaggedPrograms: [Program] = [],
+        applicantName: String? = nil
+    ) {
+        self.programs = programs
+        self.redFlaggedPrograms = redFlaggedPrograms
+        self.applicantName = applicantName
+    }
+
+    private var allPrograms: [Program] {
+        programs + redFlaggedPrograms
+    }
     
     var rankListText: String {
         var text = "My Residency Rank List\n\n"
-        for (index, program) in programs.enumerated() {
+        for (index, program) in allPrograms.enumerated() {
             let hospitalName = HospitalNameFormatter.format(program.hospital.isEmpty ? program.name : program.hospital)
             text += "\(index + 1). \(hospitalName)"
             if let acgmeID = program.accreditationID, !acgmeID.isEmpty {
@@ -646,64 +668,77 @@ struct ExportView: View {
         }
         return text
     }
+
+    private var pdfConfiguration: RankListPDFExporter.Configuration {
+        RankListPDFExporter.Configuration(
+            programs: programs,
+            redFlaggedPrograms: redFlaggedPrograms,
+            applicantName: applicantName
+        )
+    }
     
     var body: some View {
         MatchlyNavigationView {
-            VStack(spacing: 30) {
-                Text("Export Rank List")
-                    .font(.arial(size: 24, weight: .bold))
-                    .padding(.top)
+            VStack(spacing: 24) {
+                VStack(spacing: 6) {
+                    Text("Share Rank List")
+                        .font(.arial(size: 24, weight: .bold))
+                    Text("Export a polished PDF for mentors, advisors, or your own records.")
+                        .font(.arial(size: 14))
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                }
+                .padding(.top)
                 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        ForEach(Array(programs.enumerated()), id: \.element.id) { index, program in
-                            HStack {
-                                Text("\(index + 1).")
-                                    .font(.arial(size: 16, weight: .semibold))
-                                    .frame(width: 40)
-                                
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(HospitalNameFormatter.format(program.hospital.isEmpty ? program.name : program.hospital))
-                                        .font(.arial(size: 16, weight: .medium))
-                                    if let acgmeID = program.accreditationID, !acgmeID.isEmpty {
-                                        Text("ID: \(acgmeID)")
-                                            .font(.arial(size: 12))
-                                            .foregroundColor(.secondary)
-                                    }
-                                    if !program.specialty.isEmpty {
-                                        Text(program.specialty)
-                                            .font(.arial(size: 12))
-                                            .foregroundColor(.secondary)
-                                    }
-                                }
-                                
-                                Spacer()
-                                
-                                Text(String(format: "%.1f", program.finalScore))
-                                    .font(.arial(size: 14, weight: .semibold))
-                                    .foregroundColor(.secondary)
-                            }
-                            .padding(.vertical, 4)
+                        if !programs.isEmpty {
+                            exportSection(title: "Ranked Programs", programs: programs, startRank: 1)
+                        }
+                        if !redFlaggedPrograms.isEmpty {
+                            exportSection(
+                                title: "Red Flagged Programs",
+                                programs: redFlaggedPrograms,
+                                startRank: programs.count + 1,
+                                titleColor: .red
+                            )
                         }
                     }
                     .padding()
                     .glassEffect(.regular, in: .rect(cornerRadius: 12))
                     .padding(.horizontal)
                 }
-                
-                Button(action: {
-                    showShareSheet = true
-                }) {
-                    Text("Share Rank List")
-                        .font(.arial(size: 18, weight: .semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding()
+
+                if let exportError {
+                    Text(exportError)
+                        .font(.arial(size: 13))
+                        .foregroundColor(.red)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
                 }
-                .buttonStyle(.glassProminent)
-                .tint(AppColors.primaryBlue)
+                
+                VStack(spacing: 12) {
+                    Button(action: sharePDF) {
+                        Label("Share as PDF", systemImage: "doc.richtext")
+                            .font(.arial(size: 18, weight: .semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                    }
+                    .buttonStyle(.glassProminent)
+                    .tint(AppColors.primaryBlue)
+
+                    Button(action: sharePlainText) {
+                        Label("Share as Text", systemImage: "text.alignleft")
+                            .font(.arial(size: 16, weight: .medium))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.glass)
+                }
                 .padding(.horizontal)
                 .sheet(isPresented: $showShareSheet) {
-                    ShareSheet(activityItems: [rankListText])
+                    ShareSheet(activityItems: shareItems)
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
@@ -716,6 +751,67 @@ struct ExportView: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func exportSection(
+        title: String,
+        programs: [Program],
+        startRank: Int,
+        titleColor: Color = .secondary
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.arial(size: 13, weight: .semibold))
+                .foregroundColor(titleColor)
+
+            ForEach(Array(programs.enumerated()), id: \.element.id) { offset, program in
+                let rank = startRank + offset
+                HStack(alignment: .top) {
+                    Text("\(rank).")
+                        .font(.arial(size: 16, weight: .semibold))
+                        .frame(width: 32, alignment: .leading)
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(HospitalNameFormatter.format(program.hospital.isEmpty ? program.name : program.hospital))
+                            .font(.arial(size: 16, weight: .medium))
+                        if let acgmeID = program.accreditationID, !acgmeID.isEmpty {
+                            Text("ID: \(acgmeID)")
+                                .font(.arial(size: 12))
+                                .foregroundColor(.secondary)
+                        }
+                        if !program.specialty.isEmpty {
+                            Text(program.specialty)
+                                .font(.arial(size: 12))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    
+                    Spacer()
+                    
+                    Text(String(format: "%.1f", program.finalScore))
+                        .font(.arial(size: 14, weight: .semibold))
+                        .foregroundColor(.secondary)
+                }
+                .padding(.vertical, 4)
+            }
+        }
+    }
+
+    private func sharePDF() {
+        exportError = nil
+        guard let url = RankListPDFExporter.generatePDF(configuration: pdfConfiguration) else {
+            exportError = "Couldn't create the PDF. Try again or use Share as Text."
+            return
+        }
+        shareItems = [url]
+        showShareSheet = true
+    }
+
+    private func sharePlainText() {
+        exportError = nil
+        shareItems = [rankListText]
+        showShareSheet = true
     }
 }
 

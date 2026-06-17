@@ -2062,14 +2062,18 @@ struct DashboardView: View {
     
     private func getSignalProgress() -> Double {
         // Calculate progress based on signal usage across all specialties
-        let specialties = Set(dataManager.programs.map { $0.specialty })
-        guard !specialties.isEmpty else { return 0 }
+        let buckets = Set(
+            dataManager.programs.map {
+                SignalLimits.signalBucket(for: $0.specialty, accreditationID: $0.accreditationID)
+            }
+        ).filter { SignalLimits.participatesInSignaling(for: $0) }
+        guard !buckets.isEmpty else { return 0 }
         
         var totalUsed = 0
         var totalAvailable = 0
         
-        for specialty in specialties {
-            let usage = dataManager.getSignalUsage(for: specialty)
+        for bucket in buckets {
+            let usage = dataManager.getSignalUsage(for: bucket)
             totalUsed += usage.goldUsed + usage.silverUsed
             totalAvailable += usage.goldLimit + usage.silverLimit
         }
