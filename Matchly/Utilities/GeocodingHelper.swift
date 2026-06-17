@@ -37,19 +37,14 @@ enum GeocodingHelper {
     static func coordinate(for program: Program) async -> CLLocationCoordinate2D {
         let query = AddressFormatter.geocodingQuery(for: program)
 
-        coordinateCacheLock.lock()
-        if let cached = coordinateCache[query] {
-            coordinateCacheLock.unlock()
+        if let cached = await coordinateCache.lookup(query) {
             return cached
         }
-        coordinateCacheLock.unlock()
 
         do {
             let location = try await geocodeAddress(query)
             let coordinate = location.coordinate
-            coordinateCacheLock.lock()
-            coordinateCache[query] = coordinate
-            coordinateCacheLock.unlock()
+            await coordinateCache.store(coordinate, for: query)
             return coordinate
         } catch {
             return fallbackCoordinate(for: program)
@@ -74,8 +69,36 @@ enum GeocodingHelper {
         return CLLocationCoordinate2D(latitude: 39.8283, longitude: -98.5795)
     }
 
-    private static let coordinateCacheLock = NSLock()
-    private static var coordinateCache: [String: CLLocationCoordinate2D] = [:]
+    static func fallbackCoordinate(for snapshot: CoupleProgramSnapshot) -> CLLocationCoordinate2D {
+        if !snapshot.city.isEmpty && !snapshot.state.isEmpty {
+            return coordinate(for: snapshot.city, state: snapshot.state)
+        }
+        if !snapshot.state.isEmpty {
+            return coordinate(for: snapshot.state)
+        }
+        return CLLocationCoordinate2D(latitude: 39.8283, longitude: -98.5795)
+    }
+
+    /// Fast synchronous distance estimate using city/state lookup tables.
+    static func approximateDistanceInMiles(between a: CoupleProgramSnapshot, and b: CoupleProgramSnapshot) -> Double {
+        let loc1 = CLLocation(latitude: fallbackCoordinate(for: a).latitude, longitude: fallbackCoordinate(for: a).longitude)
+        let loc2 = CLLocation(latitude: fallbackCoordinate(for: b).latitude, longitude: fallbackCoordinate(for: b).longitude)
+        return loc1.distance(from: loc2) / 1609.344
+    }
+
+    private static let coordinateCache = CoordinateCache()
+
+    private actor CoordinateCache {
+        private var storage: [String: CLLocationCoordinate2D] = [:]
+
+        func lookup(_ query: String) -> CLLocationCoordinate2D? {
+            storage[query]
+        }
+
+        func store(_ coordinate: CLLocationCoordinate2D, for query: String) {
+            storage[query] = coordinate
+        }
+    }
     
     // MARK: - Fallback Coordinate Lookups
     

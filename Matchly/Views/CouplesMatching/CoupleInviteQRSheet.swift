@@ -10,7 +10,11 @@ struct CoupleInviteQRSheet: View {
     let inviterName: String
     @Environment(\.dismiss) private var dismiss
 
-    private var shareText: String {
+    private var inviteURL: URL? {
+        Couple.inviteURL(for: couple.coupleCode)
+    }
+
+    private var shareMessage: String {
         Couple.shareInviteMessage(code: couple.coupleCode, inviterName: inviterName)
     }
 
@@ -26,16 +30,22 @@ struct CoupleInviteQRSheet: View {
                 CoupleQRCodeView(code: couple.coupleCode)
 
                 VStack(spacing: 12) {
-                    ShareLink(item: shareText) {
-                        HStack {
-                            Spacer()
-                            Image(systemName: "message.fill")
-                            Text("Send Invite via Text")
-                            Spacer()
+                    if let inviteURL {
+                        ShareLink(
+                            item: inviteURL,
+                            subject: Text(Couple.shareInviteSubject(inviterName: inviterName)),
+                            message: Text(shareMessage)
+                        ) {
+                            HStack {
+                                Spacer()
+                                Image(systemName: "message.fill")
+                                Text("Send Invite via Text")
+                                Spacer()
+                            }
                         }
+                        .buttonStyle(.glassProminent)
+                        .tint(AppColors.primaryBlue)
                     }
-                    .buttonStyle(.glassProminent)
-                    .tint(AppColors.primaryBlue)
 
                     Button(action: {
                         UIPasteboard.general.string = couple.coupleCode

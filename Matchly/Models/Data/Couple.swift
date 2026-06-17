@@ -44,6 +44,22 @@ struct Couple: Codable, Identifiable, Hashable {
         self.createdAt = createdAt
         self.linkedAt = linkedAt
     }
+
+    /// Rebuilds a couple value with a canonical shared ID (e.g. from CloudKit registration).
+    init(copying couple: Couple, id: String) {
+        self.id = id
+        self.user1ID = couple.user1ID
+        self.user2ID = couple.user2ID
+        self.user1Name = couple.user1Name
+        self.user2Name = couple.user2Name
+        self.user1Email = couple.user1Email
+        self.user2Email = couple.user2Email
+        self.coupleCode = couple.coupleCode
+        self.inviteLink = couple.inviteLink
+        self.status = couple.status
+        self.createdAt = couple.createdAt
+        self.linkedAt = couple.linkedAt
+    }
     
     static func generateCoupleCode() -> String {
         // Generate a 6-character alphanumeric code
@@ -81,15 +97,23 @@ struct Couple: Codable, Identifiable, Hashable {
         return nil
     }
 
-    /// Text message / share-sheet body for inviting a partner.
+    static func inviteURL(for code: String) -> URL? {
+        URL(string: generateInviteLink(code: code))
+    }
+
+    /// Short body paired with `inviteURL` when sharing via ShareLink (URL is the tappable item).
     static func shareInviteMessage(code: String, inviterName: String) -> String {
         """
         \(inviterName) invited you to link on Matchly for couples match.
 
-        Open Matchly → Settings → Couples Matching, then tap "Scan Partner's QR" or enter this code:
-
+        Open Matchly → Couples Matching → Enter Code, then use:
         \(code.uppercased())
         """
+    }
+
+    /// Subject line for the system share sheet.
+    static func shareInviteSubject(inviterName: String) -> String {
+        "\(inviterName) invited you on Matchly"
     }
     
     static func parseInviteLink(_ link: String) -> String? {
@@ -146,7 +170,15 @@ struct CouplesPreferences: Codable, Hashable {
     var programTypePriority: ProgramTypePriority = .balanced
     var distanceTolerance: Int = 50 // Maximum distance in miles between programs
     var mustMatchTogether: Bool = true // If false, allows individual matching if couple match fails
-    
+
+    /// Relative importance sliders (0–1). Normalized inside `CouplesRankEngine`.
+    var weightIndividualScores: Double = 0.35
+    var weightGeography: Double = 0.30
+    var weightSameHospital: Double = 0.15
+    var weightEMR: Double = 0.10
+    var weightProgramType: Double = 0.10
+    var preferSameHospital: Bool = false
+
     enum GeographicPriority: String, Codable, CaseIterable, Hashable {
         case sameCity = "Same City"
         case sameState = "Same State"
@@ -214,6 +246,12 @@ extension CouplesPreferences {
         self.programTypePriority = try container.decodeIfPresent(ProgramTypePriority.self, forKey: .programTypePriority) ?? .balanced
         self.distanceTolerance = try container.decodeIfPresent(Int.self, forKey: .distanceTolerance) ?? 50
         self.mustMatchTogether = try container.decodeIfPresent(Bool.self, forKey: .mustMatchTogether) ?? true
+        self.weightIndividualScores = try container.decodeIfPresent(Double.self, forKey: .weightIndividualScores) ?? 0.35
+        self.weightGeography = try container.decodeIfPresent(Double.self, forKey: .weightGeography) ?? 0.30
+        self.weightSameHospital = try container.decodeIfPresent(Double.self, forKey: .weightSameHospital) ?? 0.15
+        self.weightEMR = try container.decodeIfPresent(Double.self, forKey: .weightEMR) ?? 0.10
+        self.weightProgramType = try container.decodeIfPresent(Double.self, forKey: .weightProgramType) ?? 0.10
+        self.preferSameHospital = try container.decodeIfPresent(Bool.self, forKey: .preferSameHospital) ?? false
     }
 }
 

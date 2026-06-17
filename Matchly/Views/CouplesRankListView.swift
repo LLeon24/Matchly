@@ -9,6 +9,7 @@ import SwiftUI
 
 struct CouplesRankListView: View {
     @EnvironmentObject var dataManager: DataManager
+    @ObservedObject private var coupleSync = CoupleSyncCoordinator.shared
     @State private var showAddPair = false
     @State private var selectedUser1Program: Program?
     @State private var selectedUser2Program: Program?
@@ -16,6 +17,8 @@ struct CouplesRankListView: View {
     @State private var showValidationAlert = false
     @State private var validationErrors: [String] = []
     @State private var showGenerateAlert = false
+    @State private var isGenerating = false
+    @State private var generateError: String?
     
     private var sortedPairs: [CouplesRankPair] {
         dataManager.preferences.couplesRankPairs.sorted { $0.rank < $1.rank }
@@ -25,10 +28,8 @@ struct CouplesRankListView: View {
         dataManager.getRankedPrograms()
     }
     
-    // In a real app, this would fetch partner's programs from server
     private var user2Programs: [Program] {
-        // For now, return empty - in real app would sync with partner
-        []
+        coupleSync.partnerPrograms.map { $0.asProgram() }
     }
     
     var body: some View {
@@ -39,13 +40,61 @@ struct CouplesRankListView: View {
                         Text("Couples Rank List")
                             .font(.arial(size: 15, weight: .semibold))
                         
-                        Text("Each rank must pair one of your programs with one of your partner's programs (or 'No Match'). Both lists must have the same number of ranks.")
+                        Text("Each rank pairs one of your programs with one of your partner's programs (or 'No Match'). Matchly can suggest an optimized list from both rank lists and your shared preferences.")
                             .font(.arial(size: 12))
                             .foregroundColor(.secondary)
                     }
                     .padding(.vertical, 4)
                 } header: {
                     Text("Instructions")
+                }
+
+                if coupleSync.isSyncing && user2Programs.isEmpty {
+                    Section {
+                        HStack {
+                            ProgressView()
+                            Text("Syncing partner's programs…")
+                                .font(.arial(size: 14))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                } else if user2Programs.isEmpty {
+                    Section {
+                        Text("Waiting for your partner to share their program list. Ask them to open Couples Matching while signed in to iCloud.")
+                            .font(.arial(size: 13))
+                            .foregroundColor(.secondary)
+                    } header: {
+                        Text("Partner Programs")
+                    }
+                } else {
+                    Section {
+                        ForEach(Array(user2Programs.prefix(5).enumerated()), id: \.element.id) { index, program in
+                            HStack {
+                                Text("#\(index + 1)")
+                                    .font(.arial(size: 12, weight: .bold))
+                                    .foregroundColor(.pink)
+                                    .frame(width: 24)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(program.hospital.isEmpty ? program.name : program.hospital)
+                                        .font(.arial(size: 14, weight: .medium))
+                                    Text("\(program.city), \(program.state)")
+                                        .font(.arial(size: 12))
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                Text(String(format: "%.1f", program.finalScore))
+                                    .font(.arial(size: 13, weight: .semibold))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        if user2Programs.count > 5 {
+                            Text("+ \(user2Programs.count - 5) more programs")
+                                .font(.arial(size: 12))
+                                .foregroundColor(.secondary)
+                        }
+                    } header: {
+                        Text("Partner's Ranked Programs (\(user2Programs.count))")
+                    }
                 }
                 
                 if sortedPairs.isEmpty {
@@ -118,16 +167,21 @@ struct CouplesRankListView: View {
                         }
                     }
                     
-                    if !sortedPairs.isEmpty {
+                    if !user1Programs.isEmpty && !user2Programs.isEmpty {
                         Button(action: {
                             generateCouplesRankList()
                         }) {
                             HStack {
-                                Image(systemName: "sparkles")
-                                    .foregroundColor(.blue)
-                                Text("Generate Couples Rank List")
+                                if isGenerating {
+                                    ProgressView()
+                                } else {
+                                    Image(systemName: "sparkles")
+                                        .foregroundColor(.blue)
+                                }
+                                Text("Generate Optimized Couples List")
                             }
                         }
+                        .disabled(isGenerating)
                     }
                 }
             } else {
@@ -179,7 +233,24 @@ struct CouplesRankListView: View {
         .alert("Rank List Generated", isPresented: $showGenerateAlert) {
             Button("OK") { }
         } message: {
-            Text("A couples rank list has been generated based on your individual rankings and preferences. Review and adjust as needed.")
+            Text("An optimized couples rank list was created from both partners' scores, geography, and your shared preferences. Review and adjust before submitting.")
+        }
+        .alert("Could Not Generate", isPresented: Binding(
+            get: { generateError != nil },
+            set: { if !$0 { generateError = nil } }
+        )) {
+            Button("OK") { generateError = nil }
+        } message: {
+            Text(generateError ?? "")
+        }
+        .task {
+            await coupleSync.refreshAll(dataManager: dataManager)
+        }
+        .refreshable {
+            await coupleSync.refreshAll(dataManager: dataManager)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .coupleDataDidChange)) { _ in
+            // Partner data updated via CloudKit.
         }
     }
     
@@ -188,6 +259,7 @@ struct CouplesRankListView: View {
         newPair.rank = dataManager.preferences.couplesRankPairs.count + 1
         dataManager.preferences.couplesRankPairs.append(newPair)
         dataManager.savePreferences()
+        dataManager.scheduleCoupleCloudPublish()
     }
     
     private func updatePair(_ oldPair: CouplesRankPair, with newPair: CouplesRankPair) {
@@ -196,25 +268,26 @@ struct CouplesRankListView: View {
             updated.rank = oldPair.rank
             dataManager.preferences.couplesRankPairs[index] = updated
             dataManager.savePreferences()
+            dataManager.scheduleCoupleCloudPublish()
         }
     }
     
     private func deletePairs(at offsets: IndexSet) {
         dataManager.preferences.couplesRankPairs.remove(atOffsets: offsets)
-        // Re-number ranks
         for (index, _) in dataManager.preferences.couplesRankPairs.enumerated() {
             dataManager.preferences.couplesRankPairs[index].rank = index + 1
         }
         dataManager.savePreferences()
+        dataManager.scheduleCoupleCloudPublish()
     }
     
     private func movePairs(from source: IndexSet, to destination: Int) {
         dataManager.preferences.couplesRankPairs.move(fromOffsets: source, toOffset: destination)
-        // Re-number ranks
         for (index, _) in dataManager.preferences.couplesRankPairs.enumerated() {
             dataManager.preferences.couplesRankPairs[index].rank = index + 1
         }
         dataManager.savePreferences()
+        dataManager.scheduleCoupleCloudPublish()
     }
     
     private func validateRankList() {
@@ -224,9 +297,23 @@ struct CouplesRankListView: View {
     }
     
     private func generateCouplesRankList() {
-        let generatedPairs = dataManager.generateCouplesRankList()
+        guard !coupleSync.partnerPrograms.isEmpty else {
+            generateError = "Your partner's programs are not available yet. Ask them to open Matchly while signed in to iCloud."
+            return
+        }
+
+        isGenerating = true
+        let generatedPairs = dataManager.generateCouplesRankList(partnerPrograms: coupleSync.partnerPrograms)
+        isGenerating = false
+
+        guard !generatedPairs.isEmpty else {
+            generateError = "Could not generate a list. Make sure both partners have ranked programs."
+            return
+        }
+
         dataManager.preferences.couplesRankPairs = generatedPairs
         dataManager.savePreferences()
+        dataManager.scheduleCoupleCloudPublish()
         showGenerateAlert = true
     }
 }
@@ -377,6 +464,12 @@ struct CouplesPreferencesView: View {
     @State private var programTypePriority: CouplesPreferences.ProgramTypePriority
     @State private var distanceTolerance: Double
     @State private var mustMatchTogether: Bool
+    @State private var weightIndividualScores: Double
+    @State private var weightGeography: Double
+    @State private var weightSameHospital: Double
+    @State private var weightEMR: Double
+    @State private var weightProgramType: Double
+    @State private var preferSameHospital: Bool
     
     init() {
         let prefs = DataManager.shared.preferences.couplesPreferences
@@ -384,6 +477,12 @@ struct CouplesPreferencesView: View {
         _programTypePriority = State(initialValue: prefs.programTypePriority)
         _distanceTolerance = State(initialValue: Double(prefs.distanceTolerance))
         _mustMatchTogether = State(initialValue: prefs.mustMatchTogether)
+        _weightIndividualScores = State(initialValue: prefs.weightIndividualScores)
+        _weightGeography = State(initialValue: prefs.weightGeography)
+        _weightSameHospital = State(initialValue: prefs.weightSameHospital)
+        _weightEMR = State(initialValue: prefs.weightEMR)
+        _weightProgramType = State(initialValue: prefs.weightProgramType)
+        _preferSameHospital = State(initialValue: prefs.preferSameHospital)
     }
     
     var body: some View {
@@ -414,8 +513,21 @@ struct CouplesPreferencesView: View {
                 
                 Section {
                     Toggle("Must Match Together", isOn: $mustMatchTogether)
+                    Toggle("Prefer Same Hospital", isOn: $preferSameHospital)
                 } footer: {
-                    Text("If enabled, you will only match if both partners match. If disabled, individual matching is allowed if couples matching fails.")
+                    Text("If enabled, you will only match if both partners match. Same-hospital preference boosts pairs at one institution.")
+                }
+
+                Section {
+                    preferenceWeightRow("Program Scores", value: $weightIndividualScores)
+                    preferenceWeightRow("Geography", value: $weightGeography)
+                    preferenceWeightRow("Same Hospital", value: $weightSameHospital)
+                    preferenceWeightRow("EMR Alignment", value: $weightEMR)
+                    preferenceWeightRow("Program Type", value: $weightProgramType)
+                } header: {
+                    Text("Optimization Priorities")
+                } footer: {
+                    Text("These weights guide the Generate Optimized Couples List algorithm. Higher values make that factor more important when pairing programs.")
                 }
             }
             .navigationTitle("Couples Preferences")
@@ -438,12 +550,33 @@ struct CouplesPreferencesView: View {
         }
     }
     
+    private func preferenceWeightRow(_ title: String, value: Binding<Double>) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(title)
+                    .font(.arial(size: 15))
+                Spacer()
+                Text("\(Int(value.wrappedValue * 100))%")
+                    .font(.arial(size: 13))
+                    .foregroundColor(.secondary)
+            }
+            Slider(value: value, in: 0...1, step: 0.05)
+        }
+    }
+
     private func savePreferences() {
         dataManager.preferences.couplesPreferences.geographicPriority = geographicPriority
         dataManager.preferences.couplesPreferences.programTypePriority = programTypePriority
         dataManager.preferences.couplesPreferences.distanceTolerance = Int(distanceTolerance)
         dataManager.preferences.couplesPreferences.mustMatchTogether = mustMatchTogether
+        dataManager.preferences.couplesPreferences.weightIndividualScores = weightIndividualScores
+        dataManager.preferences.couplesPreferences.weightGeography = weightGeography
+        dataManager.preferences.couplesPreferences.weightSameHospital = weightSameHospital
+        dataManager.preferences.couplesPreferences.weightEMR = weightEMR
+        dataManager.preferences.couplesPreferences.weightProgramType = weightProgramType
+        dataManager.preferences.couplesPreferences.preferSameHospital = preferSameHospital
         dataManager.savePreferences()
+        dataManager.scheduleCoupleCloudPublish()
         dismiss()
     }
 }

@@ -93,9 +93,13 @@ struct CoupleChatView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             await refreshMessages()
+            await pollMessagesWhileVisible()
         }
         .refreshable {
             await refreshMessages()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .coupleMessageDidArrive)) { _ in
+            Task { await refreshMessages() }
         }
         .alert("Message Error", isPresented: Binding(
             get: { errorMessage != nil },
@@ -107,13 +111,20 @@ struct CoupleChatView: View {
         }
     }
 
-    private func refreshMessages() async {
-        isLoading = true
-        defer { isLoading = false }
+    private func refreshMessages(silent: Bool = false) async {
+        if !silent { isLoading = true }
+        defer { if !silent { isLoading = false } }
         do {
             messages = try await CoupleMessageService.fetchMessages(coupleID: couple.id)
         } catch {
             errorMessage = "Could not load messages."
+        }
+    }
+
+    private func pollMessagesWhileVisible() async {
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(5))
+            await refreshMessages(silent: true)
         }
     }
 

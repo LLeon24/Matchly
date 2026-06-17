@@ -24,7 +24,9 @@ enum CoupleLinkingActions {
         if let matchingInvite = dataManager.preferences.receivedInvites.first(where: {
             $0.coupleCode.uppercased() == code && $0.status == .pending && !$0.isExpired
         }) {
-            acceptInvite(matchingInvite, dataManager: dataManager, authManager: authManager)
+            let coupleID = (try? await CoupleLinkingService.fetchRegistration(for: code))?.coupleID
+                ?? matchingInvite.id
+            acceptInvite(matchingInvite, coupleID: coupleID, dataManager: dataManager, authManager: authManager)
             return
         }
 
@@ -47,6 +49,7 @@ enum CoupleLinkingActions {
         )
 
         var linkedCouple = Couple(
+            id: registration.coupleID,
             user1ID: partnerRecordName,
             user1Name: partnerName,
             user1Email: authManager.currentUser?.email,
@@ -61,10 +64,16 @@ enum CoupleLinkingActions {
 
         dataManager.preferences.couple = linkedCouple
         dataManager.savePreferences()
+
+        Task {
+            await CoupleSyncCoordinator.shared.publishOwnData(dataManager: dataManager)
+            await CoupleSyncCoordinator.shared.startMonitoringIfNeeded(dataManager: dataManager)
+        }
     }
 
     private static func acceptInvite(
         _ invite: CoupleInvite,
+        coupleID: String,
         dataManager: DataManager,
         authManager: AuthManager
     ) {
@@ -80,6 +89,7 @@ enum CoupleLinkingActions {
             ?? dataManager.preferences.userID
 
         var updatedCouple = Couple(
+            id: coupleID,
             user1ID: userID,
             user1Name: authManager.currentUser?.displayName
                 ?? (dataManager.preferences.profile.name.isEmpty ? "You" : dataManager.preferences.profile.name),
@@ -94,5 +104,10 @@ enum CoupleLinkingActions {
         updatedCouple.linkedAt = Date()
         dataManager.preferences.couple = updatedCouple
         dataManager.savePreferences()
+
+        Task {
+            await CoupleSyncCoordinator.shared.publishOwnData(dataManager: dataManager)
+            await CoupleSyncCoordinator.shared.startMonitoringIfNeeded(dataManager: dataManager)
+        }
     }
 }

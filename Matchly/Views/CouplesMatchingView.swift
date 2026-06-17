@@ -9,7 +9,10 @@ import SwiftUI
 
 struct CouplesMatchingView: View {
     @EnvironmentObject var dataManager: DataManager
+    @EnvironmentObject var deepLinkHandler: CoupleDeepLinkHandler
     @ObservedObject private var authManager = AuthManager.shared
+    @ObservedObject private var coupleSync = CoupleSyncCoordinator.shared
+    @ObservedObject private var notifications = CoupleNotificationService.shared
     @Environment(\.dismiss) var dismiss
     @State private var showLinkPartner = false
     @State private var showUserSearch = false
@@ -60,6 +63,18 @@ struct CouplesMatchingView: View {
                     }
                     
                     Section {
+                        if notifications.authorizationStatus == .notDetermined {
+                            Button(action: {
+                                Task { await notifications.requestAuthorizationIfNeeded() }
+                            }) {
+                                HStack {
+                                    Image(systemName: "bell.badge")
+                                        .foregroundColor(.blue)
+                                    Text("Enable Notifications")
+                                }
+                            }
+                        }
+
                         NavigationLink(destination: CoupleChatView(couple: couple)) {
                             HStack {
                                 Image(systemName: "bubble.left.and.bubble.right.fill")
@@ -126,14 +141,30 @@ struct CouplesMatchingView: View {
                     partnerLinkingActionsSection
 
                     Section {
-                        ShareLink(item: Couple.shareInviteMessage(
-                            code: couple.coupleCode,
-                            inviterName: couple.user1Name
-                        )) {
+                        if let inviteURL = Couple.inviteURL(for: couple.coupleCode) {
+                            ShareLink(
+                                item: inviteURL,
+                                subject: Text(Couple.shareInviteSubject(inviterName: couple.user1Name)),
+                                message: Text(Couple.shareInviteMessage(
+                                    code: couple.coupleCode,
+                                    inviterName: couple.user1Name
+                                ))
+                            ) {
+                                HStack {
+                                    Image(systemName: "message.fill")
+                                        .foregroundColor(.blue)
+                                    Text("Send Invite via Text")
+                                }
+                            }
+                        }
+
+                        Button(action: {
+                            UIPasteboard.general.string = couple.coupleCode
+                        }) {
                             HStack {
-                                Image(systemName: "message.fill")
+                                Image(systemName: "doc.on.doc")
                                     .foregroundColor(.blue)
-                                Text("Send Invite via Text")
+                                Text("Copy Invite Code")
                             }
                         }
 
@@ -151,7 +182,7 @@ struct CouplesMatchingView: View {
                             Text("Cancel Invite")
                         }
                     } footer: {
-                        Text("Send the invite by text if you're apart. Scanning works best when you're together.")
+                        Text("Send the code by text if you're apart. QR scan is fastest when you're together. One-tap links in Messages need a Matchly website (planned).")
                     }
                 }
             } else {
@@ -251,6 +282,15 @@ struct CouplesMatchingView: View {
         .task {
             await refreshPendingCoupleLinkIfNeeded()
             await ensurePendingCoupleCodeIsRegistered()
+            await coupleSync.startMonitoringIfNeeded(dataManager: dataManager)
+            await CoupleNotificationService.shared.requestAuthorizationIfNeeded()
+            if let code = deepLinkHandler.pendingCoupleCode {
+                await handleDeepLinkCode(code)
+            }
+        }
+        .onChange(of: deepLinkHandler.pendingCoupleCode) { _, newCode in
+            guard let newCode else { return }
+            Task { await handleDeepLinkCode(newCode) }
         }
         .confirmationDialog(
             "Unlink from your partner?",
@@ -316,6 +356,26 @@ struct CouplesMatchingView: View {
         }
     }
 
+    private func handleDeepLinkCode(_ code: String) async {
+        isLinkingFromScan = true
+        defer {
+            isLinkingFromScan = false
+            _ = deepLinkHandler.consumePendingCode()
+        }
+        do {
+            try await CoupleLinkingActions.link(
+                withCode: code,
+                dataManager: dataManager,
+                authManager: authManager
+            )
+            await coupleSync.startMonitoringIfNeeded(dataManager: dataManager)
+        } catch let error as CoupleLinkingError {
+            linkErrorMessage = error.localizedDescription
+        } catch {
+            linkErrorMessage = "Could not link from invite link."
+        }
+    }
+
     private func presentMyQRCode() {
         if dataManager.preferences.couple == nil {
             createCouple()
@@ -333,6 +393,7 @@ struct CouplesMatchingView: View {
                 authManager: authManager
             )
             showQRScanner = false
+            await coupleSync.startMonitoringIfNeeded(dataManager: dataManager)
         } catch let error as CoupleLinkingError {
             linkErrorMessage = error.localizedDescription
         } catch {
@@ -372,6 +433,9 @@ struct CouplesMatchingView: View {
         couple.linkedAt = Date()
         dataManager.preferences.couple = couple
         dataManager.savePreferences()
+
+        await coupleSync.startMonitoringIfNeeded(dataManager: dataManager)
+        await coupleSync.publishOwnData(dataManager: dataManager)
     }
 
     private func registerCoupleCodeInCloud(_ couple: Couple) {
@@ -407,9 +471,13 @@ struct CouplesMatchingView: View {
         dataManager.preferences.couple = newCouple
         dataManager.savePreferences()
         registerCoupleCodeInCloud(newCouple)
+        Task {
+            await CoupleSyncCoordinator.shared.publishOwnData(dataManager: dataManager)
+        }
     }
     
     private func unlinkCouple() {
+        CoupleSyncCoordinator.shared.stopMonitoring()
         if let code = dataManager.preferences.couple?.coupleCode {
             Task {
                 await CoupleLinkingService.deleteRegistration(for: code)

@@ -117,6 +117,7 @@ class DataManager: ObservableObject {
                         self.cloudSync.syncToCloud(programs: self.programs, preferences: self.preferences)
                     }
                 }
+                self.scheduleCoupleCloudPublish()
             } catch {
                 Self.logger.error("Error saving programs: \(error.localizedDescription, privacy: .public)")
             }
@@ -143,6 +144,7 @@ class DataManager: ObservableObject {
                     self.cloudSync.syncToCloud(programs: self.programs, preferences: self.preferences)
                 }
             }
+            scheduleCoupleCloudPublish()
         } catch {
             Self.logger.error("Error saving programs immediately: \(error.localizedDescription, privacy: .public)")
         }
@@ -184,6 +186,7 @@ class DataManager: ObservableObject {
                         self.cloudSync.syncToCloud(programs: self.programs, preferences: self.preferences)
                     }
                 }
+                self.scheduleCoupleCloudPublish()
             } catch {
                 Self.logger.error("Error saving preferences: \(error.localizedDescription, privacy: .public)")
             }
@@ -392,29 +395,30 @@ class DataManager: ObservableObject {
     
     // MARK: - Couples Matching
     
-    func generateCouplesRankList() -> [CouplesRankPair] {
-        // Generate couples rank list based on individual scores and couples preferences
-        let user1Programs = getRankedPrograms()
-        _ = preferences.couplesPreferences
-        
-        // This is a simplified algorithm - in reality, this would be more complex
-        // and would consider partner's programs, geographic proximity, etc.
-        var pairs: [CouplesRankPair] = []
-        
-        // For now, create pairs based on user1's ranked programs
-        // In a real implementation, this would sync with partner's data
-        for (index, program) in user1Programs.enumerated() {
-            let pair = CouplesRankPair(
-                rank: index + 1,
-                user1ProgramID: program.id,
-                user2ProgramID: nil, // Would be filled from partner's data
-                user1NoMatch: false,
-                user2NoMatch: false
-            )
-            pairs.append(pair)
+    func generateCouplesRankList(partnerPrograms: [CoupleProgramSnapshot]) -> [CouplesRankPair] {
+        let user1Programs = Program.rankedSnapshots(from: getRankedPrograms())
+        let prefs = preferences.couplesPreferences
+
+        guard !user1Programs.isEmpty, !partnerPrograms.isEmpty else { return [] }
+
+        return CouplesRankEngine.generateRankList(
+            user1Programs: user1Programs,
+            user2Programs: partnerPrograms,
+            preferences: prefs
+        )
+    }
+
+    func scheduleCoupleCloudPublish() {
+        guard preferences.couple?.isLinked == true else { return }
+        Task { @MainActor in
+            await CoupleSyncCoordinator.shared.publishOwnData(dataManager: self)
         }
-        
-        return pairs
+    }
+
+    func startCoupleSyncIfNeeded() {
+        Task { @MainActor in
+            await CoupleSyncCoordinator.shared.startMonitoringIfNeeded(dataManager: self)
+        }
     }
     
     func validateCouplesRankList() -> (isValid: Bool, errors: [String]) {
