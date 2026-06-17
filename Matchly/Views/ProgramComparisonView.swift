@@ -220,6 +220,8 @@ struct ProgramComparisonView: View {
             ForEach(Array(comparisonPrograms.enumerated()), id: \.element.id) { index, program in
                 ComparisonScoreCell(
                     value: metric.value(program),
+                    emrRawValue: metric.id == "emr" ? program.emr : nil,
+                    isEMRMetric: metric.id == "emr",
                     valueColor: metric.color(program),
                     accentColor: accentColor(for: index),
                     isLeader: standings.leadingProgramIDs.contains(program.id) && comparisonPrograms.count > 1,
@@ -232,7 +234,7 @@ struct ProgramComparisonView: View {
                 Color.clear.frame(width: 36)
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, metric.id == "emr" ? 6 : 4)
     }
 
     private var addProgramButton: some View {
@@ -584,35 +586,44 @@ private struct ComparisonColorColumnHeader: View {
 
 private struct ComparisonScoreCell: View {
     let value: String
+    var emrRawValue: String? = nil
+    var isEMRMetric: Bool = false
     let valueColor: Color
     let accentColor: Color
     let isLeader: Bool
     let shaded: Bool
 
     var body: some View {
-        Text(value)
-            .font(.arial(size: 14, weight: .semibold))
-            .foregroundColor(valueColor)
-            .multilineTextAlignment(.center)
-            .lineLimit(2)
-            .minimumScaleFactor(0.7)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
-            .padding(.horizontal, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(cellBackground)
-            )
-            .overlay(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(accentColor)
-                    .frame(width: 3)
-                    .padding(.vertical, 6)
+        Group {
+            if isEMRMetric {
+                EMRValueView(rawValue: emrRawValue, style: .compact)
+                    .frame(maxWidth: .infinity)
+            } else {
+                Text(value)
+                    .font(.arial(size: 14, weight: .semibold))
+                    .foregroundColor(valueColor)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.7)
             }
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(isLeader ? accentColor.opacity(0.45) : accentColor.opacity(0.12), lineWidth: isLeader ? 1.5 : 1)
-            )
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, isEMRMetric ? 8 : 10)
+        .padding(.horizontal, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(cellBackground)
+        )
+        .overlay(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(accentColor)
+                .frame(width: 3)
+                .padding(.vertical, 6)
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(isLeader ? accentColor.opacity(0.45) : accentColor.opacity(0.12), lineWidth: isLeader ? 1.5 : 1)
+        )
     }
 
     private var cellBackground: Color {

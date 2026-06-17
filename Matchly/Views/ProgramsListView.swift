@@ -42,7 +42,7 @@ struct ProgramsListView: View {
                                     Image(systemName: "stethoscope")
                                         .font(.arial(size: 12))
                                         .foregroundColor(SpecialtyFormatter.color(for: specialty))
-                                    Text("\(specialty) (\(SpecialtyFormatter.abbreviation(for: specialty)))")
+                                    Text(SpecialtyFormatter.abbreviation(for: specialty))
                                         .font(.arial(size: 13, weight: .semibold))
                                 }
                                 .foregroundColor(.secondary)

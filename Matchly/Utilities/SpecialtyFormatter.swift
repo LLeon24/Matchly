@@ -147,7 +147,22 @@ struct SpecialtyFormatter {
         return name
     }
 
-    /// Full specialty label for search rows — never truncated.
+    /// Compact badge label for search rows, program cards, and section headers.
+    static func compactRowSpecialtyLabel(for program: ResidencyProgramInfo) -> String {
+        let displayName: String
+        if let erasName = ERASTrainingLevel.erasSpecialtyName(for: program) {
+            displayName = erasName
+        } else {
+            displayName = catalogDisplayName(program.specialty)
+        }
+        let abbrev = abbreviation(for: displayName)
+        if abbrev.count <= 24 {
+            return abbrev
+        }
+        return shortLabel(displayName)
+    }
+
+    /// Full specialty label for contexts that need the complete name (filters, accessibility).
     static func rowSpecialtyLabel(for program: ResidencyProgramInfo) -> String {
         let raw: String
         if let erasName = ERASTrainingLevel.erasSpecialtyName(for: program) {
@@ -172,14 +187,9 @@ struct SpecialtyFormatter {
         return parent
     }
 
-    /// Compact badge label for tight spaces (settings, rank list). Search rows use `rowSpecialtyLabel`.
+    /// Compact badge label for tight spaces (settings, rank list).
     static func catalogDisplayAbbreviation(for program: ResidencyProgramInfo) -> String {
-        let displayName = catalogDisplayName(program.specialty)
-        let abbrev = abbreviation(for: displayName)
-        if abbrev.count <= 24 {
-            return abbrev
-        }
-        return shortLabel(displayName)
+        compactRowSpecialtyLabel(for: program)
     }
 
     private static func shortLabel(_ name: String) -> String {

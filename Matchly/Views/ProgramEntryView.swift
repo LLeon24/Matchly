@@ -719,31 +719,98 @@ struct ProgramEntryView: View {
     
     // Debounced version to avoid expensive checks on every keystroke
     private func debouncedCheckForUnsavedChanges() {
-        // Cancel previous task
         changeCheckTask?.cancel()
-        
-        // Create new task with delay
+
         changeCheckTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 300_000_000) // 0.3 seconds
+            try? await Task.sleep(nanoseconds: 300_000_000)
             guard !Task.isCancelled else { return }
             hasUnsavedChanges = checkForUnsavedChanges()
         }
     }
-    
+
     private var contentWithLifecycle: some View {
         mainContentView
             .onAppear {
                 if let program = program {
                     loadProgram(program)
                 } else {
-                    // For new programs, mark initial load complete immediately
                     isInitialLoad = false
                 }
-                // Expand Section A by default
                 if let sectionA = questionnaire.sections.first(where: { $0.title.contains("Section A") }) {
                     expandedSections.insert(sectionA.id)
                 }
             }
+    }
+
+    @ViewBuilder
+    private var programHeaderActionButtons: some View {
+        HStack(spacing: 8) {
+            if !websiteURL.isEmpty, let url = URL(string: websiteURL) {
+                Button(action: {
+                    UIApplication.shared.open(url)
+                }) {
+                    Image(systemName: "link")
+                        .font(.arial(size: 16))
+                        .foregroundColor(.blue)
+                }
+                .buttonStyle(.plain)
+            }
+
+            if !city.isEmpty && !state.isEmpty {
+                Button(action: {
+                    openInMaps()
+                }) {
+                    Image(systemName: "map.fill")
+                        .font(.arial(size: 16))
+                        .foregroundColor(.blue)
+                }
+                .buttonStyle(.plain)
+            }
+
+            if !address.isEmpty || !websiteURL.isEmpty || !contactEmail.isEmpty || !contactPhone.isEmpty || !programCoordinator.isEmpty {
+                Button(action: {
+                    showContactInfo = true
+                }) {
+                    Image(systemName: "info.circle")
+                        .font(.arial(size: 16))
+                        .foregroundColor(.blue)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private var programHeaderMetadataRow: some View {
+        HStack(spacing: 8) {
+            if !city.isEmpty && !state.isEmpty {
+                HStack(spacing: 3) {
+                    Image(systemName: "mappin.circle.fill")
+                        .font(.arial(size: 9))
+                    Text("\(city), \(state)")
+                        .font(.arial(size: 11))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                }
+                .foregroundColor(.secondary)
+            }
+
+            if let acgmeID = accreditationID, !acgmeID.isEmpty {
+                HStack(spacing: 2) {
+                    Image(systemName: "number.circle.fill")
+                        .font(.arial(size: 9))
+                    Text("ID:")
+                        .font(.arial(size: 10, weight: .medium))
+                    Text(acgmeID)
+                        .font(.arial(size: 11, weight: .medium))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                }
+                .foregroundColor(.secondary)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
     
     private var mainContentView: some View {
@@ -752,106 +819,43 @@ struct ProgramEntryView: View {
                 // Compact Header (if program is selected)
                 if !hospital.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
-                        HStack(alignment: .top, spacing: 12) {
-                            VStack(alignment: .leading, spacing: 6) {
-                                // Hospital Name - formatted, allow more lines
-                                Text(HospitalNameFormatter.format(hospital))
-                                    .font(.arial(size: 18, weight: .semibold))
-                                    .foregroundColor(.primary)
-                                    .lineLimit(3)
-                                    .fixedSize(horizontal: false, vertical: true)
+                        HStack(alignment: .top, spacing: 10) {
+                            Text(HospitalNameFormatter.format(hospital))
+                                .font(.arial(size: 18, weight: .semibold))
+                                .foregroundColor(.primary)
+                                .lineLimit(3)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
 
-                                if !programDirector.isEmpty {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "person.fill")
-                                            .font(.arial(size: 10))
-                                        Text("Program Director: \(programDirector)")
-                                            .font(.arial(size: 13, weight: .medium))
-                                    }
-                                    .foregroundColor(.secondary)
-                                }
-
-                                let streetLine = AddressFormatter.resolved(
-                                    hospital: hospital,
-                                    address: address.isEmpty ? nil : address,
-                                    city: city,
-                                    state: state,
-                                    accreditationID: accreditationID
-                                ).street
-                                if !streetLine.isEmpty {
-                                    Text(streetLine)
-                                        .font(.arial(size: 13, weight: .medium))
-                                        .foregroundColor(.primary)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                }
-                                
-                                // Location and Accreditation ID
-                                HStack(spacing: 8) {
-                                    if !city.isEmpty && !state.isEmpty {
-                                        HStack(spacing: 4) {
-                                            Image(systemName: "location.fill")
-                                                .font(.arial(size: 10))
-                                            Text("\(city), \(state)")
-                                                .font(.arial(size: 13))
-                                        }
-                                        .foregroundColor(.secondary)
-                                    }
-                                    
-                                    // Accreditation ID - subtle, no background
-                                    if let acgmeID = accreditationID {
-                                        HStack(spacing: 2) {
-                                            Image(systemName: "number.circle.fill")
-                                                .font(.arial(size: 10))
-                                            Text("ID:")
-                                                .font(.arial(size: 11, weight: .medium))
-                                            Text(acgmeID)
-                                                .font(.arial(size: 12, weight: .medium))
-                                        }
-                                        .foregroundColor(.secondary)
-                                    }
-                                }
-                            }
-                            
-                            Spacer()
-                            
-                            HStack(spacing: 8) {
-                                // Website Link Button - show if we have a website URL
-                                if !websiteURL.isEmpty, let url = URL(string: websiteURL) {
-                                    Button(action: {
-                                        UIApplication.shared.open(url)
-                                    }) {
-                                        Image(systemName: "link")
-                                            .font(.arial(size: 16))
-                                            .foregroundColor(.blue)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                                
-                                // Map Button - show if we have location data
-                                if !city.isEmpty && !state.isEmpty {
-                                    Button(action: {
-                                        openInMaps()
-                                    }) {
-                                        Image(systemName: "map.fill")
-                                            .font(.arial(size: 16))
-                                            .foregroundColor(.blue)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                                
-                                // Contact Info Button - small "i" icon (always show if there's any contact info or address)
-                                if !address.isEmpty || !websiteURL.isEmpty || !contactEmail.isEmpty || !contactPhone.isEmpty || !programCoordinator.isEmpty {
-                                    Button(action: {
-                                        showContactInfo = true
-                                    }) {
-                                        Image(systemName: "info.circle")
-                                            .font(.arial(size: 16))
-                                            .foregroundColor(.blue)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
+                            programHeaderActionButtons
                         }
+
+                        if !programDirector.isEmpty {
+                            HStack(spacing: 4) {
+                                Image(systemName: "person.fill")
+                                    .font(.arial(size: 10))
+                                Text("Program Director: \(programDirector)")
+                                    .font(.arial(size: 13, weight: .medium))
+                                    .lineLimit(2)
+                            }
+                            .foregroundColor(.secondary)
+                        }
+
+                        let streetLine = AddressFormatter.resolved(
+                            hospital: hospital,
+                            address: address.isEmpty ? nil : address,
+                            city: city,
+                            state: state,
+                            accreditationID: accreditationID
+                        ).street
+                        if !streetLine.isEmpty {
+                            Text(streetLine)
+                                .font(.arial(size: 13, weight: .medium))
+                                .foregroundColor(.primary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        programHeaderMetadataRow
                         
                         // IMG tag
                         HStack(spacing: 8) {

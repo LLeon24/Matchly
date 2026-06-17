@@ -103,10 +103,9 @@ struct ProgramDetailView: View {
                         .font(.arial(size: 18, weight: .semibold))
                         .padding(.horizontal)
                     
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(program.emr ?? "Not specified")
-                            .font(.arial(size: 15, weight: program.emr == nil ? .regular : .semibold))
-                            .foregroundColor(program.emr == nil ? .secondary : .primary)
+                    VStack(alignment: .leading, spacing: 8) {
+                        EMRValueView(rawValue: program.emr, style: .regular)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         
                         if let indicator = emrMatchIndicator {
                             Label(indicator.text, systemImage: indicator.systemImage)
