@@ -140,14 +140,17 @@ struct ProgramsListView: View {
                             selectedPrograms.removeAll()
                         }
                     } else {
-                        NavigationLink(destination: ProgramsMapView()) {
-                            Image(systemName: "map.fill")
-                                .font(.arial(size: 18))
-                                .foregroundColor(.blue)
-                                .frame(width: 36, height: 36)
-                                .glassCircleButtonStyle()
+                        if dataManager.programs.count >= 2 {
+                            NavigationLink(destination: ProgramComparisonView()) {
+                                Image(systemName: "square.grid.2x2")
+                                    .font(.arial(size: 18))
+                                    .foregroundColor(.blue)
+                                    .frame(width: 36, height: 36)
+                                    .glassCircleButtonStyle()
+                            }
+                            .accessibilityLabel("Compare programs")
                         }
-                        
+
                         Button(action: {
                             showAddProgram = true
                         }) {
@@ -172,6 +175,7 @@ struct ProgramsListView: View {
                     onSelect: { _ in },
                     allowMultiSelect: true
                 )
+                .matchlyExpandedSheet()
             }
             .onAppear {
                 // Refresh when view appears to ensure latest scores are shown
@@ -338,21 +342,7 @@ struct CompactProgramRowView: View {
                     }
                 }
                 
-                // Program Type and IMG on second line
-                HStack(spacing: 8) {
-                    // Program Type - full text, not abbreviated (matching search)
-                    if !program.type.isEmpty {
-                        HStack(spacing: 3) {
-                            Image(systemName: programTypeIcon(program.type))
-                                .font(.arial(size: 8))
-                            Text(program.type)
-                                .font(.arial(size: 10, weight: .medium))
-                        }
-                        .foregroundColor(programTypeColor(program.type))
-                    }
-                    
-                    SavedProgramIMGBadge(program: program)
-                }
+                SavedProgramIMGBadge(program: program)
                 
                 // Signal and Red Flags on third line
                 HStack(spacing: 8) {

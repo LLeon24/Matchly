@@ -7,6 +7,7 @@
 
 import Foundation
 import Combine
+import OSLog
 
 class CloudSyncManager: ObservableObject {
     static let shared = CloudSyncManager()
@@ -18,6 +19,7 @@ class CloudSyncManager: ObservableObject {
     private let store = NSUbiquitousKeyValueStore.default
     private let programsKey = "cloud_programs"
     private let preferencesKey = "cloud_preferences"
+    private static let logger = Logger(subsystem: "com.matchly", category: "CloudSyncManager")
     
     private init() {
         // Listen for iCloud changes
@@ -43,7 +45,7 @@ class CloudSyncManager: ObservableObject {
                 self?.syncError = "iCloud is not available. Please sign in to iCloud in Settings."
                 self?.isSyncing = false
             }
-            print("⚠️ iCloud sync failed: iCloud not available")
+            Self.logger.warning("iCloud sync failed: iCloud not available")
             return
         }
         
@@ -55,16 +57,14 @@ class CloudSyncManager: ObservableObject {
             let programsSizeMB = Double(programsData.count) / 1_000_000.0
             let preferencesSizeMB = Double(preferencesData.count) / 1_000_000.0
             
-            print("📊 iCloud sync data sizes:")
-            print("   Programs: \(String(format: "%.2f", programsSizeMB)) MB (\(programs.count) programs)")
-            print("   Preferences: \(String(format: "%.2f", preferencesSizeMB)) MB")
+            Self.logger.debug("iCloud sync data sizes: programs=\(String(format: "%.2f", programsSizeMB), privacy: .public) MB (\(programs.count, privacy: .public) programs), preferences=\(String(format: "%.2f", preferencesSizeMB), privacy: .public) MB")
             
             if programsSizeMB > 1.0 {
                 DispatchQueue.main.async { [weak self] in
                     self?.syncError = "Programs data is too large (\(String(format: "%.2f", programsSizeMB)) MB). Maximum is 1 MB per key. Consider removing some programs or using export/import instead."
                     self?.isSyncing = false
                 }
-                print("⚠️ iCloud sync failed: Programs data exceeds 1MB limit")
+                Self.logger.warning("iCloud sync failed: Programs data exceeds 1MB limit")
                 return
             }
             
@@ -73,7 +73,7 @@ class CloudSyncManager: ObservableObject {
                     self?.syncError = "Preferences data is too large (\(String(format: "%.2f", preferencesSizeMB)) MB). Maximum is 1 MB per key."
                     self?.isSyncing = false
                 }
-                print("⚠️ iCloud sync failed: Preferences data exceeds 1MB limit")
+                Self.logger.warning("iCloud sync failed: Preferences data exceeds 1MB limit")
                 return
             }
             
@@ -88,21 +88,19 @@ class CloudSyncManager: ObservableObject {
                 DispatchQueue.main.async { [weak self] in
                     self?.lastSyncDate = Date()
                 }
-                print("✓ Successfully synced to iCloud at \(Date())")
-                print("   Programs: \(programs.count) items")
-                print("   Total size: \(String(format: "%.2f", programsSizeMB + preferencesSizeMB)) MB")
+                Self.logger.info("Successfully synced to iCloud: \(programs.count, privacy: .public) programs, \(String(format: "%.2f", programsSizeMB + preferencesSizeMB), privacy: .public) MB total")
             } else {
                 DispatchQueue.main.async { [weak self] in
                     self?.syncError = "Failed to synchronize with iCloud. The data may be too large or iCloud may be unavailable."
                 }
-                print("⚠️ iCloud sync failed: synchronize() returned false")
+                Self.logger.warning("iCloud sync failed: synchronize() returned false")
             }
         } catch {
             DispatchQueue.main.async { [weak self] in
                 self?.syncError = "Failed to encode data: \(error.localizedDescription)"
                 self?.isSyncing = false
             }
-            print("⚠️ iCloud sync error: \(error.localizedDescription)")
+            Self.logger.error("iCloud sync error: \(error.localizedDescription, privacy: .public)")
             return
         }
         
@@ -113,7 +111,7 @@ class CloudSyncManager: ObservableObject {
     
     func loadFromCloud() -> (programs: [Program]?, preferences: UserPreferences?) {
         guard isCloudAvailable else {
-            print("⚠️ Cannot load from iCloud: iCloud not available")
+            Self.logger.warning("Cannot load from iCloud: iCloud not available")
             return (nil, nil)
         }
         
@@ -122,32 +120,30 @@ class CloudSyncManager: ObservableObject {
         
         guard let programsData = store.data(forKey: programsKey),
               let preferencesData = store.data(forKey: preferencesKey) else {
-            print("ℹ️ No iCloud data found (this is normal for first-time users)")
+            Self.logger.info("No iCloud data found (this is normal for first-time users)")
             return (nil, nil)
         }
         
         do {
             let programs = try JSONDecoder().decode([Program].self, from: programsData)
             let preferences = try JSONDecoder().decode(UserPreferences.self, from: preferencesData)
-            print("✓ Successfully loaded from iCloud:")
-            print("   Programs: \(programs.count) items")
+            Self.logger.info("Successfully loaded from iCloud: \(programs.count, privacy: .public) programs")
             return (programs, preferences)
         } catch {
             syncError = "Failed to decode cloud data: \(error.localizedDescription)"
-            print("⚠️ Failed to decode iCloud data: \(error.localizedDescription)")
+            Self.logger.error("Failed to decode iCloud data: \(error.localizedDescription, privacy: .public)")
             return (nil, nil)
         }
     }
     
     @objc private func cloudDataChanged(_ notification: Notification) {
         // Handle external iCloud changes
-        print("📱 Cloud data changed externally")
-        
         // Get change reason (using raw integer values since enum is not available in Swift)
         if let userInfo = notification.userInfo,
            let reason = userInfo[NSUbiquitousKeyValueStoreChangeReasonKey] as? Int {
-            let reasonDescription = reasonDescription(for: reason)
-            print("   Reason: \(reasonDescription)")
+            Self.logger.info("Cloud data changed externally. Reason: \(self.reasonDescription(for: reason), privacy: .public)")
+        } else {
+            Self.logger.info("Cloud data changed externally")
         }
         
         // Could trigger a reload here if needed
@@ -177,7 +173,7 @@ class CloudSyncManager: ObservableObject {
     var isCloudAvailable: Bool {
         let available = FileManager.default.ubiquityIdentityToken != nil
         if !available {
-            print("⚠️ iCloud not available - user may not be signed in or iCloud Drive may be disabled")
+            Self.logger.warning("iCloud not available - user may not be signed in or iCloud Drive may be disabled")
         }
         return available
     }

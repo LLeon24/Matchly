@@ -28,7 +28,7 @@ struct ProgramEntryView: View {
     @State private var state: String = ""
     @State private var address: String = ""
     @State private var accreditationID: String? = nil
-    @State private var type: String = "Academic"
+    @State private var type: String = ""
     @State private var notes: String = ""
     @State private var interviewDate: Date = Date()
     @State private var hasInterviewDate: Bool = false
@@ -76,8 +76,6 @@ struct ProgramEntryView: View {
 
     /// Positions the next question below mid-screen so the just-answered question stays visible above.
     private static let nextQuestionScrollAnchor = UnitPoint(x: 0.5, y: 0.42)
-    
-    let programTypes = ["Academic", "Community", "Hybrid"]
     
     init(program: Program?) {
         self.program = program
@@ -134,14 +132,6 @@ struct ProgramEntryView: View {
                             TextField("State", text: $state)
                                 .textFieldStyle(.roundedBorder)
                                 .padding(.horizontal, 16)
-                            
-                            Picker("Type", selection: $type) {
-                                ForEach(programTypes, id: \.self) { type in
-                                    Text(type).tag(type)
-                                }
-                            }
-                            .pickerStyle(.menu)
-                            .padding(.horizontal, 16)
                             
                             Toggle("Set Interview Date", isOn: $hasInterviewDate)
                                 .padding(.horizontal, 16)
@@ -518,6 +508,7 @@ struct ProgramEntryView: View {
                 isIMGFriendly = mapped.isIMGFriendly
                 showProgramSearch = false
             })
+            .matchlyExpandedSheet()
         }
         .sheet(isPresented: $showDatePickerSheet) {
             MatchlyNavigationView {
@@ -862,19 +853,8 @@ struct ProgramEntryView: View {
                             }
                         }
                         
-                        // Program Type and IMG tags
+                        // IMG tag
                         HStack(spacing: 8) {
-                            // Program Type
-                            if !type.isEmpty {
-                                HStack(spacing: 3) {
-                                    Image(systemName: programTypeIcon(type))
-                                        .font(.arial(size: 10))
-                                    Text(type)
-                                        .font(.arial(size: 12, weight: .medium))
-                                }
-                                .foregroundColor(programTypeColor(type))
-                            }
-                            
                             let imgDisplay = IMGStatusDisplay.forSavedProgram(
                                 Program(
                                     specialty: specialty,
@@ -1288,19 +1268,6 @@ struct ProgramEntryView: View {
         }
     }
     
-    private func programTypeColor(_ type: String) -> Color {
-        switch type {
-        case "Academic":
-            return .blue
-        case "Community":
-            return .green
-        case "Hybrid":
-            return .orange
-        default:
-            return .gray
-        }
-    }
-    
     // Helper function to format interview date compactly
     private func formatInterviewDate(_ date: Date) -> String {
         let formatter = DateFormatter()
@@ -1587,15 +1554,6 @@ extension ProgramEntryView {
             }
         }
         .glassEffect(.regular, in: .rect(cornerRadius: 16))
-    }
-    
-    private func programTypeIcon(_ type: String) -> String {
-        switch type {
-        case "Academic": return "graduationcap.fill"
-        case "Community": return "house.fill"
-        case "Hybrid": return "square.stack.3d.up.fill"
-        default: return "building.2.fill"
-        }
     }
 }
 

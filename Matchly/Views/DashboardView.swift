@@ -13,6 +13,7 @@ import Combine
 struct DashboardView: View {
     @EnvironmentObject var dataManager: DataManager
     @Environment(\.matchlyLayout) private var screenLayout
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var showAddProgram = false
     @State private var showCustomization = false
     @State private var showProfileEdit = false
@@ -112,6 +113,7 @@ struct DashboardView: View {
                     allowMultiSelect: true
                 )
             }
+            .matchlyExpandedSheet()
         }
     }
 
@@ -269,10 +271,10 @@ struct DashboardView: View {
         .dashboardCardStyle()
     }
 
-    /// 2) Programs — count hero + score distribution + type split + top programs.
+    /// 2) Programs — count hero + score distribution + top programs.
     private var programsPage: some View {
         ScrollView {
-            VStack(spacing: screenLayout.dashboardSectionSpacing) {
+            VStack(spacing: 10) {
                 DashboardNumberHero(
                     bigNumber: "\(dataManager.programs.count)",
                     unit: "",
@@ -281,20 +283,15 @@ struct DashboardView: View {
                         ? "Top score \(String(format: "%.1f", topProgramMaxScore))"
                         : "Score programs to build your rank list",
                     icon: "building.2.fill",
-                    tint: AppColors.primaryBlue
+                    tint: AppColors.primaryBlue,
+                    condensed: true
                 )
                 .dashboardCardStyle()
 
-                if screenLayout == .compactVertical {
-                    HStack(alignment: .top, spacing: 10) {
-                        programsScoreDistributionCard
-                            .frame(maxWidth: .infinity, alignment: .topLeading)
-                        programsTypeSplitCard
-                            .frame(maxWidth: .infinity, alignment: .topLeading)
-                    }
-                } else {
-                    programsScoreDistributionCard
-                    programsTypeSplitCard
+                programsScoreDistributionCard
+
+                if dataManager.programs.count >= 2 {
+                    programsCompareCard
                 }
 
                 if !topPrograms.isEmpty {
@@ -313,37 +310,56 @@ struct DashboardView: View {
     }
 
     private var programsScoreDistributionCard: some View {
-        VStack(alignment: .leading, spacing: screenLayout == .compactVertical ? 10 : 14) {
+        VStack(alignment: .leading, spacing: 8) {
             DashboardSectionHeader(
                 title: "Score Distribution",
                 icon: "chart.bar.fill",
                 tint: AppColors.accentOrange
             )
-            ScoreDistributionChart(buckets: scoreBuckets)
+            ScoreDistributionChart(buckets: scoreBuckets, chartHeight: 120)
         }
         .dashboardCardStyle()
     }
 
-    private var programsTypeSplitCard: some View {
-        VStack(alignment: .leading, spacing: screenLayout == .compactVertical ? 10 : 14) {
-            DashboardSectionHeader(
-                title: "Program Type",
-                icon: "square.split.2x1.fill",
-                tint: AppColors.accentTeal
-            )
-            ProgramTypeSplit(
-                academic: academicCount,
-                community: communityCount,
-                hybrid: hybridCount
-            )
+    private var programsCompareCard: some View {
+        NavigationLink(destination: ProgramComparisonView()) {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(AppColors.primaryBlue.opacity(0.15))
+                        .frame(width: 34, height: 34)
+                    Image(systemName: "square.grid.2x2")
+                        .font(.arial(size: 15, weight: .semibold))
+                        .foregroundColor(AppColors.primaryBlue)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Compare Programs")
+                        .font(.arial(size: 15, weight: .semibold))
+                        .foregroundColor(.primary)
+                    Text("Side-by-side scores and details for 2–4 programs")
+                        .font(.arial(size: 12))
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "chevron.right")
+                    .font(.arial(size: 12))
+                    .foregroundColor(.secondary.opacity(0.5))
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 6)
         }
+        .buttonStyle(.plain)
         .dashboardCardStyle()
     }
 
     /// 3) Interviews — upcoming count hero + chronological timeline.
     private var interviewsPage: some View {
         ScrollView {
-            VStack(spacing: screenLayout.dashboardSectionSpacing) {
+            VStack(spacing: 10) {
                 DashboardNumberHero(
                     bigNumber: "\(upcomingInterviews.count)",
                     unit: "",
@@ -352,7 +368,8 @@ struct DashboardView: View {
                         ? "\(interviewCount) scheduled in total"
                         : "Add interview dates to plan ahead",
                     icon: "calendar.badge.clock",
-                    tint: AppColors.accentGreen
+                    tint: AppColors.accentGreen,
+                    condensed: true
                 )
                 .dashboardCardStyle()
 
@@ -370,7 +387,7 @@ struct DashboardView: View {
     }
 
     private var interviewsTimelineCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             DashboardSectionHeader(
                 title: "Timeline",
                 icon: "calendar",
@@ -390,20 +407,20 @@ struct DashboardView: View {
     }
 
     private var interviewsEmptyCard: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 8) {
             Image(systemName: "calendar.badge.plus")
-                .font(.arial(size: 34, weight: .light))
+                .font(.arial(size: 28, weight: .light))
                 .foregroundColor(.secondary)
             Text("No upcoming interviews")
-                .font(.arial(size: 16, weight: .semibold))
+                .font(.arial(size: 15, weight: .semibold))
                 .foregroundColor(.primary)
             Text("Interview dates you add to programs will appear here, sorted by date.")
-                .font(.arial(size: 13))
+                .font(.arial(size: 12))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
+        .padding(.vertical, 14)
         .dashboardCardStyle()
     }
 
@@ -705,18 +722,6 @@ struct DashboardView: View {
 
     private var scoreBuckets: [ScoreBucket] {
         scoreDistribution.map { ScoreBucket(range: $0.range, count: $0.count, color: $0.color) }
-    }
-
-    private var academicCount: Int {
-        dataManager.programs.filter { $0.type == "Academic" }.count
-    }
-
-    private var communityCount: Int {
-        dataManager.programs.filter { $0.type == "Community" }.count
-    }
-
-    private var hybridCount: Int {
-        dataManager.programs.filter { $0.type == "Hybrid" }.count
     }
 
     private var topProgramMaxScore: Double {
@@ -1241,7 +1246,7 @@ struct DashboardView: View {
     
     // MARK: - Top Programs
     private var topProgramsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             DashboardSectionHeader(title: "Top Programs", icon: "trophy.fill", tint: AppColors.accentOrange) {
                 NavigationLink(destination: RankListView()) {
                     HStack(spacing: 4) {
@@ -1285,23 +1290,24 @@ struct DashboardView: View {
     
     // MARK: - Empty State
     private var emptyStateSection: some View {
-        VStack(spacing: 24) {
-            ZStack {
-                // Clean subtle circle
-                Circle()
-                    .fill(Color(.systemGray6))
-                    .frame(width: 100, height: 100)
-                
-                Image(systemName: "cross.case.fill")
-                    .font(.arial(size: 48, weight: .light))
-                    .foregroundColor(Color(white: 0.3))
+        Group {
+            if MatchlyDeviceLayout.isPad && horizontalSizeClass == .regular {
+                iPadEmptyStateSection
+            } else {
+                phoneEmptyStateSection
             }
-            
+        }
+    }
+
+    private var phoneEmptyStateSection: some View {
+        VStack(spacing: 24) {
+            emptyStateIcon
+
             VStack(spacing: 10) {
                 Text("Get Started")
                     .font(.arial(size: 24, weight: .semibold))
                     .foregroundColor(.primary)
-                
+
                 Text("Add your first residency program to begin building your rank list")
                     .font(.arial(size: 15, weight: .regular))
                     .foregroundColor(.secondary)
@@ -1309,25 +1315,62 @@ struct DashboardView: View {
                     .padding(.horizontal, 40)
                     .lineSpacing(2)
             }
-            
-            Button(action: {
-                showAddProgram = true
-            }) {
-                HStack(spacing: 10) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.arial(size: 18, weight: .medium))
-                    Text("Add Your First Program")
-                        .font(.arial(size: 17, weight: .semibold))
-                }
-                .padding(.horizontal, 32)
-                .padding(.vertical, 15)
-            }
-            // Primary call-to-action → prominent Liquid Glass, tinted with the
-            // brand blue. The glass + tint replaces the flat label-color pill.
-            .buttonStyle(.glassProminent)
-            .tint(AppColors.primaryBlue)
+
+            emptyStateAddButton
         }
         .padding(.vertical, 50)
+    }
+
+    private var iPadEmptyStateSection: some View {
+        HStack(alignment: .center, spacing: 40) {
+            emptyStateIcon
+
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Get Started")
+                    .font(.arial(size: 28, weight: .semibold))
+                    .foregroundColor(.primary)
+
+                Text("Add your first residency program to begin building your rank list")
+                    .font(.arial(size: 17, weight: .regular))
+                    .foregroundColor(.secondary)
+                    .lineSpacing(2)
+                    .frame(maxWidth: 420, alignment: .leading)
+
+                emptyStateAddButton
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 36)
+        .padding(.horizontal, 24)
+    }
+
+    private var emptyStateIcon: some View {
+        ZStack {
+            Circle()
+                .fill(Color(.systemGray6))
+                .frame(width: MatchlyDeviceLayout.isPad ? 120 : 100, height: MatchlyDeviceLayout.isPad ? 120 : 100)
+
+            Image(systemName: "cross.case.fill")
+                .font(.arial(size: MatchlyDeviceLayout.isPad ? 54 : 48, weight: .light))
+                .foregroundColor(Color(white: 0.3))
+        }
+    }
+
+    private var emptyStateAddButton: some View {
+        Button(action: {
+            showAddProgram = true
+        }) {
+            HStack(spacing: 10) {
+                Image(systemName: "plus.circle.fill")
+                    .font(.arial(size: 18, weight: .medium))
+                Text("Add Your First Program")
+                    .font(.arial(size: 17, weight: .semibold))
+            }
+            .padding(.horizontal, 32)
+            .padding(.vertical, 15)
+        }
+        .buttonStyle(.glassProminent)
+        .tint(AppColors.primaryBlue)
     }
     
     // MARK: - Computed Properties

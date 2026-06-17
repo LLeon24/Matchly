@@ -8,6 +8,17 @@
 import SwiftUI
 import UIKit
 
+// MARK: - Device layout
+
+enum MatchlyDeviceLayout {
+    static var isPad: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad
+    }
+
+    /// Max content width on iPad; phones stay edge-to-edge unless capped elsewhere.
+    static var readableContentMaxWidth: CGFloat { isPad ? 1180 : 960 }
+}
+
 // MARK: - Adaptive layout (landscape / compact height)
 
 enum MatchlyLayoutStyle: Equatable {
@@ -136,8 +147,15 @@ extension View {
     }
 
     /// Centers readable-width content on iPad / wide landscape while still filling the canvas.
-    func matchlyReadableWidth(_ maxWidth: CGFloat = 960) -> some View {
+    func matchlyReadableWidth(_ maxWidth: CGFloat? = nil) -> some View {
         modifier(MatchlyReadableWidthModifier(maxWidth: maxWidth))
+    }
+
+    /// Full-height sheet on iPhone; page-sized sheet on iPad instead of the narrow centered card.
+    func matchlyExpandedSheet() -> some View {
+        presentationDetents([.large])
+            .presentationSizing(.page)
+            .presentationDragIndicator(.visible)
     }
 
     /// Ensures scrollable tab content can scroll fully above the floating tab bar.
@@ -160,11 +178,15 @@ private struct MatchlyScrollTabBarClearanceModifier: ViewModifier {
 
 private struct MatchlyReadableWidthModifier: ViewModifier {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    let maxWidth: CGFloat
+    let maxWidth: CGFloat?
+
+    private var resolvedMaxWidth: CGFloat {
+        maxWidth ?? MatchlyDeviceLayout.readableContentMaxWidth
+    }
 
     func body(content: Content) -> some View {
         content
-            .frame(maxWidth: horizontalSizeClass == .regular ? maxWidth : .infinity)
+            .frame(maxWidth: horizontalSizeClass == .regular ? resolvedMaxWidth : .infinity)
             .frame(maxWidth: .infinity)
     }
 }

@@ -129,21 +129,7 @@ struct ProgramsNeedingReviewView: View {
                                                 }
                                             }
                                             
-                                            // Program Type and IMG on second line
-                                            HStack(spacing: 8) {
-                                                // Program Type - full text, not abbreviated (matching ProgramsListView)
-                                                if !program.type.isEmpty {
-                                                    HStack(spacing: 3) {
-                                                        Image(systemName: programTypeIcon(program.type))
-                                                            .font(.arial(size: 8))
-                                                        Text(program.type)
-                                                            .font(.arial(size: 10, weight: .medium))
-                                                    }
-                                                    .foregroundColor(programTypeColor(program.type))
-                                                }
-                                                
-                                                SavedProgramIMGBadge(program: program)
-                                            }
+                                            SavedProgramIMGBadge(program: program)
                                             
                                             // Signal and Red Flags on third line
                                             HStack(spacing: 8) {

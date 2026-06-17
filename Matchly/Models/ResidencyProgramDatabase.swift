@@ -16,7 +16,7 @@ struct ResidencyProgramInfo: Identifiable, Codable {
     let state: String
     let address: String? // Full street address
     let specialty: String
-    let type: String // Academic, Community, Hybrid
+    let type: String // Legacy; no longer populated from catalog
     let accreditationID: String? // ACGME Program Code
     let websiteURL: String? // Program website URL
     let contactEmail: String? // Contact email
@@ -48,7 +48,7 @@ struct ResidencyProgramInfo: Identifiable, Codable {
     }
     
     // Convenience initializer for backward compatibility
-    init(id: String, name: String, hospital: String, city: String, state: String, specialty: String, type: String, accreditationID: String? = nil, websiteURL: String? = nil, contactEmail: String? = nil, contactPhone: String? = nil, programCoordinator: String? = nil, programDirector: String? = nil, address: String? = nil, isIMGFriendly: Bool? = nil) {
+    init(id: String, name: String, hospital: String, city: String, state: String, specialty: String, type: String = "", accreditationID: String? = nil, websiteURL: String? = nil, contactEmail: String? = nil, contactPhone: String? = nil, programCoordinator: String? = nil, programDirector: String? = nil, address: String? = nil, isIMGFriendly: Bool? = nil) {
         self.id = id
         self.name = name
         self.hospital = hospital
@@ -64,6 +64,52 @@ struct ResidencyProgramInfo: Identifiable, Codable {
         self.programDirector = programDirector
         self.address = address
         self.isIMGFriendly = isIMGFriendly
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, hospital, city, state, address, specialty, type
+        case accreditationID, websiteURL, contactEmail, contactPhone
+        case programCoordinator, programDirector, isIMGFriendly
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        hospital = try container.decode(String.self, forKey: .hospital)
+        city = try container.decode(String.self, forKey: .city)
+        state = try container.decode(String.self, forKey: .state)
+        address = try container.decodeIfPresent(String.self, forKey: .address)
+        specialty = try container.decode(String.self, forKey: .specialty)
+        type = try container.decodeIfPresent(String.self, forKey: .type) ?? ""
+        accreditationID = try container.decodeIfPresent(String.self, forKey: .accreditationID)
+        websiteURL = try container.decodeIfPresent(String.self, forKey: .websiteURL)
+        contactEmail = try container.decodeIfPresent(String.self, forKey: .contactEmail)
+        contactPhone = try container.decodeIfPresent(String.self, forKey: .contactPhone)
+        programCoordinator = try container.decodeIfPresent(String.self, forKey: .programCoordinator)
+        programDirector = try container.decodeIfPresent(String.self, forKey: .programDirector)
+        isIMGFriendly = try container.decodeIfPresent(Bool.self, forKey: .isIMGFriendly)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(hospital, forKey: .hospital)
+        try container.encode(city, forKey: .city)
+        try container.encode(state, forKey: .state)
+        try container.encodeIfPresent(address, forKey: .address)
+        try container.encode(specialty, forKey: .specialty)
+        if !type.isEmpty {
+            try container.encode(type, forKey: .type)
+        }
+        try container.encodeIfPresent(accreditationID, forKey: .accreditationID)
+        try container.encodeIfPresent(websiteURL, forKey: .websiteURL)
+        try container.encodeIfPresent(contactEmail, forKey: .contactEmail)
+        try container.encodeIfPresent(contactPhone, forKey: .contactPhone)
+        try container.encodeIfPresent(programCoordinator, forKey: .programCoordinator)
+        try container.encodeIfPresent(programDirector, forKey: .programDirector)
+        try container.encodeIfPresent(isIMGFriendly, forKey: .isIMGFriendly)
     }
 }
 

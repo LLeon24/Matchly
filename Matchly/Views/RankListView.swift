@@ -541,22 +541,7 @@ struct RankListItemView: View {
                     }
                 }
                 
-                // Program Type and IMG on second row
-                HStack(spacing: 10) {
-                    // Program Type
-                    if !program.type.isEmpty {
-                        HStack(spacing: 3) {
-                            Image(systemName: programTypeIcon(program.type))
-                                .font(.arial(size: 9))
-                            Text(program.type)
-                                .font(.arial(size: 11, weight: .medium))
-                        }
-                        .foregroundColor(programTypeColor(program.type))
-                    }
-                    
-                    // IMG-Friendly
-                    SavedProgramIMGBadge(program: program, iconSize: 9, textSize: 11)
-                }
+                SavedProgramIMGBadge(program: program, iconSize: 9, textSize: 11)
                 
                 // Signal and Red Flags on third row
                 HStack(spacing: 10) {

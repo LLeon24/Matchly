@@ -9,9 +9,9 @@
 import SwiftUI
 
 struct ContentView: View {
-    // Use @StateObject to create fresh instances for previews
-    @StateObject private var dataManager = DataManager.shared
-    @StateObject private var authManager = AuthManager.shared
+    // Use @ObservedObject for singleton instances
+    @ObservedObject private var dataManager = DataManager.shared
+    @ObservedObject private var authManager = AuthManager.shared
     
     var body: some View {
         // Show the full interactive app
@@ -28,7 +28,7 @@ struct ContentView: View {
 
 // Alternative previews for specific views - uncomment to test individual views
 // #Preview("Dashboard") {
-//     NavigationView {
+//     MatchlyNavigationView {
 //         DashboardView()
 //             .environmentObject(DataManager.shared)
 //     }
@@ -40,7 +40,7 @@ struct ContentView: View {
 // }
 
 // #Preview("Settings") {
-//     NavigationView {
+//     MatchlyNavigationView {
 //         SettingsView()
 //             .environmentObject(DataManager.shared)
 //     }

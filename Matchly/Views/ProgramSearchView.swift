@@ -16,11 +16,6 @@ struct ProgramSearchView: View {
     @State private var showStateFilter: Bool = false
     @State private var tempSelectedStates: Set<String> = []
     @State private var tempShowAllStates: Bool = true
-    @State private var selectedProgramTypes: Set<String> = []
-    @State private var showAllProgramTypes: Bool = true
-    @State private var showProgramTypeFilter: Bool = false
-    @State private var tempSelectedProgramTypes: Set<String> = [] // Temporary selections while sheet is open
-    @State private var tempShowAllProgramTypes: Bool = true
     @State private var selectedPrograms: Set<String> = []
     @State private var selectedSpecialties: Set<String> = []
     @State private var showAllSpecialties: Bool = false // Track if user explicitly wants all
@@ -33,6 +28,8 @@ struct ProgramSearchView: View {
     @State private var tempSelectedFellowshipCodes: Set<String> = []
     @State private var tempShowAllFellowshipTypes: Bool = true
     @State private var trainingLevelFilter: ProgramTrainingLevelFilter = .residency
+    @State private var showTrainingLevelFilter = false
+    @State private var tempTrainingLevelFilter: ProgramTrainingLevelFilter = .residency
     @State private var searchResults: [ResidencyProgramInfo] = []
     @State private var totalMatchCount = 0
     @State private var isResultSetTruncated = false
@@ -81,6 +78,18 @@ struct ProgramSearchView: View {
         ProgramTrainingLevelFilter(rawValue: dataManager.preferences.applyingTrack) ?? .residency
     }
 
+    private var trainingLevelFilterIsCustom: Bool {
+        trainingLevelFilter != preferredTrainingLevel || trainingLevelFilter == .all
+    }
+
+    private var trainingLevelFilterIcon: String {
+        switch trainingLevelFilter {
+        case .all: return "square.grid.2x2"
+        case .residency: return "graduationcap"
+        case .fellowship: return "arrow.triangle.branch"
+        }
+    }
+
     private var hasSpecialtySelection: Bool {
         !selectedSpecialties.isEmpty
             || (!showAllSpecialties && !dataManager.preferences.specialties.isEmpty)
@@ -93,8 +102,6 @@ struct ProgramSearchView: View {
         "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY", "DC", "PR"
     ]
     
-    private let programTypes = ["Academic", "Community", "Hybrid"]
-    
     init(onSelect: @escaping (ResidencyProgramInfo) -> Void, allowMultiSelect: Bool = false) {
         self.onSelect = onSelect
         self.allowMultiSelect = allowMultiSelect
@@ -103,7 +110,6 @@ struct ProgramSearchView: View {
     private var hasActiveFilters: Bool {
         !searchText.trimmingCharacters(in: .whitespaces).isEmpty
             || !showAllStates && !selectedStates.isEmpty
-            || !showAllProgramTypes && !selectedProgramTypes.isEmpty
             || hasSpecialtySelection
             || !showAllFellowshipTypes && !selectedFellowshipCodes.isEmpty
             || trainingLevelFilter != preferredTrainingLevel
@@ -118,13 +124,6 @@ struct ProgramSearchView: View {
             return Array(selectedSpecialties)
         }
         return dataManager.preferences.specialties
-    }
-
-    private var programTypesToUse: [String]? {
-        if showAllProgramTypes || selectedProgramTypes.isEmpty {
-            return nil
-        }
-        return Array(selectedProgramTypes)
     }
 
     private var stateFiltersToUse: Set<String>? {
@@ -155,7 +154,7 @@ struct ProgramSearchView: View {
             stateFilter: nil,
             stateFilters: stateFiltersToUse,
             programTypeFilter: nil,
-            programTypes: programTypesToUse,
+            programTypes: nil,
             trainingLevel: trainingLevelFilter.trainingLevel,
             imgFriendlyOnly: false,
             limit: resultLimit
@@ -186,8 +185,11 @@ struct ProgramSearchView: View {
             VStack(spacing: 0) {
                 searchAndFiltersView
                 resultsView
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 manualEntryFooter
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .appCanvasBackground()
             .navigationTitle("Search Programs")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -210,8 +212,6 @@ struct ProgramSearchView: View {
             .onChange(of: searchText) { _, _ in scheduleSearchRefresh() }
             .onChange(of: selectedStates) { _, _ in refreshSearch(resetLimit: true) }
             .onChange(of: showAllStates) { _, _ in refreshSearch(resetLimit: true) }
-            .onChange(of: selectedProgramTypes) { _, _ in refreshSearch(resetLimit: true) }
-            .onChange(of: showAllProgramTypes) { _, _ in refreshSearch(resetLimit: true) }
             .onChange(of: selectedSpecialties) { _, _ in
                 pruneInvalidFellowshipSelections()
                 refreshSearch(resetLimit: true)
@@ -252,6 +252,7 @@ struct ProgramSearchView: View {
                     ProgramEntryView(program: nil)
                         .environmentObject(dataManager)
                 }
+                .matchlyExpandedSheet()
             }
         }
     }
@@ -318,9 +319,19 @@ struct ProgramSearchView: View {
     }
     
     private var filtersView: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-                    GlassEffectContainer(spacing: 10) {
-                        HStack(spacing: 10) {
+        ViewThatFits(in: .horizontal) {
+            filtersChipRow
+            ScrollView(.horizontal, showsIndicators: false) {
+                filtersChipRow
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 4)
+    }
+
+    private var filtersChipRow: some View {
+        GlassEffectContainer(spacing: 10) {
+            HStack(spacing: 10) {
                             // Specialty filter - sheet-based like program types
                             Button(action: {
                                 // Initialize temp selections from current state
@@ -389,24 +400,46 @@ struct ProgramSearchView: View {
                                         tempShowAllSpecialties = true
                                     }
                                 )
+                                .matchlyExpandedSheet()
                             }
 
-                            ForEach(ProgramTrainingLevelFilter.allCases) { level in
-                                Button(action: {
-                                    trainingLevelFilter = level
-                                }) {
-                                    Text(level.rawValue)
-                                        .font(.arial(size: 12, weight: trainingLevelFilter == level ? .semibold : .medium))
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 8)
-                                        .glassEffect(
-                                            trainingLevelFilter == level
-                                                ? .regular.tint(Color.purple.opacity(0.25)).interactive()
-                                                : .regular.interactive(),
-                                            in: .capsule
-                                        )
+                            Button(action: {
+                                tempTrainingLevelFilter = trainingLevelFilter
+                                showTrainingLevelFilter = true
+                            }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: trainingLevelFilterIcon)
+                                        .font(.arial(size: 13))
+                                        .foregroundColor(.purple)
+
+                                    Text(trainingLevelFilter.rawValue)
+                                        .font(.arial(size: 12, weight: .medium))
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.8)
+
+                                    Image(systemName: "chevron.down")
+                                        .font(.arial(size: 9))
+                                        .foregroundColor(.secondary)
                                 }
-                                .buttonStyle(.plain)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .glassEffect(
+                                    trainingLevelFilterIsCustom
+                                        ? .regular.tint(Color.purple.opacity(0.25)).interactive()
+                                        : .regular.interactive(),
+                                    in: .capsule
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .sheet(isPresented: $showTrainingLevelFilter) {
+                                TrainingLevelFilterSheet(
+                                    selection: $tempTrainingLevelFilter,
+                                    onApply: {
+                                        trainingLevelFilter = tempTrainingLevelFilter
+                                        showTrainingLevelFilter = false
+                                    }
+                                )
+                                .matchlyExpandedSheet()
                             }
 
                             if trainingLevelFilter == .fellowship {
@@ -470,6 +503,7 @@ struct ProgramSearchView: View {
                                             tempShowAllFellowshipTypes = true
                                         }
                                     )
+                                    .matchlyExpandedSheet()
                                 }
                             }
                         
@@ -529,77 +563,18 @@ struct ProgramSearchView: View {
                                     tempShowAllStates = true
                                 }
                             )
-                        }
-                        
-                        // Program type filter - opens a sheet that stays open
-                        Button(action: {
-                            // Initialize temp selections with current selections
-                            tempSelectedProgramTypes = selectedProgramTypes
-                            tempShowAllProgramTypes = showAllProgramTypes
-                            showProgramTypeFilter = true
-                        }) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "building.2.fill")
-                                    .font(.arial(size: 13))
-                                    .foregroundColor(.orange)
-                                
-                                let displayText: String = {
-                                    if showAllProgramTypes {
-                                        return "All"
-                                    } else if !selectedProgramTypes.isEmpty {
-                                        return "\(selectedProgramTypes.count)"
-                                    } else {
-                                        return "All"
-                                    }
-                                }()
-                                
-                                Text(displayText)
-                                    .font(.arial(size: 12, weight: .medium))
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.8)
-                                
-                                Image(systemName: "chevron.down")
-                                    .font(.arial(size: 9))
-                                    .foregroundColor(.secondary)
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .glassEffect(
-                                (!showAllProgramTypes && !selectedProgramTypes.isEmpty)
-                                    ? .regular.tint(Color.orange.opacity(0.25)).interactive()
-                                    : .regular.interactive(),
-                                in: .capsule
-                            )
-                        }
-                        .sheet(isPresented: $showProgramTypeFilter) {
-                            ProgramTypeFilterSheet(
-                                programTypes: programTypes,
-                                selectedTypes: $tempSelectedProgramTypes,
-                                showAll: $tempShowAllProgramTypes,
-                                onApply: {
-                                    selectedProgramTypes = tempSelectedProgramTypes
-                                    showAllProgramTypes = tempShowAllProgramTypes
-                                    showProgramTypeFilter = false
-                                    refreshSearch()
-                                },
-                                onClear: {
-                                    tempSelectedProgramTypes.removeAll()
-                                    tempShowAllProgramTypes = true
-                                }
-                            )
+                            .matchlyExpandedSheet()
                         }
                         
                         Spacer()
                         
                         // Clear filters button
-                        if (!selectedStates.isEmpty && !showAllStates) || (!selectedProgramTypes.isEmpty && !showAllProgramTypes) || (!selectedSpecialties.isEmpty && !showAllSpecialties) || (!selectedFellowshipCodes.isEmpty && !showAllFellowshipTypes) || trainingLevelFilter != preferredTrainingLevel {
+                        if (!selectedStates.isEmpty && !showAllStates) || (!selectedSpecialties.isEmpty && !showAllSpecialties) || (!selectedFellowshipCodes.isEmpty && !showAllFellowshipTypes) || trainingLevelFilter != preferredTrainingLevel {
                             Button(action: {
                                 withAnimation {
                                     searchText = ""
                                     selectedStates.removeAll()
                                     showAllStates = true
-                                    selectedProgramTypes.removeAll()
-                                    showAllProgramTypes = true
                                     selectedSpecialties.removeAll()
                                     showAllSpecialties = true
                                     selectedFellowshipCodes.removeAll()
@@ -620,9 +595,7 @@ struct ProgramSearchView: View {
                                 .glassEffect(.regular.tint(Color.blue.opacity(0.18)).interactive(), in: .capsule)
                             }
                         }
-                        }
-                        .padding(.horizontal, 4)
-                    }
+            }
         }
     }
     
@@ -726,11 +699,13 @@ struct ProgramSearchView: View {
                         alphabetScrollIndex(sortedKeys: sortedKeys, proxy: proxy)
                     }
                 }
+                .frame(maxHeight: .infinity)
             } else {
                 List(sortedResults) { program in
                     programRow(for: program)
                 }
                 .listStyle(.insetGrouped)
+                .frame(maxHeight: .infinity)
             }
 
             footerWithCount(displayed: sortedResults.count)
@@ -739,6 +714,7 @@ struct ProgramSearchView: View {
                 addSelectedButton
             }
         }
+        .frame(maxHeight: .infinity)
     }
 
     @ViewBuilder
@@ -872,19 +848,6 @@ struct ProgramSearchView: View {
             .tint(.blue)
             .padding()
             .glassEffect(.regular, in: .rect(cornerRadius: 0))
-        }
-    }
-    
-    private func programTypeColor(_ type: String) -> Color {
-        switch type {
-        case "Academic":
-            return .blue
-        case "Community":
-            return .green
-        case "Hybrid":
-            return .orange
-        default:
-            return .gray
         }
     }
 }

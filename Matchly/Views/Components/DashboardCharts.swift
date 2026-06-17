@@ -375,41 +375,66 @@ struct DashboardNumberHero: View {
     let subtitle: String
     let icon: String
     let tint: Color
+    var condensed: Bool = false
     @Environment(\.matchlyLayout) private var layout
+
+    private var usesHorizontalLayout: Bool {
+        condensed || layout == .compactVertical
+    }
+
+    private var iconSize: CGFloat {
+        condensed ? 48 : layout.numberHeroIconSize
+    }
+
+    private var iconFont: CGFloat {
+        condensed ? 20 : layout.numberHeroIconFont
+    }
+
+    private var numberFont: CGFloat {
+        condensed ? 36 : layout.heroBigNumberFont
+    }
+
+    private var titleFont: CGFloat {
+        condensed ? 16 : layout.heroTitleFont
+    }
+
+    private var subtitleFont: CGFloat {
+        condensed ? 12 : layout.heroSubtitleFont
+    }
 
     var body: some View {
         Group {
-            if layout == .compactVertical {
-                HStack(alignment: .center, spacing: 16) {
+            if usesHorizontalLayout {
+                HStack(alignment: .center, spacing: condensed ? 12 : 16) {
                     ZStack {
                         Circle()
                             .fill(tint.opacity(0.15))
-                            .frame(width: layout.numberHeroIconSize, height: layout.numberHeroIconSize)
+                            .frame(width: iconSize, height: iconSize)
                         Image(systemName: icon)
-                            .font(.arial(size: layout.numberHeroIconFont, weight: .semibold))
+                            .font(.arial(size: iconFont, weight: .semibold))
                             .foregroundColor(tint)
                             .symbolRenderingMode(.hierarchical)
                     }
 
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: condensed ? 2 : 4) {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
                             Text(bigNumber)
-                                .font(.arial(size: layout.heroBigNumberFont, weight: .bold))
+                                .font(.arial(size: numberFont, weight: .bold))
                                 .foregroundStyle(tint.gradient)
                                 .minimumScaleFactor(0.5)
                                 .lineLimit(1)
                             if !unit.isEmpty {
                                 Text(unit)
-                                    .font(.arial(size: layout.heroTitleFont, weight: .semibold))
+                                    .font(.arial(size: titleFont, weight: .semibold))
                                     .foregroundColor(.secondary)
                             }
                         }
                         Text(title)
-                            .font(.arial(size: layout.heroTitleFont, weight: .bold))
+                            .font(.arial(size: titleFont, weight: .bold))
                             .foregroundColor(.primary)
                             .lineLimit(1)
                         Text(subtitle)
-                            .font(.arial(size: layout.heroSubtitleFont))
+                            .font(.arial(size: subtitleFont))
                             .foregroundColor(.secondary)
                             .lineLimit(2)
                     }
@@ -420,16 +445,16 @@ struct DashboardNumberHero: View {
                     ZStack {
                         Circle()
                             .fill(tint.opacity(0.15))
-                            .frame(width: layout.numberHeroIconSize, height: layout.numberHeroIconSize)
+                            .frame(width: iconSize, height: iconSize)
                         Image(systemName: icon)
-                            .font(.arial(size: layout.numberHeroIconFont, weight: .semibold))
+                            .font(.arial(size: iconFont, weight: .semibold))
                             .foregroundColor(tint)
                             .symbolRenderingMode(.hierarchical)
                     }
 
                     HStack(alignment: .firstTextBaseline, spacing: 7) {
                         Text(bigNumber)
-                            .font(.arial(size: layout.heroBigNumberFont, weight: .bold))
+                            .font(.arial(size: numberFont, weight: .bold))
                             .foregroundStyle(tint.gradient)
                             .minimumScaleFactor(0.5)
                             .lineLimit(1)
@@ -442,10 +467,10 @@ struct DashboardNumberHero: View {
 
                     VStack(spacing: 5) {
                         Text(title)
-                            .font(.arial(size: layout.heroTitleFont, weight: .bold))
+                            .font(.arial(size: titleFont, weight: .bold))
                             .foregroundColor(.primary)
                         Text(subtitle)
-                            .font(.arial(size: layout.heroSubtitleFont))
+                            .font(.arial(size: subtitleFont))
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)
                             .fixedSize(horizontal: false, vertical: true)
@@ -454,7 +479,7 @@ struct DashboardNumberHero: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 2)
+        .padding(.vertical, condensed ? 0 : 2)
     }
 }
 
@@ -517,6 +542,7 @@ struct ScoreBucket: Identifiable {
 /// Vertical Swift Charts histogram of program `finalScore` buckets.
 struct ScoreDistributionChart: View {
     let buckets: [ScoreBucket]
+    var chartHeight: CGFloat = 170
 
     private var maxCount: Int {
         max(buckets.map(\.count).max() ?? 0, 1)
@@ -548,11 +574,11 @@ struct ScoreDistributionChart: View {
                     .font(.arial(size: 11, weight: .medium))
             }
         }
-        .frame(height: 170)
+        .frame(height: chartHeight)
     }
 }
 
-// MARK: - Program Type Split
+// MARK: - Program Type Split (legacy — kept for reference if user data still has types)
 
 /// A slim stacked bar comparing Academic / Community / Hybrid program counts,
 /// with a compact legend below. Zero-count segments collapse gracefully.

@@ -42,8 +42,6 @@ def to_matchly_program(search_row: dict, detail: Optional[dict] = None) -> dict:
     website = detail.get("website")
     address = detail.get("mailing_address")
 
-    program_type = "Academic"  # default; Matchly overlay can refine later
-
     record = {
         "id": org_code,
         "name": name,
@@ -52,7 +50,6 @@ def to_matchly_program(search_row: dict, detail: Optional[dict] = None) -> dict:
         "state": state,
         "address": address,
         "specialty": _title_specialty(specialty),
-        "type": program_type,
         "accreditationID": org_code,
         "websiteURL": website,
         "contactEmail": email,

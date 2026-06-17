@@ -15,7 +15,7 @@ enum CatalogProgramMapper {
             city: resolved.city,
             state: resolved.state,
             address: resolved.street.isEmpty ? nil : resolved.street,
-            type: info.type,
+            type: "",
             accreditationID: info.accreditationID,
             websiteURL: info.websiteURL,
             contactEmail: info.contactEmail,
@@ -37,7 +37,6 @@ enum CatalogProgramMapper {
         program.city = mapped.city
         program.state = mapped.state
         program.address = mapped.address
-        program.type = mapped.type
         program.accreditationID = mapped.accreditationID
         program.websiteURL = mapped.websiteURL
         program.contactEmail = mapped.contactEmail

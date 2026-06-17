@@ -33,13 +33,6 @@ struct ProgramDetailView: View {
                     }
                     
                     HStack {
-                        Text(program.type)
-                            .font(.caption)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Color.blue.opacity(0.1))
-                            .cornerRadius(8)
-                        
                         Spacer()
                         
                         VStack(alignment: .trailing) {

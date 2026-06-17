@@ -112,20 +112,8 @@ struct ProgramSearchRowView: View {
                         }
                     }
                     
-                    // Program Type and IMG on second line
+                    // IMG status (verified vs heuristic)
                     HStack(spacing: 8) {
-                        // Program Type - full text, not abbreviated (matching My Programs)
-                        if !program.type.isEmpty {
-                            HStack(spacing: 3) {
-                                Image(systemName: programTypeIcon(program.type))
-                                    .font(.arial(size: 8))
-                                Text(program.type)
-                                    .font(.arial(size: 10, weight: .medium))
-                            }
-                            .foregroundColor(programTypeColor(program.type))
-                        }
-                        
-                        // IMG status (verified vs heuristic)
                         let imgStatus = IMGStatusDisplay.forCatalogProgram(program)
                         if imgStatus != .none {
                             HStack(spacing: 3) {
@@ -153,46 +141,6 @@ struct ProgramSearchRowView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-    
-    private func programTypeColor(_ type: String) -> Color {
-        switch type {
-        case "Academic":
-            return .blue
-        case "Community":
-            return .green
-        case "Hybrid":
-            return .orange
-        default:
-            return .gray
-        }
-    }
-    
-    private func programTypeIcon(_ type: String) -> String {
-        switch type {
-        case "Academic":
-            return "graduationcap.fill"
-        case "Community":
-            return "house.fill"
-        case "Hybrid":
-            return "square.stack.3d.up.fill"
-        default:
-            return "building.2.fill"
-        }
-    }
-    
-    private func programTypeAbbreviation(_ type: String) -> String {
-        switch type {
-        case "Academic":
-            return "Acad" // Keep as is, but ensure badge has enough width
-        case "Community":
-            return "Comm" // Keep as is
-        case "Hybrid":
-            return "Hybrid"
-        default:
-            // For any other type, try to abbreviate if too long
-            return type.count > 6 ? String(type.prefix(6)) : type
-        }
     }
 }
 

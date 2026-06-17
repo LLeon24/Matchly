@@ -11,71 +11,25 @@ struct ProgramComparisonView: View {
     @EnvironmentObject var dataManager: DataManager
     @State private var selectedPrograms: Set<String> = []
     @State private var showProgramPicker = false
-    
+
+    private static let programAccentColors: [Color] = [
+        AppColors.primaryBlue,
+        AppColors.accentOrange,
+        .purple,
+        .green
+    ]
+
     var comparisonPrograms: [Program] {
         dataManager.programs.filter { selectedPrograms.contains($0.id) }
     }
-    
+
     var body: some View {
         MatchlyNavigationView {
             VStack(spacing: 0) {
                 if selectedPrograms.isEmpty {
-                    VStack(spacing: 20) {
-                        Image(systemName: "square.grid.2x2")
-                            .font(.arial(size: 60))
-                            .foregroundColor(.secondary)
-                        
-                        Text("Compare Programs")
-                            .font(.arial(size: 24, weight: .semibold))
-                        
-                        Text("Select 2-4 programs to compare side-by-side")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
-                        
-                        Button(action: {
-                            showProgramPicker = true
-                        }) {
-                            Text("Select Programs")
-                                .font(.arial(size: 18, weight: .semibold))
-                                .padding(.horizontal, 30)
-                                .padding(.vertical, 12)
-                        }
-                        .buttonStyle(.glassProminent)
-                        .tint(AppColors.primaryBlue)
-                    }
+                    emptyState
                 } else {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 16) {
-                            ForEach(comparisonPrograms) { program in
-                                ComparisonCard(program: program, onRemove: {
-                                    selectedPrograms.remove(program.id)
-                                })
-                            }
-                            
-                            // Add more button - same size as comparison cards
-                            if comparisonPrograms.count < 4 {
-                                Button(action: {
-                                    showProgramPicker = true
-                                }) {
-                                    VStack(spacing: 12) {
-                                        Image(systemName: "plus.circle.fill")
-                                            .font(.arial(size: 40))
-                                            .foregroundColor(.blue)
-                                        Text("Add Program")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
-                                    }
-                                    .frame(width: 250)
-                                    .frame(height: 400) // Match the fixed height of comparison cards
-                                    .padding()
-                                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 12))
-                                }
-                            }
-                        }
-                        .padding()
-                    }
+                    comparisonContent
                 }
             }
             .navigationTitle("Compare Programs")
@@ -89,7 +43,7 @@ struct ProgramComparisonView: View {
                             }) {
                                 Label("Add Program", systemImage: "plus")
                             }
-                            
+
                             Button(role: .destructive, action: {
                                 selectedPrograms.removeAll()
                             }) {
@@ -109,105 +63,563 @@ struct ProgramComparisonView: View {
             }
         }
     }
-}
 
-struct ComparisonCard: View {
-    let program: Program
-    let onRemove: () -> Void
-    
-    // Fixed height to ensure all cards are the same size
-    private let cardHeight: CGFloat = 400
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Header
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text(HospitalNameFormatter.format(program.hospital))
-                        .font(.arial(size: 18, weight: .bold))
-                        .lineLimit(2)
-                    
-                    Spacer()
-                    
-                    Button(action: onRemove) {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.secondary)
-                    }
-                }
-                
-                Text(program.specialty)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                
-                Text("\(program.city), \(program.state)")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            
-            Divider()
-            
-            // Scores
-            VStack(alignment: .leading, spacing: 12) {
-                ComparisonRow(label: "Overall Score", value: String(format: "%.1f", program.finalScore), color: scoreColor(program.finalScore))
-                ComparisonRow(label: "Program Quality", value: String(format: "%.1f", program.programQuality.average()), color: .blue)
-                ComparisonRow(label: "Culture Fit", value: String(format: "%.1f", program.cultureFit.average()), color: .purple)
-                ComparisonRow(label: "Location", value: String(format: "%.1f", program.location.average()), color: .green)
-                ComparisonRow(label: "Logistics", value: String(format: "%.1f", program.logistics.average()), color: .orange)
-                ComparisonRow(label: "Career Alignment", value: String(format: "%.1f", program.careerAlignment.average()), color: .pink)
-                ComparisonRow(label: "EMR", value: program.emr ?? "Not set", color: program.emr == nil ? .secondary : .primary)
-                
-                if program.redFlags.total() > 0 {
-                    ComparisonRow(label: "Red Flags", value: String(format: "%.1f", program.redFlags.total()), color: .red)
-                }
-            }
-            
-            // Spacer to push interview date to bottom
-            Spacer()
-            
-            // Interview date - always reserve space, show if exists
-            Divider()
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Interview Date")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                if let date = program.interviewDate {
-                    Text(date, style: .date)
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                } else {
-                    Text("Not set")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                }
-            }
-        }
-        .padding()
-        .frame(width: 250)
-        .frame(height: cardHeight) // Fixed height instead of minHeight
-        .glassEffect(.regular, in: .rect(cornerRadius: 12))
-    }
-    
-}
-
-struct ComparisonRow: View {
-    let label: String
-    let value: String
-    let color: Color
-    
-    var body: some View {
-        HStack {
-            Text(label)
-                .font(.caption)
+    private var emptyState: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "square.grid.2x2")
+                .font(.arial(size: 60))
                 .foregroundColor(.secondary)
-            Spacer()
-            Text(value)
+
+            Text("Compare Programs")
+                .font(.arial(size: 24, weight: .semibold))
+
+            Text("Select 2–4 programs to compare scores and details side by side")
                 .font(.subheadline)
-                .fontWeight(.semibold)
-                .foregroundColor(color)
-                .multilineTextAlignment(.trailing)
-                .lineLimit(2)
-                .minimumScaleFactor(0.7)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+
+            Button(action: {
+                showProgramPicker = true
+            }) {
+                Text("Select Programs")
+                    .font(.arial(size: 18, weight: .semibold))
+                    .padding(.horizontal, 30)
+                    .padding(.vertical, 12)
+            }
+            .buttonStyle(.glassProminent)
+            .tint(AppColors.primaryBlue)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private let metricLabelWidth: CGFloat = 104
+
+    private var comparisonContent: some View {
+        ScrollView {
+            VStack(spacing: 12) {
+                programsHeaderSection
+                scoreMatrixSection
+
+                if comparisonPrograms.count < 4 {
+                    addProgramButton
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 4)
+            .padding(.bottom, 12)
+        }
+        .matchlyScrollTabBarClearance()
+    }
+
+    private var programsHeaderSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Selected Programs")
+                .font(.arial(size: 13, weight: .semibold))
+                .foregroundColor(.secondary)
+
+            ForEach(Array(comparisonPrograms.enumerated()), id: \.element.id) { index, program in
+                ComparisonProgramHeaderRow(
+                    program: program,
+                    index: index,
+                    accentColor: accentColor(for: index),
+                    onRemove: {
+                        selectedPrograms.remove(program.id)
+                    }
+                )
+
+                if index < comparisonPrograms.count - 1 {
+                    Divider()
+                }
+            }
+        }
+        .dashboardCardStyle()
+    }
+
+    private var scoreMatrixSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Score Comparison")
+                .font(.arial(size: 13, weight: .semibold))
+                .foregroundColor(.secondary)
+
+            if comparisonPrograms.count >= 3 {
+                columnKeyRow
+            }
+
+            scoreMatrixHeaderRow
+
+            ForEach(Array(metrics.enumerated()), id: \.element.id) { rowIndex, metric in
+                scoreMatrixRow(metric, shaded: rowIndex.isMultiple(of: 2))
+
+                if rowIndex < metrics.count - 1 {
+                    Divider()
+                        .padding(.leading, metricLabelWidth + 8)
+                }
+            }
+        }
+        .dashboardCardStyle()
+    }
+
+    private var columnKeyRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(Array(comparisonPrograms.enumerated()), id: \.element.id) { index, program in
+                    ComparisonColumnKeyPill(
+                        index: index,
+                        label: ComparisonProgramLabel.shortLabel(for: program, among: comparisonPrograms),
+                        accentColor: accentColor(for: index)
+                    )
+                }
+            }
+            .padding(.vertical, 2)
+        }
+    }
+
+    private var scoreMatrixHeaderRow: some View {
+        HStack(spacing: 8) {
+            Text("Metric")
+                .font(.arial(size: 11, weight: .semibold))
+                .foregroundColor(.secondary)
+                .frame(width: metricLabelWidth, alignment: .leading)
+
+            ForEach(Array(comparisonPrograms.enumerated()), id: \.element.id) { index, program in
+                ComparisonColorColumnHeader(
+                    index: index,
+                    shortLabel: ComparisonProgramLabel.shortLabel(for: program, among: comparisonPrograms),
+                    accentColor: accentColor(for: index)
+                )
+                .frame(maxWidth: .infinity)
+            }
+
+            if comparisonPrograms.count < 4 {
+                Button(action: {
+                    showProgramPicker = true
+                }) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.arial(size: 22))
+                        .foregroundColor(AppColors.primaryBlue)
+                        .frame(width: 36)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.bottom, 4)
+    }
+
+    private func scoreMatrixRow(_ metric: ComparisonMetric, shaded: Bool) -> some View {
+        let standings = metric.standings(for: comparisonPrograms)
+
+        return HStack(spacing: 8) {
+            Text(metric.shortTitle)
+                .font(.arial(size: 12, weight: .medium))
+                .foregroundColor(.secondary)
+                .lineLimit(2)
+                .minimumScaleFactor(0.85)
+                .frame(width: metricLabelWidth, alignment: .leading)
+
+            ForEach(Array(comparisonPrograms.enumerated()), id: \.element.id) { index, program in
+                ComparisonScoreCell(
+                    value: metric.value(program),
+                    valueColor: metric.color(program),
+                    accentColor: accentColor(for: index),
+                    isLeader: standings.leadingProgramIDs.contains(program.id) && comparisonPrograms.count > 1,
+                    shaded: shaded
+                )
+                .frame(maxWidth: .infinity)
+            }
+
+            if comparisonPrograms.count < 4 {
+                Color.clear.frame(width: 36)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var addProgramButton: some View {
+        Button(action: {
+            showProgramPicker = true
+        }) {
+            HStack(spacing: 10) {
+                Image(systemName: "plus.circle.fill")
+                    .font(.arial(size: 22))
+                Text("Add Another Program")
+                    .font(.arial(size: 15, weight: .semibold))
+            }
+            .foregroundColor(AppColors.primaryBlue)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+        }
+        .buttonStyle(.plain)
+        .dashboardCardStyle()
+    }
+
+    private func accentColor(for index: Int) -> Color {
+        Self.programAccentColors[index % Self.programAccentColors.count]
+    }
+
+    private var metrics: [ComparisonMetric] {
+        var list: [ComparisonMetric] = [
+            ComparisonMetric(
+                id: "overall",
+                title: "Overall Score",
+                shortTitle: "Overall",
+                value: { String(format: "%.1f", $0.finalScore) },
+                numericValue: { $0.finalScore },
+                color: { scoreColor($0.finalScore) },
+                prefersLower: false
+            ),
+            ComparisonMetric(
+                id: "quality",
+                title: "Program Quality",
+                shortTitle: "Quality",
+                value: { String(format: "%.1f", $0.programQuality.average()) },
+                numericValue: { $0.programQuality.average() },
+                color: { _ in .blue },
+                prefersLower: false
+            ),
+            ComparisonMetric(
+                id: "culture",
+                title: "Culture Fit",
+                shortTitle: "Culture",
+                value: { String(format: "%.1f", $0.cultureFit.average()) },
+                numericValue: { $0.cultureFit.average() },
+                color: { _ in .purple },
+                prefersLower: false
+            ),
+            ComparisonMetric(
+                id: "location",
+                title: "Location",
+                shortTitle: "Location",
+                value: { String(format: "%.1f", $0.location.average()) },
+                numericValue: { $0.location.average() },
+                color: { _ in .green },
+                prefersLower: false
+            ),
+            ComparisonMetric(
+                id: "logistics",
+                title: "Logistics",
+                shortTitle: "Logistics",
+                value: { String(format: "%.1f", $0.logistics.average()) },
+                numericValue: { $0.logistics.average() },
+                color: { _ in .orange },
+                prefersLower: false
+            ),
+            ComparisonMetric(
+                id: "career",
+                title: "Career Alignment",
+                shortTitle: "Career",
+                value: { String(format: "%.1f", $0.careerAlignment.average()) },
+                numericValue: { $0.careerAlignment.average() },
+                color: { _ in .pink },
+                prefersLower: false
+            ),
+            ComparisonMetric(
+                id: "emr",
+                title: "EMR",
+                shortTitle: "EMR",
+                value: { $0.emr ?? "Not set" },
+                numericValue: nil,
+                color: { $0.emr == nil ? .secondary : .primary },
+                prefersLower: false
+            )
+        ]
+
+        if comparisonPrograms.contains(where: { $0.redFlags.total() > 0 }) {
+            list.append(
+                ComparisonMetric(
+                    id: "redflags",
+                    title: "Red Flags",
+                    shortTitle: "Red Flags",
+                    value: { String(format: "%.1f", $0.redFlags.total()) },
+                    numericValue: { $0.redFlags.total() },
+                    color: { _ in .red },
+                    prefersLower: true
+                )
+            )
+        }
+
+        list.append(
+            ComparisonMetric(
+                id: "interview",
+                title: "Interview Date",
+                shortTitle: "Interview",
+                value: { program in
+                    guard let date = program.interviewDate else { return "Not set" }
+                    return ComparisonMetric.compactInterviewDateFormatter.string(from: date)
+                },
+                numericValue: nil,
+                color: { $0.interviewDate == nil ? .secondary : .primary },
+                prefersLower: false
+            )
+        )
+
+        return list
+    }
+}
+
+// MARK: - Comparison components
+
+private enum ComparisonProgramLabel {
+    static func displayName(for program: Program) -> String {
+        HospitalNameFormatter.format(program.hospital.isEmpty ? program.name : program.hospital)
+    }
+
+    static func shortLabel(for program: Program, among programs: [Program]) -> String {
+        let city = program.city.trimmingCharacters(in: .whitespaces)
+        let name = displayName(for: program)
+        let primarySegment = name
+            .split(separator: "/")
+            .first
+            .map { String($0).trimmingCharacters(in: .whitespaces) } ?? name
+
+        if !city.isEmpty {
+            let peersWithSameCity = programs.filter {
+                $0.city.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare(city) == .orderedSame
+            }
+
+            if peersWithSameCity.count == 1 {
+                return city
+            }
+
+            let state = program.state.trimmingCharacters(in: .whitespaces)
+            let cityStateLabel: String = {
+                guard !state.isEmpty else { return city }
+                let abbrev = StateMapping.abbreviation(for: state) ?? state
+                return "\(city), \(abbrev)"
+            }()
+
+            let peersWithSameCityState = programs.filter {
+                $0.city.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare(city) == .orderedSame
+                    && $0.state.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare(state) == .orderedSame
+            }
+
+            if peersWithSameCityState.count == 1 {
+                return cityStateLabel
+            }
+
+            if let parenthetical = parentheticalHint(in: name) {
+                return parenthetical
+            }
+
+            return truncate(primarySegment, limit: 16)
+        }
+
+        return truncate(primarySegment, limit: 18)
+    }
+
+    private static func parentheticalHint(in name: String) -> String? {
+        guard let start = name.firstIndex(of: "("),
+              let end = name[start...].firstIndex(of: ")") else {
+            return nil
+        }
+        let hint = String(name[name.index(after: start)..<end]).trimmingCharacters(in: .whitespaces)
+        guard !hint.isEmpty else { return nil }
+        return truncate(hint, limit: 16)
+    }
+
+    private static func truncate(_ text: String, limit: Int) -> String {
+        guard text.count > limit else { return text }
+        return String(text.prefix(limit - 1)).trimmingCharacters(in: .whitespaces) + "…"
+    }
+}
+
+private struct ComparisonIndexBadge: View {
+    let index: Int
+    let accentColor: Color
+    var size: CGFloat = 20
+
+    var body: some View {
+        Text("\(index + 1)")
+            .font(.arial(size: size * 0.55, weight: .bold))
+            .foregroundColor(.white)
+            .frame(width: size, height: size)
+            .background(
+                Circle()
+                    .fill(accentColor)
+            )
+    }
+}
+
+private struct ComparisonColumnKeyPill: View {
+    let index: Int
+    let label: String
+    let accentColor: Color
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ComparisonIndexBadge(index: index, accentColor: accentColor, size: 18)
+
+            Text(label)
+                .font(.arial(size: 11, weight: .semibold))
+                .foregroundColor(.primary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            Capsule(style: .continuous)
+                .fill(accentColor.opacity(0.12))
+        )
+        .overlay(
+            Capsule(style: .continuous)
+                .stroke(accentColor.opacity(0.28), lineWidth: 1)
+        )
+    }
+}
+
+private struct ComparisonMetric: Identifiable {
+    static let compactInterviewDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d"
+        return formatter
+    }()
+
+    let id: String
+    let title: String
+    let shortTitle: String
+    let value: (Program) -> String
+    let numericValue: ((Program) -> Double)?
+    let color: (Program) -> Color
+    let prefersLower: Bool
+
+    struct Standings {
+        let leadingProgramIDs: Set<String>
+    }
+
+    func standings(for programs: [Program]) -> Standings {
+        guard programs.count > 1, let numericValue else {
+            return Standings(leadingProgramIDs: [])
+        }
+
+        let scored = programs.map { (id: $0.id, score: numericValue($0)) }
+        let target = prefersLower
+            ? scored.map(\.score).min()
+            : scored.map(\.score).max()
+
+        guard let target else {
+            return Standings(leadingProgramIDs: [])
+        }
+
+        let leaders = scored.filter { $0.score == target }.map(\.id)
+        return Standings(leadingProgramIDs: Set(leaders))
+    }
+}
+
+private struct ComparisonProgramHeaderRow: View {
+    let program: Program
+    let index: Int
+    let accentColor: Color
+    let onRemove: () -> Void
+
+    private var displayName: String {
+        ComparisonProgramLabel.displayName(for: program)
+    }
+
+    private var locationLine: String {
+        if !program.city.isEmpty && !program.state.isEmpty {
+            return "\(program.city), \(program.state)"
+        }
+        if !program.state.isEmpty { return program.state }
+        return program.specialty
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            ComparisonIndexBadge(index: index, accentColor: accentColor)
+
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(accentColor)
+                .frame(width: 4)
+                .padding(.vertical, 2)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(displayName)
+                    .font(.arial(size: 15, weight: .semibold))
+                    .foregroundColor(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(locationLine)
+                    .font(.arial(size: 12))
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer(minLength: 8)
+
+            Button(action: onRemove) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.arial(size: 18))
+                    .foregroundColor(.secondary.opacity(0.75))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+}
+
+private struct ComparisonColorColumnHeader: View {
+    let index: Int
+    let shortLabel: String
+    let accentColor: Color
+
+    var body: some View {
+        VStack(spacing: 4) {
+            ComparisonIndexBadge(index: index, accentColor: accentColor, size: 18)
+
+            Text(shortLabel)
+                .font(.arial(size: 9, weight: .semibold))
+                .foregroundColor(.primary)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .minimumScaleFactor(0.75)
+                .frame(maxWidth: .infinity)
+
+            Capsule(style: .continuous)
+                .fill(accentColor)
+                .frame(maxWidth: .infinity)
+                .frame(height: 4)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 2)
+    }
+}
+
+private struct ComparisonScoreCell: View {
+    let value: String
+    let valueColor: Color
+    let accentColor: Color
+    let isLeader: Bool
+    let shaded: Bool
+
+    var body: some View {
+        Text(value)
+            .font(.arial(size: 14, weight: .semibold))
+            .foregroundColor(valueColor)
+            .multilineTextAlignment(.center)
+            .lineLimit(2)
+            .minimumScaleFactor(0.7)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .padding(.horizontal, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(cellBackground)
+            )
+            .overlay(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(accentColor)
+                    .frame(width: 3)
+                    .padding(.vertical, 6)
+            }
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(isLeader ? accentColor.opacity(0.45) : accentColor.opacity(0.12), lineWidth: isLeader ? 1.5 : 1)
+            )
+    }
+
+    private var cellBackground: Color {
+        if isLeader {
+            return accentColor.opacity(0.14)
+        }
+        return shaded ? Color(.systemGray6).opacity(0.45) : Color(.systemGray6).opacity(0.22)
     }
 }
 
@@ -217,43 +629,50 @@ struct ProgramComparisonPickerView: View {
     @Binding var selectedPrograms: Set<String>
     let currentSelections: Set<String>
     @State private var tempSelections: Set<String>
-    
+
+    private let maxSelections = 4
+    private let minSelections = 2
+
     init(selectedPrograms: Binding<Set<String>>, currentSelections: Set<String>) {
         self._selectedPrograms = selectedPrograms
         self.currentSelections = currentSelections
         self._tempSelections = State(initialValue: currentSelections)
     }
-    
+
     var body: some View {
         MatchlyNavigationView {
-            List {
-                ForEach(dataManager.programs) { program in
-                    Button(action: {
-                        if tempSelections.contains(program.id) {
-                            tempSelections.remove(program.id)
-                        } else if tempSelections.count < 4 {
-                            tempSelections.insert(program.id)
-                        }
-                    }) {
-                        HStack {
-                            Image(systemName: tempSelections.contains(program.id) ? "checkmark.circle.fill" : "circle")
-                                .foregroundColor(tempSelections.contains(program.id) ? .blue : .gray)
-                            
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(HospitalNameFormatter.format(program.hospital))
-                                    .font(.arial(size: 16, weight: .semibold))
-                                    .foregroundColor(.primary)
-                                Text("\(program.city), \(program.state)")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
+            VStack(spacing: 0) {
+                selectionSummaryBar
+
+                List {
+                    ForEach(dataManager.programs) { program in
+                        Button(action: {
+                            if tempSelections.contains(program.id) {
+                                tempSelections.remove(program.id)
+                            } else if tempSelections.count < maxSelections {
+                                tempSelections.insert(program.id)
                             }
-                            
-                            Spacer()
-                            
-                            if tempSelections.count >= 4 && !tempSelections.contains(program.id) {
-                                Text("Max 4")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
+                        }) {
+                            HStack {
+                                Image(systemName: tempSelections.contains(program.id) ? "checkmark.circle.fill" : "circle")
+                                    .foregroundColor(tempSelections.contains(program.id) ? .blue : .gray)
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(HospitalNameFormatter.format(program.hospital))
+                                        .font(.arial(size: 16, weight: .semibold))
+                                        .foregroundColor(.primary)
+                                    Text("\(program.city), \(program.state)")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+
+                                Spacer()
+
+                                if tempSelections.count >= maxSelections && !tempSelections.contains(program.id) {
+                                    Text("Max 4")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
                             }
                         }
                     }
@@ -273,9 +692,65 @@ struct ProgramComparisonPickerView: View {
                         dismiss()
                     }
                     .fontWeight(.semibold)
-                    .disabled(tempSelections.count < 2)
+                    .disabled(tempSelections.count < minSelections)
                 }
             }
+        }
+    }
+
+    private var selectionSummaryBar: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("\(tempSelections.count)/\(maxSelections)")
+                    .font(.arial(size: 32, weight: .bold))
+                    .foregroundColor(selectionCountColor)
+                    .monospacedDigit()
+
+                Text("selected")
+                    .font(.arial(size: 15, weight: .medium))
+                    .foregroundColor(.secondary)
+
+                Spacer()
+            }
+
+            HStack(spacing: 6) {
+                ForEach(0..<maxSelections, id: \.self) { index in
+                    Capsule(style: .continuous)
+                        .fill(index < tempSelections.count ? AppColors.primaryBlue : Color(.systemGray4))
+                        .frame(height: 5)
+                }
+            }
+
+            Text(selectionHelperText)
+                .font(.arial(size: 12))
+                .foregroundColor(.secondary)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.systemGroupedBackground))
+    }
+
+    private var selectionCountColor: Color {
+        if tempSelections.count < minSelections {
+            return AppColors.accentOrange
+        }
+        if tempSelections.count == maxSelections {
+            return AppColors.primaryBlue
+        }
+        return .primary
+    }
+
+    private var selectionHelperText: String {
+        switch tempSelections.count {
+        case 0:
+            return "Select 2–4 programs to compare"
+        case 1:
+            return "Select at least 1 more program"
+        case 2, 3:
+            return "You can add up to \(maxSelections - tempSelections.count) more"
+        default:
+            return "Maximum of \(maxSelections) programs selected"
         }
     }
 }
@@ -284,4 +759,3 @@ struct ProgramComparisonPickerView: View {
     ProgramComparisonView()
         .environmentObject(DataManager.shared)
 }
-
