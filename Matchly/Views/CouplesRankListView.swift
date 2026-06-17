@@ -193,6 +193,7 @@ struct CouplesRankListView: View {
             }
         }
         .scrollContentBackground(.hidden)
+        .matchlyScrollTabBarClearance()
         .appCanvasBackground()
         .navigationTitle("Couples Rank List")
         .navigationBarTitleDisplayMode(.inline)

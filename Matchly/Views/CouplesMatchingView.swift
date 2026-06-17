@@ -251,6 +251,7 @@ struct CouplesMatchingView: View {
             }
         }
         .scrollContentBackground(.hidden)
+        .matchlyScrollTabBarClearance()
         .appCanvasBackground()
         .navigationTitle("Couples Matching")
         .navigationBarTitleDisplayMode(.inline)

@@ -47,7 +47,7 @@ enum CoupleLinkingService {
         record["status"] = "pending" as CKRecordValue
         record["createdAt"] = Date() as CKRecordValue
 
-        try await save(record)
+        _ = try await save(record)
         logger.info("Registered couple code \(code, privacy: .public)")
     }
 

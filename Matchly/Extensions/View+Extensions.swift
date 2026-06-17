@@ -47,7 +47,7 @@ enum MatchlyLayoutStyle: Equatable {
     var cardHorizontalPadding: CGFloat { self == .compactVertical ? 14 : 20 }
     var pageBottomInset: CGFloat { self == .compactVertical ? 12 : 16 }
     /// Space to keep scroll content above the floating tab bar.
-    var tabBarScrollClearance: CGFloat { self == .compactVertical ? 72 : 92 }
+    var tabBarScrollClearance: CGFloat { self == .compactVertical ? 84 : 110 }
     var dashboardSectionSpacing: CGFloat { self == .compactVertical ? 10 : 14 }
     var tabBarIconFont: CGFloat { self == .compactVertical ? 18 : 22 }
     var tabBarTitleFont: CGFloat { self == .compactVertical ? 9 : 10 }
