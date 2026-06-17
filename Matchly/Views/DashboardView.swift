@@ -352,7 +352,7 @@ struct DashboardView: View {
         .dashboardCardStyle()
     }
 
-    /// 2) Programs — count hero + score distribution + top programs.
+    /// 2) Programs — count hero + compare + score distribution + top programs.
     private var programsPage: some View {
         ScrollView {
             VStack(spacing: 10) {
@@ -369,8 +369,12 @@ struct DashboardView: View {
                 )
                 .dashboardCardStyle()
 
+                if dataManager.programs.count >= 2 {
+                    programsCompareCard
+                }
+
                 ForEach(layout.orderedSectionIDs(in: DashboardLayout.programsSectionIDs), id: \.self) { sectionId in
-                    if shouldShowSection(sectionId) {
+                    if sectionId != "programsCompare", shouldShowSection(sectionId) {
                         programsSectionView(for: sectionId)
                     }
                 }
@@ -1505,11 +1509,6 @@ struct DashboardView: View {
             .sorted { ($0.interviewDate ?? now) < ($1.interviewDate ?? now) }
     }
     
-    private var specialtyBreakdown: [String: Int] {
-        Dictionary(grouping: dataManager.programs, by: { $0.specialty })
-            .mapValues { $0.count }
-    }
-    
     private var goldSignalCount: Int {
         dataManager.programs.filter { program in
             program.signalType == .gold && SignalLimits.isTiered(for: program.specialty)
@@ -1546,334 +1545,139 @@ struct DashboardView: View {
         }
     }
     
-    // MARK: - Analytics Section
+    // MARK: - Programs Tab: Signals & Status
     private var analyticsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            DashboardSectionHeader(title: "Analytics & Insights", icon: "chart.line.uptrend.xyaxis", tint: AppColors.accentTeal)
-            
-            // Key Metrics Row - with progress indicators (grouped related metrics)
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Performance Metrics")
-                    .font(.arial(size: 12, weight: .semibold))
-                    .foregroundColor(.secondary)
-                    .padding(.horizontal, 2)
-                
-                HStack(spacing: 10) {
-                    AnalyticsStatCardWithProgress(
-                        title: "Average Score",
-                        value: String(format: "%.1f", averageScore),
-                        icon: "star.fill",
-                        color: .orange,
-                        progress: min(averageScore / 100.0, 1.0)
-                    )
-                    
-                    AnalyticsStatCardWithProgress(
-                        title: "Completion",
-                        value: "\(Int(completionPercentage))%",
-                        icon: "checkmark.circle.fill",
-                        color: completionPercentage >= 80 ? .green : (completionPercentage >= 50 ? .orange : .red),
-                        progress: completionPercentage / 100.0
-                    )
-                    
-                    AnalyticsStatCard(
-                        title: "Programs Rated",
-                        value: "\(ratedProgramsCount)/\(dataManager.programs.count)",
-                        icon: "chart.bar.fill",
-                        color: AppColors.primaryBlue
-                    )
-                }
-            }
-            
-            // Red Flags Warning - Purposeful red color for critical alerts
-            if redFlaggedProgramsCount > 0 {
-                NavigationLink(destination: RedFlaggedProgramsView()) {
-                    HStack(spacing: 10) {
-                        ZStack {
-                            Circle()
-                                .fill(Color.red.opacity(0.15))
-                                .frame(width: 36, height: 36)
-                            
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.arial(size: 16, weight: .semibold))
-                                .foregroundColor(.red)
-                        }
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("\(redFlaggedProgramsCount) Program\(redFlaggedProgramsCount == 1 ? "" : "s") with Red Flags")
-                                .font(.arial(size: 14, weight: .semibold))
-                                .foregroundColor(.red)
-                            Text("Review flagged programs")
-                                .font(.arial(size: 11))
+        VStack(alignment: .leading, spacing: 10) {
+            DashboardSectionHeader(
+                title: "Signals & Status",
+                icon: "star.circle.fill",
+                tint: AppColors.accentOrange
+            )
+
+            // Signal Tracking
+            NavigationLink(destination: AllSignaledProgramsView()) {
+                HStack(spacing: 12) {
+                    let signalProgress = getSignalProgress()
+                    ZStack {
+                        Circle()
+                            .stroke(Color.orange.opacity(0.2), lineWidth: 3)
+                            .frame(width: 44, height: 44)
+
+                        Circle()
+                            .trim(from: 0, to: signalProgress)
+                            .stroke(Color.orange, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                            .frame(width: 44, height: 44)
+                            .rotationEffect(.degrees(-90))
+                            .animation(.spring(response: 0.6, dampingFraction: 0.8), value: signalProgress)
+
+                        VStack(spacing: 0) {
+                            Text("\(totalSignalCount)")
+                                .font(.arial(size: 14, weight: .bold))
+                                .foregroundColor(.orange)
+                            Text("total")
+                                .font(.arial(size: 8))
                                 .foregroundColor(.secondary)
                         }
-                        
-                        Spacer()
-                        
-                        Image(systemName: "chevron.right")
-                            .font(.arial(size: 10))
-                            .foregroundColor(.secondary.opacity(0.5))
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(Color.red.opacity(0.08))
-                    .cornerRadius(10)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.red.opacity(0.2), lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.plain)
-            }
-            
-            // Signal Tracking - Enhanced with progress
-            VStack(spacing: 8) {
-                // All Signals - full width with progress
-                NavigationLink(destination: AllSignaledProgramsView()) {
-                    HStack(spacing: 12) {
-                        // Progress indicator
-                        let signalProgress = getSignalProgress()
-                        ZStack {
-                            Circle()
-                                .stroke(Color.orange.opacity(0.2), lineWidth: 3)
-                                .frame(width: 44, height: 44)
-                            
-                            Circle()
-                                .trim(from: 0, to: signalProgress)
-                                .stroke(Color.orange, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                                .frame(width: 44, height: 44)
-                                .rotationEffect(.degrees(-90))
-                                .animation(.spring(response: 0.6, dampingFraction: 0.8), value: signalProgress)
-                            
-                            VStack(spacing: 0) {
-                                Text("\(totalSignalCount)")
-                                    .font(.arial(size: 14, weight: .bold))
-                                    .foregroundColor(.orange)
-                                Text("total")
-                                    .font(.arial(size: 8))
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Signals")
-                                .font(.arial(size: 13, weight: .semibold))
-                                .foregroundColor(.primary)
-                            
-                            HStack(spacing: 6) {
-                                // Show tiered signals (Gold/Silver) if user has any tiered signal programs
-                                if hasTieredSignals {
-                                    if goldSignalCount > 0 {
-                                        HStack(spacing: 2) {
-                                            Image(systemName: "star.fill")
-                                                .font(.arial(size: 9))
-                                            Text("\(goldSignalCount)")
-                                                .font(.arial(size: 10, weight: .medium))
-                                        }
-                                        .foregroundColor(.yellow)
-                                    }
-                                    
-                                    if silverSignalCount > 0 {
-                                        HStack(spacing: 2) {
-                                            Image(systemName: "star")
-                                                .font(.arial(size: 9))
-                                            Text("\(silverSignalCount)")
-                                                .font(.arial(size: 10, weight: .medium))
-                                        }
-                                        .foregroundColor(.gray)
-                                    }
-                                }
-                                
-                                // Show single-level signals if user has any single-level signal programs
-                                if hasSingleLevelSignals && singleLevelSignalCount > 0 {
-                                    HStack(spacing: 2) {
-                                        Image(systemName: "star.fill")
-                                            .font(.arial(size: 9))
-                                        Text("\(singleLevelSignalCount)")
-                                            .font(.arial(size: 10, weight: .medium))
-                                    }
-                                    .foregroundColor(.blue)
-                                }
-                            }
-                        }
-                        
-                        Spacer()
-                        
-                        Image(systemName: "chevron.right")
-                            .font(.arial(size: 10))
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("ERAS Signals")
+                            .font(.arial(size: 15, weight: .semibold))
+                            .foregroundColor(.primary)
+                        Text(totalSignalCount > 0
+                             ? "Gold, silver, and specialty signal usage"
+                             : "Track signals as you assign them to programs")
+                            .font(.arial(size: 12))
                             .foregroundColor(.secondary)
+                            .lineLimit(2)
+
+                        if totalSignalCount > 0 {
+                            HStack(spacing: 8) {
+                                if hasTieredSignals, goldSignalCount > 0 {
+                                    Label("\(goldSignalCount)", systemImage: "star.fill")
+                                        .font(.arial(size: 11, weight: .medium))
+                                        .foregroundColor(.yellow)
+                                }
+                                if hasTieredSignals, silverSignalCount > 0 {
+                                    Label("\(silverSignalCount)", systemImage: "star")
+                                        .font(.arial(size: 11, weight: .medium))
+                                        .foregroundColor(.gray)
+                                }
+                                if hasSingleLevelSignals, singleLevelSignalCount > 0 {
+                                    Label("\(singleLevelSignalCount)", systemImage: "star.fill")
+                                        .font(.arial(size: 11, weight: .medium))
+                                        .foregroundColor(.blue)
+                                }
+                            }
+                        }
                     }
-                    .padding(.vertical, 10)
-                    .padding(.horizontal, 12)
-                    .glassEffect(
-                        .regular.tint(Color.orange.opacity(totalSignalCount > 0 ? 0.12 : 0.06)).interactive(),
-                        in: .rect(cornerRadius: 8)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.orange.opacity(totalSignalCount > 0 ? 0.25 : 0.12), lineWidth: 1)
-                    )
+
+                    Spacer(minLength: 8)
+
+                    Image(systemName: "chevron.right")
+                        .font(.arial(size: 12))
+                        .foregroundColor(.secondary.opacity(0.5))
                 }
-                .buttonStyle(.plain)
+                .padding(.vertical, 4)
             }
-            
-            // Programs Needing Attention - Yellow warning for attention needed
+            .buttonStyle(.plain)
+
             if programsNeedingReview > 0 {
                 NavigationLink(destination: ProgramsNeedingReviewView()) {
-                    HStack(spacing: 10) {
-                        ZStack {
-                            Circle()
-                                .fill(Color.orange.opacity(0.15))
-                                .frame(width: 36, height: 36)
-                            
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.arial(size: 16, weight: .semibold))
-                                .foregroundColor(.orange)
-                        }
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("\(programsNeedingReview) Program\(programsNeedingReview == 1 ? "" : "s") Need Review")
-                                .font(.arial(size: 14, weight: .semibold))
-                                .foregroundColor(.primary)
-                            Text("Complete questionnaire data")
-                                .font(.arial(size: 11))
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        Spacer()
-                        
-                        Image(systemName: "chevron.right")
-                            .font(.arial(size: 10))
-                            .foregroundColor(.secondary.opacity(0.5))
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(Color.orange.opacity(0.08))
-                    .cornerRadius(10)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.orange.opacity(0.2), lineWidth: 1)
+                    programsStatusRow(
+                        title: "\(programsNeedingReview) Program\(programsNeedingReview == 1 ? "" : "s") Need Review",
+                        subtitle: "Questionnaires still incomplete after interviews",
+                        icon: "exclamationmark.triangle.fill",
+                        tint: .orange
                     )
                 }
                 .buttonStyle(.plain)
             }
-            
-            // Specialty Breakdown - Enhanced visualization
-            if !specialtyBreakdown.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("By Specialty")
-                        .font(.arial(size: 12, weight: .semibold))
-                        .foregroundColor(.secondary)
-                    
-                    let sortedSpecialties = Array(specialtyBreakdown.sorted(by: { $0.value > $1.value }).prefix(5))
-                    let maxCount = sortedSpecialties.map { $0.value }.max() ?? 1
-                    
-                    VStack(spacing: 6) {
-                        ForEach(sortedSpecialties, id: \.key) { specialty, count in
-                            HStack(spacing: 10) {
-                                // Specialty icon and name
-                                HStack(spacing: 6) {
-                                    Image(systemName: "stethoscope")
-                                        .font(.arial(size: 12))
-                                        .foregroundColor(SpecialtyFormatter.color(for: specialty))
-                                    
-                                    Text(SpecialtyFormatter.abbreviation(for: specialty))
-                                        .font(.arial(size: 11, weight: .semibold))
-                                        .foregroundColor(SpecialtyFormatter.color(for: specialty))
-                                }
-                                .frame(width: 60, alignment: .leading)
-                                
-                                // Progress bar
-                                GeometryReader { geometry in
-                                    ZStack(alignment: .leading) {
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .fill(SpecialtyFormatter.color(for: specialty).opacity(0.15))
-                                            .frame(height: 20)
-                                        
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .fill(
-                                                LinearGradient(
-                                                    colors: [
-                                                        SpecialtyFormatter.color(for: specialty),
-                                                        SpecialtyFormatter.color(for: specialty).opacity(0.7)
-                                                    ],
-                                                    startPoint: .leading,
-                                                    endPoint: .trailing
-                                                )
-                                            )
-                                            .frame(width: geometry.size.width * CGFloat(count) / CGFloat(maxCount), height: 20)
-                                            .animation(.spring(response: 0.5, dampingFraction: 0.7), value: count)
-                                    }
-                                }
-                                .frame(height: 20)
-                                
-                                // Count
-                                Text("\(count)")
-                                    .font(.arial(size: 12, weight: .bold))
-                                    .foregroundColor(.primary)
-                                    .frame(width: 30, alignment: .trailing)
-                            }
-                        }
-                    }
-                    .padding(.vertical, 6)
-                    .padding(.horizontal, 4)
-                }
-            }
-            
-            // Score Distribution - Enhanced visualization
-            if !scoreDistribution.isEmpty && scoreDistribution.contains(where: { $0.count > 0 }) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Score Distribution")
-                        .font(.arial(size: 12, weight: .semibold))
-                        .foregroundColor(.secondary)
-                    
-                    let maxCount = scoreDistribution.map { $0.count }.max() ?? 1
-                    
-                    VStack(spacing: 6) {
-                        HStack(alignment: .bottom, spacing: 6) {
-                            ForEach(scoreDistribution, id: \.range) { bucket in
-                                VStack(spacing: 4) {
-                                    // Bar chart
-                                    VStack(spacing: 0) {
-                                        Spacer(minLength: 0)
-                                        
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .fill(
-                                                LinearGradient(
-                                                    colors: [
-                                                        bucket.color,
-                                                        bucket.color.opacity(0.7)
-                                                    ],
-                                                    startPoint: .top,
-                                                    endPoint: .bottom
-                                                )
-                                            )
-                                            .frame(height: maxCount > 0 ? max(8, CGFloat(bucket.count) / CGFloat(maxCount) * 60) : 8)
-                                            .shadow(color: bucket.color.opacity(0.3), radius: 2, x: 0, y: 1)
-                                    }
-                                    .frame(height: 60)
-                                    
-                                    Text("\(bucket.count)")
-                                        .font(.arial(size: 10, weight: .bold))
-                                        .foregroundColor(.primary)
-                                    
-                                    Text(bucket.range)
-                                        .font(.arial(size: 9))
-                                        .foregroundColor(.secondary)
-                                }
-                                .frame(maxWidth: .infinity)
-                            }
-                        }
-                    }
-                    .padding(.vertical, 8)
-                    .padding(.horizontal, 4)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color(.systemGray6).opacity(0.5))
+
+            if redFlaggedProgramsCount > 0 {
+                NavigationLink(destination: RedFlaggedProgramsView()) {
+                    programsStatusRow(
+                        title: "\(redFlaggedProgramsCount) Program\(redFlaggedProgramsCount == 1 ? "" : "s") with Red Flags",
+                        subtitle: "Review flagged concerns before ranking",
+                        icon: "flag.fill",
+                        tint: .red
                     )
                 }
+                .buttonStyle(.plain)
             }
         }
         .dashboardCardStyle()
+    }
+
+    private func programsStatusRow(title: String, subtitle: String, icon: String, tint: Color) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(tint.opacity(0.15))
+                    .frame(width: 36, height: 36)
+                Image(systemName: icon)
+                    .font(.arial(size: 15, weight: .semibold))
+                    .foregroundColor(tint)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.arial(size: 14, weight: .semibold))
+                    .foregroundColor(.primary)
+                Text(subtitle)
+                    .font(.arial(size: 11))
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: 8)
+
+            Image(systemName: "chevron.right")
+                .font(.arial(size: 10))
+                .foregroundColor(.secondary.opacity(0.5))
+        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 6)
     }
     
     // MARK: - Next Steps Section
@@ -2478,90 +2282,6 @@ extension DashboardView {
         if let presented = viewController.presentedViewController {
             findAndPopNavigationControllers(in: presented)
         }
-    }
-}
-
-struct AnalyticsStatCard: View {
-    let title: String
-    let value: String
-    let icon: String
-    let color: Color
-    
-    var body: some View {
-        VStack(spacing: 6) {
-            // Icon container - same size as progress circle (40x40)
-            ZStack {
-                Circle()
-                    .fill(color.opacity(0.15))
-                    .frame(width: 40, height: 40)
-                
-                Image(systemName: icon)
-                    .font(.arial(size: 14, weight: .medium))
-                    .foregroundColor(color)
-            }
-            
-            Text(value)
-                .font(.arial(size: 16, weight: .bold))
-                .foregroundColor(.primary)
-            
-            Text(title)
-                .font(.arial(size: 9, weight: .medium))
-                .foregroundColor(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: 100) // Fixed height to match AnalyticsStatCardWithProgress
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(color.opacity(0.08))
-        )
-    }
-}
-
-struct AnalyticsStatCardWithProgress: View {
-    let title: String
-    let value: String
-    let icon: String
-    let color: Color
-    let progress: Double
-    
-    var body: some View {
-        VStack(spacing: 6) {
-            ZStack {
-                // Background circle
-                Circle()
-                    .stroke(color.opacity(0.2), lineWidth: 4)
-                    .frame(width: 40, height: 40)
-                
-                // Progress circle
-                Circle()
-                    .trim(from: 0, to: progress)
-                    .stroke(color, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                    .frame(width: 40, height: 40)
-                    .rotationEffect(.degrees(-90))
-                    .animation(.spring(response: 0.6, dampingFraction: 0.8), value: progress)
-                
-                // Icon in center
-                Image(systemName: icon)
-                    .font(.arial(size: 12, weight: .medium))
-                    .foregroundColor(color)
-            }
-            
-            Text(value)
-                .font(.arial(size: 16, weight: .bold))
-                .foregroundColor(.primary)
-            
-            Text(title)
-                .font(.arial(size: 9, weight: .medium))
-                .foregroundColor(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: 100) // Fixed height to match AnalyticsStatCard
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(color.opacity(0.08))
-        )
     }
 }
 

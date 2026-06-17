@@ -82,25 +82,18 @@ DashboardSectionInfo(
             description: "How your program scores are spread",
             tab: .programs
         ),
-DashboardSectionInfo(
-            id: "programsCompare",
-            title: "Compare Programs",
-            icon: "square.grid.2x2",
-            description: "Shortcut to side-by-side comparison",
-            tab: .programs
-        ),
-DashboardSectionInfo(
+        DashboardSectionInfo(
             id: "topPrograms",
             title: "Top Programs",
             icon: "trophy.fill",
             description: "Preview of your highest-ranked programs",
             tab: .programs
         ),
-DashboardSectionInfo(
+        DashboardSectionInfo(
             id: "analytics",
-            title: "Analytics & Insights",
-            icon: "chart.line.uptrend.xyaxis",
-            description: "Scores, completion, signals, specialty breakdown",
+            title: "Signals & Status",
+            icon: "star.circle.fill",
+            description: "ERAS signal usage plus programs needing review or red-flag follow-up",
             tab: .programs
         ),
 DashboardSectionInfo(
@@ -239,14 +232,17 @@ DashboardSectionInfo(
         )
 
         overviewOrder = normalizedOrder.filter { DashboardLayout.overviewSectionIDs.contains($0) }
-        programsOrder = normalizedOrder.filter { DashboardLayout.programsSectionIDs.contains($0) }
+        programsOrder = normalizedOrder.filter {
+            DashboardLayout.programsSectionIDs.contains($0) && $0 != "programsCompare"
+        }
         interviewsOrder = normalizedOrder.filter { DashboardLayout.interviewsSectionIDs.contains($0) }
 
         ensureGroupOrder(&overviewOrder, ids: DashboardLayout.overviewSectionIDs)
-        ensureGroupOrder(&programsOrder, ids: DashboardLayout.programsSectionIDs)
+        ensureGroupOrder(&programsOrder, ids: DashboardLayout.programsSectionIDs.subtracting(["programsCompare"]))
         ensureGroupOrder(&interviewsOrder, ids: DashboardLayout.interviewsSectionIDs)
 
         disabledSections = DashboardLayout.normalizeSectionIDs(layout.disabledSections)
+        disabledSections.remove("programsCompare")
     }
 
     private func ensureGroupOrder(_ order: inout [String], ids: Set<String>) {
@@ -259,15 +255,19 @@ DashboardSectionInfo(
     private func resetToDefaults() {
         draftPreferences = DashboardPreferences()
         overviewOrder = DashboardLayout.defaultSectionOrder.filter { DashboardLayout.overviewSectionIDs.contains($0) }
-        programsOrder = DashboardLayout.defaultSectionOrder.filter { DashboardLayout.programsSectionIDs.contains($0) }
+        programsOrder = DashboardLayout.defaultSectionOrder.filter {
+            DashboardLayout.programsSectionIDs.contains($0) && $0 != "programsCompare"
+        }
         interviewsOrder = DashboardLayout.defaultSectionOrder.filter { DashboardLayout.interviewsSectionIDs.contains($0) }
         disabledSections = []
     }
 
     private func saveCustomization() {
         var updatedLayout = dataManager.preferences.dashboardLayout
-        updatedLayout.sectionOrder = overviewOrder + programsOrder + interviewsOrder
-        updatedLayout.disabledSections = DashboardLayout.normalizeSectionIDs(disabledSections)
+        updatedLayout.sectionOrder = overviewOrder + ["programsCompare"] + programsOrder + interviewsOrder
+        var normalizedDisabled = DashboardLayout.normalizeSectionIDs(disabledSections)
+        normalizedDisabled.remove("programsCompare")
+        updatedLayout.disabledSections = normalizedDisabled
 
         var prefs = draftPreferences
         prefs.showMotivationalMessage = prefs.headerSubtitleMode == .motivational

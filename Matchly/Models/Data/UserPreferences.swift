@@ -108,8 +108,8 @@ struct DashboardLayout: Codable, Hashable {
         "quickActions",
         "recentActivity",
         // Programs tab
-        "programsScoreDist",
         "programsCompare",
+        "programsScoreDist",
         "topPrograms",
         "analytics",
         // Interviews tab
@@ -289,10 +289,15 @@ extension DashboardLayout {
         self.sectionOrder = Self.normalizeSectionOrder(rawOrder)
 
         if let disabled = try container.decodeIfPresent(Set<String>.self, forKey: .disabledSections) {
-            self.disabledSections = Self.normalizeSectionIDs(disabled)
+            var healed = Self.normalizeSectionIDs(disabled)
+            // Compare was added after legacy customization — don't keep it hidden by old prefs.
+            healed.remove("programsCompare")
+            self.disabledSections = healed
         } else {
             let legacyEnabled = try container.decodeIfPresent(Set<String>.self, forKey: .enabledSections) ?? []
-            self.disabledSections = Self.disabledSections(fromLegacyEnabledSections: legacyEnabled)
+            var migrated = Self.disabledSections(fromLegacyEnabledSections: legacyEnabled)
+            migrated.remove("programsCompare")
+            self.disabledSections = migrated
         }
     }
 
