@@ -55,7 +55,6 @@ struct ProgramEntryView: View {
     @State private var contactEmail: String = ""
     @State private var contactPhone: String = ""
     @State private var programCoordinator: String = ""
-    @State private var programDirector: String = ""
     
     // IMG-friendly status
     @State private var isIMGFriendly: Bool? = nil
@@ -504,7 +503,6 @@ struct ProgramEntryView: View {
                 contactEmail = mapped.contactEmail ?? ""
                 contactPhone = mapped.contactPhone ?? ""
                 programCoordinator = mapped.programCoordinator ?? ""
-                programDirector = mapped.programDirector ?? ""
                 isIMGFriendly = mapped.isIMGFriendly
                 showProgramSearch = false
             })
@@ -830,17 +828,6 @@ struct ProgramEntryView: View {
                             programHeaderActionButtons
                         }
 
-                        if !programDirector.isEmpty {
-                            HStack(spacing: 4) {
-                                Image(systemName: "person.fill")
-                                    .font(.arial(size: 10))
-                                Text("Program Director: \(programDirector)")
-                                    .font(.arial(size: 13, weight: .medium))
-                                    .lineLimit(2)
-                            }
-                            .foregroundColor(.secondary)
-                        }
-
                         let streetLine = AddressFormatter.resolved(
                             hospital: hospital,
                             address: address.isEmpty ? nil : address,
@@ -1013,7 +1000,6 @@ struct ProgramEntryView: View {
         contactEmail = program.contactEmail ?? ""
         contactPhone = program.contactPhone ?? ""
         programCoordinator = program.programCoordinator ?? ""
-        programDirector = program.programDirector ?? ""
         
         // Load IMG-friendly status
         isIMGFriendly = program.isIMGFriendly
@@ -1058,7 +1044,7 @@ struct ProgramEntryView: View {
             contactEmail: contactEmail.isEmpty ? nil : contactEmail,
             contactPhone: contactPhone.isEmpty ? nil : contactPhone,
             programCoordinator: programCoordinator.isEmpty ? nil : programCoordinator,
-            programDirector: programDirector.isEmpty ? nil : programDirector,
+            programDirector: nil,
             isIMGFriendly: isIMGFriendly,
             emr: emr,
             signalType: signalType,

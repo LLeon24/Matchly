@@ -53,9 +53,43 @@ struct Couple: Codable, Identifiable, Hashable {
     }
     
     static func generateInviteLink(code: String) -> String {
-        // Generate a shareable invite link
-        // Format: matchly://couple/invite/{code}
+        // Legacy deep-link format; QR and share text are the primary invite paths.
         return "matchly://couple/invite/\(code)"
+    }
+
+    static let qrPayloadPrefix = "MATCHLY-COUPLE:"
+
+    /// Payload encoded in QR codes for in-person linking.
+    static func qrPayload(for code: String) -> String {
+        "\(qrPayloadPrefix)\(code.uppercased())"
+    }
+
+    /// Parses a QR scan, deep link, or raw 6-character code.
+    static func parseLinkPayload(_ payload: String) -> String? {
+        let trimmed = payload.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let fromLink = parseInviteLink(trimmed) {
+            return fromLink
+        }
+        let upper = trimmed.uppercased()
+        if upper.hasPrefix(qrPayloadPrefix) {
+            let code = String(upper.dropFirst(qrPayloadPrefix.count))
+            return code.count == 6 ? code : nil
+        }
+        if trimmed.count == 6, trimmed.allSatisfy({ $0.isLetter || $0.isNumber }) {
+            return upper
+        }
+        return nil
+    }
+
+    /// Text message / share-sheet body for inviting a partner.
+    static func shareInviteMessage(code: String, inviterName: String) -> String {
+        """
+        \(inviterName) invited you to link on Matchly for couples match.
+
+        Open Matchly → Settings → Couples Matching, then tap "Scan Partner's QR" or enter this code:
+
+        \(code.uppercased())
+        """
     }
     
     static func parseInviteLink(_ link: String) -> String? {

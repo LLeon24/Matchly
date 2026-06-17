@@ -299,14 +299,13 @@ class DataManager: ObservableObject {
         }
     }
 
-    private func catalogSnapshot(_ program: Program) -> (String?, String, String, String, String, String?) {
+    private func catalogSnapshot(_ program: Program) -> (String?, String, String, String, String) {
         (
             program.address,
             program.city,
             program.state,
             program.hospital,
-            program.specialty,
-            program.programDirector
+            program.specialty
         )
     }
     

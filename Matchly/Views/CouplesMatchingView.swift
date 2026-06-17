@@ -17,6 +17,11 @@ struct CouplesMatchingView: View {
     @State private var partnerCode = ""
     @State private var showCouplesRankList = false
     @State private var showPreferences = false
+    @State private var showMyQRCode = false
+    @State private var showQRScanner = false
+    @State private var showUnlinkConfirm = false
+    @State private var linkErrorMessage: String?
+    @State private var isLinkingFromScan = false
     
     var body: some View {
         Form {
@@ -55,6 +60,18 @@ struct CouplesMatchingView: View {
                     }
                     
                     Section {
+                        NavigationLink(destination: CoupleChatView(couple: couple)) {
+                            HStack {
+                                Image(systemName: "bubble.left.and.bubble.right.fill")
+                                    .foregroundColor(.blue)
+                                Text("Partner Chat")
+                                Spacer()
+                                Text("Coordinate together")
+                                    .font(.arial(size: 12))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+
                         NavigationLink(destination: CouplesRankListView()) {
                             HStack {
                                 Image(systemName: "list.number")
@@ -82,111 +99,44 @@ struct CouplesMatchingView: View {
                     
                     Section {
                         Button(role: .destructive, action: {
-                            unlinkCouple()
+                            showUnlinkConfirm = true
                         }) {
-                            Text("Unlink Couple")
+                            Text("Unlink Partner")
                         }
+                    } footer: {
+                        Text("Unlinking removes the connection on this device. You can link again anytime with a new QR code.")
                     }
                 } else {
-                    // Pending link state
+                    // Pending link state — waiting for partner
                     Section {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Share this code with your partner:")
-                                .font(.arial(size: 14))
+                        VStack(spacing: 16) {
+                            CoupleQRCodeView(code: couple.coupleCode, size: 180)
+
+                            Text("Waiting for your partner to scan or enter this code.")
+                                .font(.arial(size: 13))
                                 .foregroundColor(.secondary)
-                            
-                            HStack {
-                                Text(couple.coupleCode)
-                                    .font(.arial(size: 24, weight: .bold, design: .monospaced))
-                                    .foregroundColor(.blue)
-                                    .padding()
-                                    .frame(maxWidth: .infinity)
-                                    .glassEffect(.regular.tint(Color.blue.opacity(0.12)), in: .rect(cornerRadius: 10))
-                                
-                                Button(action: {
-                                    UIPasteboard.general.string = couple.coupleCode
-                                }) {
-                                    Image(systemName: "doc.on.doc")
-                                        .font(.arial(size: 18))
-                                        .foregroundColor(.blue)
-                                        .frame(width: 44, height: 44)
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .glassCircleButtonStyle()
-                            }
-                            
-                            Text("Your partner should enter this code in their app to link accounts.")
-                                .font(.arial(size: 12))
-                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
                         }
+                        .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
                     } header: {
-                        Text("Your Couple Code")
-                    }
-                    
-                    Section {
-                        // Share invite link
-                        if let inviteLink = couple.inviteLink {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("Share this link with your partner:")
-                                    .font(.arial(size: 14))
-                                    .foregroundColor(.secondary)
-                                
-                                HStack {
-                                    Text(inviteLink)
-                                        .font(.arial(size: 12, design: .monospaced))
-                                        .foregroundColor(.blue)
-                                        .lineLimit(1)
-                                        .truncationMode(.middle)
-                                        .padding()
-                                        .frame(maxWidth: .infinity)
-                                        .glassEffect(.regular.tint(Color.blue.opacity(0.12)), in: .rect(cornerRadius: 10))
-                                    
-                                    Button(action: {
-                                        UIPasteboard.general.string = inviteLink
-                                    }) {
-                                        Image(systemName: "doc.on.doc")
-                                            .font(.arial(size: 18))
-                                            .foregroundColor(.blue)
-                                            .frame(width: 44, height: 44)
-                                            .contentShape(Rectangle())
-                                    }
-                                    .buttonStyle(.plain)
-                                    .glassCircleButtonStyle()
-                                    
-                                    ShareLink(item: inviteLink) {
-                                        Image(systemName: "square.and.arrow.up")
-                                            .font(.arial(size: 18))
-                                            .foregroundColor(.blue)
-                                            .frame(width: 44, height: 44)
-                                            .contentShape(Rectangle())
-                                    }
-                                    .buttonStyle(.plain)
-                                    .glassCircleButtonStyle()
-                                }
-                                
-                                Text("Your partner can tap this link or enter the code below.")
-                                    .font(.arial(size: 12))
-                                    .foregroundColor(.secondary)
-                            }
-                            .padding(.vertical, 8)
-                        }
-                        
-                        Button(action: {
-                            showLinkPartner = true
-                        }) {
-                            HStack {
-                                Image(systemName: "qrcode")
-                                    .foregroundColor(.blue)
-                                Text("I Have a Partner Code")
-                            }
-                        }
-                    } header: {
-                        Text("Link Options")
+                        Text("Your Invite QR")
                     }
 
+                    partnerLinkingActionsSection
+
                     Section {
+                        ShareLink(item: Couple.shareInviteMessage(
+                            code: couple.coupleCode,
+                            inviterName: couple.user1Name
+                        )) {
+                            HStack {
+                                Image(systemName: "message.fill")
+                                    .foregroundColor(.blue)
+                                Text("Send Invite via Text")
+                            }
+                        }
+
                         Button(action: regenerateCoupleCode) {
                             HStack {
                                 Image(systemName: "arrow.clockwise")
@@ -195,11 +145,13 @@ struct CouplesMatchingView: View {
                             }
                         }
 
-                        Button(role: .destructive, action: cancelCoupleSetup) {
-                            Text("Cancel Setup")
+                        Button(role: .destructive, action: {
+                            showUnlinkConfirm = true
+                        }) {
+                            Text("Cancel Invite")
                         }
                     } footer: {
-                        Text("Generate a new code if you shared the old one by mistake. Cancel removes this pending invite so you can start over.")
+                        Text("Send the invite by text if you're apart. Scanning works best when you're together.")
                     }
                 }
             } else {
@@ -227,42 +179,9 @@ struct CouplesMatchingView: View {
                 }
                 
                 Section {
-                    Button(action: {
-                        showUserSearch = true
-                    }) {
-                        HStack {
-                            Image(systemName: "person.crop.circle.badge.plus")
-                                .foregroundColor(.blue)
-                            Text("Find Partner by Account")
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.arial(size: 12))
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    
-                    Button(action: {
-                        createCouple()
-                    }) {
-                        HStack {
-                            Spacer()
-                            Image(systemName: "plus.circle.fill")
-                            Text("Create Couple Code")
-                            Spacer()
-                        }
-                    }
-                    .buttonStyle(.glassProminent)
-                    .tint(AppColors.primaryBlue)
-                    
-                    Button(action: {
-                        showLinkPartner = true
-                    }) {
-                        HStack {
-                            Image(systemName: "qrcode")
-                                .foregroundColor(.blue)
-                            Text("Link with Partner Code")
-                        }
-                    }
+                    partnerLinkingActionsSection
+                } footer: {
+                    Text("Together? Scan each other's QR. Apart? Show your QR and send the invite by text.")
                 }
                 
                 // Invites section
@@ -307,6 +226,19 @@ struct CouplesMatchingView: View {
         .sheet(isPresented: $showLinkPartner) {
             LinkPartnerView()
         }
+        .sheet(isPresented: $showMyQRCode) {
+            if let couple = dataManager.preferences.couple {
+                CoupleInviteQRSheet(
+                    couple: couple,
+                    inviterName: couple.user1Name
+                )
+            }
+        }
+        .sheet(isPresented: $showQRScanner) {
+            CoupleQRScannerView { code in
+                Task { await linkFromScannedCode(code) }
+            }
+        }
         .sheet(isPresented: $showUserSearch) {
             UserSearchView()
         }
@@ -315,6 +247,148 @@ struct CouplesMatchingView: View {
         }
         .sheet(isPresented: $showPreferences) {
             CouplesPreferencesView()
+        }
+        .task {
+            await refreshPendingCoupleLinkIfNeeded()
+            await ensurePendingCoupleCodeIsRegistered()
+        }
+        .confirmationDialog(
+            "Unlink from your partner?",
+            isPresented: $showUnlinkConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Unlink Partner", role: .destructive) {
+                unlinkCouple()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the couple connection on your device. Your individual programs are not deleted.")
+        }
+        .alert("Link Error", isPresented: Binding(
+            get: { linkErrorMessage != nil },
+            set: { if !$0 { linkErrorMessage = nil } }
+        )) {
+            Button("OK") { linkErrorMessage = nil }
+        } message: {
+            Text(linkErrorMessage ?? "")
+        }
+        .overlay {
+            if isLinkingFromScan {
+                ZStack {
+                    Color.black.opacity(0.2).ignoresSafeArea()
+                    ProgressView("Linking…")
+                        .padding()
+                        .glassEffect(.regular, in: .rect(cornerRadius: 14))
+                }
+            }
+        }
+    }
+
+    private var partnerLinkingActionsSection: some View {
+        Group {
+            Button(action: presentMyQRCode) {
+                HStack {
+                    Image(systemName: "qrcode")
+                        .foregroundColor(.blue)
+                    Text("Show My QR Code")
+                }
+            }
+
+            Button(action: {
+                showQRScanner = true
+            }) {
+                HStack {
+                    Image(systemName: "qrcode.viewfinder")
+                        .foregroundColor(.blue)
+                    Text("Scan Partner's QR Code")
+                }
+            }
+
+            Button(action: {
+                showLinkPartner = true
+            }) {
+                HStack {
+                    Image(systemName: "keyboard")
+                        .foregroundColor(.blue)
+                    Text("Enter Code Manually")
+                }
+            }
+        }
+    }
+
+    private func presentMyQRCode() {
+        if dataManager.preferences.couple == nil {
+            createCouple()
+        }
+        showMyQRCode = true
+    }
+
+    private func linkFromScannedCode(_ code: String) async {
+        isLinkingFromScan = true
+        defer { isLinkingFromScan = false }
+        do {
+            try await CoupleLinkingActions.link(
+                withCode: code,
+                dataManager: dataManager,
+                authManager: authManager
+            )
+            showQRScanner = false
+        } catch let error as CoupleLinkingError {
+            linkErrorMessage = error.localizedDescription
+        } catch {
+            linkErrorMessage = "Could not link with that QR code. Try again or enter the code manually."
+        }
+    }
+
+    private func ensurePendingCoupleCodeIsRegistered() async {
+        guard let couple = dataManager.preferences.couple,
+              !couple.isLinked,
+              authManager.isCloudKitAvailable else { return }
+
+        if let existing = try? await CoupleLinkingService.fetchRegistration(for: couple.coupleCode),
+           existing.inviterRecordName == authManager.cloudKitUserRecordName {
+            return
+        }
+
+        registerCoupleCodeInCloud(couple)
+    }
+
+    private func refreshPendingCoupleLinkIfNeeded() async {
+        guard var couple = dataManager.preferences.couple,
+              !couple.isLinked,
+              authManager.isCloudKitAvailable else { return }
+
+        guard let registration = try? await CoupleLinkingService.fetchRegistration(for: couple.coupleCode),
+              registration.isClaimed,
+              let partnerID = registration.partnerRecordName,
+              let partnerName = registration.partnerName else {
+            return
+        }
+
+        couple.user2ID = partnerID
+        couple.user2Name = partnerName
+        couple.user2Email = registration.partnerEmail
+        couple.status = .linked
+        couple.linkedAt = Date()
+        dataManager.preferences.couple = couple
+        dataManager.savePreferences()
+    }
+
+    private func registerCoupleCodeInCloud(_ couple: Couple) {
+        guard authManager.isCloudKitAvailable,
+              let inviterRecordName = authManager.cloudKitUserRecordName else { return }
+
+        Task {
+            do {
+                try await CoupleLinkingService.registerPendingCouple(
+                    couple: couple,
+                    inviterRecordName: inviterRecordName,
+                    inviterName: couple.user1Name,
+                    inviterEmail: couple.user1Email
+                )
+            } catch {
+                // Registration is best-effort; local code still works for sharing manually.
+            }
         }
     }
     
@@ -332,25 +406,34 @@ struct CouplesMatchingView: View {
         )
         dataManager.preferences.couple = newCouple
         dataManager.savePreferences()
+        registerCoupleCodeInCloud(newCouple)
     }
     
     private func unlinkCouple() {
+        if let code = dataManager.preferences.couple?.coupleCode {
+            Task {
+                await CoupleLinkingService.deleteRegistration(for: code)
+            }
+        }
         dataManager.preferences.couple = nil
         dataManager.preferences.couplesRankPairs = []
         dataManager.savePreferences()
     }
 
-    private func cancelCoupleSetup() {
-        unlinkCouple()
-    }
 
     private func regenerateCoupleCode() {
         guard var couple = dataManager.preferences.couple, !couple.isLinked else { return }
+        let oldCode = couple.coupleCode
         let newCode = Couple.generateCoupleCode()
         couple.coupleCode = newCode
         couple.inviteLink = Couple.generateInviteLink(code: newCode)
         dataManager.preferences.couple = couple
         dataManager.savePreferences()
+
+        Task {
+            await CoupleLinkingService.deleteRegistration(for: oldCode)
+            registerCoupleCodeInCloud(couple)
+        }
     }
 }
 
@@ -375,69 +458,61 @@ struct LinkPartnerView: View {
     @ObservedObject private var authManager = AuthManager.shared
     @Environment(\.dismiss) var dismiss
     @State private var partnerCode = ""
-    @State private var inviteLink = ""
     @State private var showError = false
     @State private var errorMessage = ""
-    @State private var useLink = false
-    
+    @State private var isLinking = false
+    @State private var showScanner = false
+
     var body: some View {
         MatchlyNavigationView {
             Form {
                 Section {
-                    Picker("Link Method", selection: $useLink) {
-                        Text("Code").tag(false)
-                        Text("Invite Link").tag(true)
+                    Button(action: { showScanner = true }) {
+                        HStack {
+                            Image(systemName: "qrcode.viewfinder")
+                                .foregroundColor(.blue)
+                            Text("Scan Partner's QR Code")
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.arial(size: 12))
+                                .foregroundColor(.secondary)
+                        }
                     }
-                    .pickerStyle(.segmented)
+                } footer: {
+                    Text("Fastest when you're together — scan the QR on your partner's phone.")
                 }
-                
-                if useLink {
-                    Section {
-                        TextField("Paste invite link", text: $inviteLink)
-                            .autocapitalization(.none)
-                            .disableAutocorrection(true)
-                            .keyboardType(.URL)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
-                            .glassEffect(.regular, in: .capsule)
-                            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                            .listRowBackground(Color.clear)
-                    } header: {
-                        Text("Invite Link")
-                    } footer: {
-                        Text("Paste the invite link your partner shared with you, or tap a link they sent you.")
-                    }
-                } else {
-                    Section {
-                        TextField("Enter Partner Code", text: $partnerCode)
-                            .autocapitalization(.allCharacters)
-                            .disableAutocorrection(true)
-                            .font(.arial(size: 18, weight: .medium, design: .monospaced))
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
-                            .glassEffect(.regular, in: .capsule)
-                            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                            .listRowBackground(Color.clear)
-                    } header: {
-                        Text("Partner Code")
-                    } footer: {
-                        Text("Enter the 6-character code your partner shared with you.")
-                    }
-                }
-                
+
                 Section {
-                    Button(action: {
-                        linkPartner()
-                    }) {
+                    TextField("Enter 6-character code", text: $partnerCode)
+                        .autocapitalization(.allCharacters)
+                        .disableAutocorrection(true)
+                        .font(.arial(size: 20, weight: .medium, design: .monospaced))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .glassEffect(.regular, in: .capsule)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                        .listRowBackground(Color.clear)
+                } header: {
+                    Text("Or Enter Code")
+                } footer: {
+                    Text("Use this if your partner texted you the code. Both devices need iCloud.")
+                }
+
+                Section {
+                    Button(action: linkPartner) {
                         HStack {
                             Spacer()
-                            Text("Link Accounts")
+                            if isLinking {
+                                ProgressView()
+                            } else {
+                                Text("Link Accounts")
+                            }
                             Spacer()
                         }
                     }
                     .buttonStyle(.glassProminent)
                     .tint(AppColors.primaryBlue)
-                    .disabled(useLink ? inviteLink.isEmpty : partnerCode.count != 6)
+                    .disabled(isLinking || partnerCode.count != 6)
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                     .listRowBackground(Color.clear)
                 }
@@ -448,9 +523,13 @@ struct LinkPartnerView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
+                    Button("Cancel") { dismiss() }
+                }
+            }
+            .sheet(isPresented: $showScanner) {
+                CoupleQRScannerView { code in
+                    partnerCode = code
+                    linkPartner()
                 }
             }
             .alert("Link Error", isPresented: $showError) {
@@ -460,74 +539,33 @@ struct LinkPartnerView: View {
             }
         }
     }
-    
+
     private func linkPartner() {
-        var codeToUse = partnerCode.uppercased()
-        
-        // If using invite link, extract code from it
-        if useLink {
-            if let code = Couple.parseInviteLink(inviteLink) {
-                codeToUse = code
-            } else {
-                errorMessage = "Invalid invite link. Please check the link and try again."
-                showError = true
-                return
-            }
-        }
-        
+        let codeToUse = partnerCode.uppercased()
         guard codeToUse.count == 6 else {
             errorMessage = "Please enter a valid 6-character code."
             showError = true
             return
         }
-        
-        // Check if this code matches an existing couple
-        if let couple = dataManager.preferences.couple {
-            // If user already has a couple, they're trying to link
-            if couple.coupleCode.uppercased() == codeToUse {
-                errorMessage = "You cannot link with your own code. Share this code with your partner."
+
+        isLinking = true
+        Task { @MainActor in
+            defer { isLinking = false }
+            do {
+                try await CoupleLinkingActions.link(
+                    withCode: codeToUse,
+                    dataManager: dataManager,
+                    authManager: authManager
+                )
+                dismiss()
+            } catch let error as CoupleLinkingError {
+                errorMessage = error.localizedDescription
                 showError = true
-                return
+            } catch {
+                errorMessage = "Could not link with that code. Make sure your partner showed their QR code in Matchly first."
+                showError = true
             }
         }
-        
-        // NOTE (Phase 1): Real partner linking is not built yet. It requires CloudKit sharing
-        // (CKShare invite/accept across two iCloud accounts), which lands in a later phase.
-        // Previously this method faked a link by assigning `user2ID = UUID()` and
-        // `user2Name = "Partner"`, which only ever existed on this one device. We no longer do
-        // that — we never fabricate a partner identity. Surface an honest "coming soon" message
-        // instead of masquerading as a real link.
-        errorMessage = "Partner linking is coming soon. It will use secure iCloud sharing so both of you see the same list. For now you can set up your own side."
-        showError = true
-    }
-    
-    private func acceptInviteFromCode(_ invite: CoupleInvite) {
-        // Update invite status
-        if let index = dataManager.preferences.receivedInvites.firstIndex(where: { $0.id == invite.id }) {
-            var updatedInvite = invite
-            updatedInvite.status = .accepted
-            updatedInvite.respondedAt = Date()
-            dataManager.preferences.receivedInvites[index] = updatedInvite
-        }
-        
-        // Link the couple
-        let newCouple = Couple(
-            user1ID: authManager.currentUser?.id ?? dataManager.preferences.userID,
-            user1Name: authManager.currentUser?.displayName ?? (dataManager.preferences.profile.name.isEmpty ? "You" : dataManager.preferences.profile.name),
-            user1Email: authManager.currentUser?.email,
-            coupleCode: invite.coupleCode,
-            inviteLink: invite.inviteLink,
-            status: .linked
-        )
-        var updatedCouple = newCouple
-        updatedCouple.user2ID = invite.fromUserID
-        updatedCouple.user2Name = invite.fromUserName
-        updatedCouple.user2Email = invite.fromUserEmail
-        updatedCouple.linkedAt = Date()
-        dataManager.preferences.couple = updatedCouple
-        
-        dataManager.savePreferences()
-        dismiss()
     }
 }
 
