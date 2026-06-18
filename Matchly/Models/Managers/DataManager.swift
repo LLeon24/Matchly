@@ -589,16 +589,18 @@ class DataManager: ObservableObject {
         guard let couple = preferences.couple,
               let myRecord = AuthManager.shared.cloudKitUserRecordName else { return [] }
 
-        let mySnapshots = Program.rankedSnapshots(from: getRankedPrograms())
-        guard !mySnapshots.isEmpty, !partnerPrograms.isEmpty else { return [] }
+        let myScored = getRankedPrograms().filter { $0.isReviewed || $0.finalScore > 0 }
+        let partnerScored = partnerPrograms.filter { $0.finalScore > 0 }
+        let mySnapshots = Program.rankedSnapshots(from: myScored)
+        guard !mySnapshots.isEmpty, !partnerScored.isEmpty else { return [] }
 
         let user1Programs: [CoupleProgramSnapshot]
         let user2Programs: [CoupleProgramSnapshot]
         if myRecord == couple.user1ID {
             user1Programs = mySnapshots
-            user2Programs = partnerPrograms
+            user2Programs = partnerScored
         } else {
-            user1Programs = partnerPrograms
+            user1Programs = partnerScored
             user2Programs = mySnapshots
         }
 
@@ -612,7 +614,7 @@ class DataManager: ObservableObject {
     func scheduleCoupleCloudPublish() {
         guard preferences.couple?.isLinked == true else { return }
         Task { @MainActor in
-            await CoupleSyncCoordinator.shared.publishOwnData(dataManager: self)
+            try? await CoupleSyncCoordinator.shared.publishOwnData(dataManager: self)
         }
     }
 

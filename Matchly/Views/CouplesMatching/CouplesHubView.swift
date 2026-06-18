@@ -133,8 +133,7 @@ struct CouplesHubSettingsView: View {
 
     @State private var mustMatchTogether: Bool = true
     @State private var preferSameHospital: Bool = false
-    @State private var preferSameCity: Bool = false
-    @State private var preferSameState: Bool = true
+    @State private var geographyStrictness: CouplesPreferences.GeographyStrictness = .sameState
     @State private var prioritizeIndividualRankLists: Bool = true
     @State private var distanceTolerance: Double = 100
     @State private var didLoad = false
@@ -143,8 +142,14 @@ struct CouplesHubSettingsView: View {
         Form {
             Section {
                 VStack(alignment: .leading, spacing: 8) {
-                    Label("NRMP Couples Match", systemImage: "info.circle")
-                        .font(.arial(size: 15, weight: .semibold))
+                    HStack(spacing: 4) {
+                        Text("NRMP Couples Match")
+                            .font(.arial(size: 15, weight: .semibold))
+                        SettingsInfoButton(
+                            title: "NRMP Couples Match",
+                            message: "Rank joint pairs where both of you match. If you cannot match together, NRMP may match one partner individually depending on your list. Use Must Match Together when you only want to match as a couple."
+                        )
+                    }
                     Text("Rank joint pairs where both of you match. If you cannot match together, NRMP may match one partner individually depending on your list. Use \"Must Match Together\" when you only want to match as a couple.")
                         .font(.arial(size: 13))
                         .foregroundColor(.secondary)
@@ -152,27 +157,13 @@ struct CouplesHubSettingsView: View {
                 .padding(.vertical, 4)
             }
 
-            Section {
-                Toggle("Must Match Together", isOn: $mustMatchTogether)
-                Toggle("Prefer Same Hospital", isOn: $preferSameHospital)
-                Toggle("Prefer Same City", isOn: $preferSameCity)
-                Toggle("Prefer Same State", isOn: $preferSameState)
-                Toggle("Prioritize Individual Rank Lists", isOn: $prioritizeIndividualRankLists)
-            } header: {
-                Text("Matching Criteria")
-            } footer: {
-                Text("These toggles guide the suggested couples rank list. You can always edit pairs manually after generating.")
-            }
-
-            Section {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Maximum Distance: \(Int(distanceTolerance)) miles")
-                        .font(.arial(size: 15, weight: .medium))
-                    Slider(value: $distanceTolerance, in: 0...500, step: 25)
-                }
-            } header: {
-                Text("Geography")
-            }
+            CouplesSharedPreferencesSections(
+                mustMatchTogether: $mustMatchTogether,
+                preferSameHospital: $preferSameHospital,
+                geographyStrictness: $geographyStrictness,
+                prioritizeIndividualRankLists: $prioritizeIndividualRankLists,
+                distanceTolerance: $distanceTolerance
+            )
 
             if coupleSync.isSyncing {
                 Section {
@@ -200,8 +191,7 @@ struct CouplesHubSettingsView: View {
         }
         .onChange(of: mustMatchTogether) { _, _ in savePreferences() }
         .onChange(of: preferSameHospital) { _, _ in savePreferences() }
-        .onChange(of: preferSameCity) { _, _ in savePreferences() }
-        .onChange(of: preferSameState) { _, _ in savePreferences() }
+        .onChange(of: geographyStrictness) { _, _ in savePreferences() }
         .onChange(of: prioritizeIndividualRankLists) { _, _ in savePreferences() }
         .onChange(of: distanceTolerance) { _, _ in savePreferences() }
     }
@@ -210,8 +200,7 @@ struct CouplesHubSettingsView: View {
         let prefs = dataManager.preferences.couplesPreferences
         mustMatchTogether = prefs.mustMatchTogether
         preferSameHospital = prefs.preferSameHospital
-        preferSameCity = prefs.preferSameCity
-        preferSameState = prefs.preferSameState
+        geographyStrictness = prefs.geographyStrictness
         prioritizeIndividualRankLists = prefs.prioritizeIndividualRankLists
         distanceTolerance = Double(prefs.distanceTolerance)
     }
@@ -219,8 +208,8 @@ struct CouplesHubSettingsView: View {
     private func savePreferences() {
         dataManager.preferences.couplesPreferences.mustMatchTogether = mustMatchTogether
         dataManager.preferences.couplesPreferences.preferSameHospital = preferSameHospital
-        dataManager.preferences.couplesPreferences.preferSameCity = preferSameCity
-        dataManager.preferences.couplesPreferences.preferSameState = preferSameState
+        dataManager.preferences.couplesPreferences.geographyStrictness = geographyStrictness
+        dataManager.preferences.couplesPreferences.normalizeGeography()
         dataManager.preferences.couplesPreferences.prioritizeIndividualRankLists = prioritizeIndividualRankLists
         dataManager.preferences.couplesPreferences.distanceTolerance = Int(distanceTolerance)
         dataManager.savePreferences()

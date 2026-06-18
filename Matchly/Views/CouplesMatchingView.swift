@@ -503,7 +503,7 @@ struct CouplesMatchingView: View {
         dataManager.savePreferences()
 
         await coupleSync.startMonitoringIfNeeded(dataManager: dataManager)
-        await coupleSync.publishOwnData(dataManager: dataManager)
+        try? await coupleSync.publishOwnData(dataManager: dataManager)
     }
 
     private func registerCoupleCodeInCloud(_ couple: Couple) {
@@ -528,7 +528,7 @@ struct CouplesMatchingView: View {
         dataManager.savePreferences()
         registerCoupleCodeInCloud(newCouple)
         Task {
-            await CoupleSyncCoordinator.shared.publishOwnData(dataManager: dataManager)
+            try? await CoupleSyncCoordinator.shared.publishOwnData(dataManager: dataManager)
         }
     }
     

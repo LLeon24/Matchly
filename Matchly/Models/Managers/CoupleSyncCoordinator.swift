@@ -21,6 +21,7 @@ final class CoupleSyncCoordinator: ObservableObject {
     @Published private(set) var partnerPrograms: [CoupleProgramSnapshot] = []
     @Published private(set) var isSyncing = false
     @Published private(set) var lastSyncError: String?
+    @Published private(set) var lastPublishError: String?
     @Published private(set) var lastSyncedAt: Date?
 
     private let logger = Logger(subsystem: "com.matchly", category: "CoupleSync")
@@ -38,7 +39,10 @@ final class CoupleSyncCoordinator: ObservableObject {
         await repairSharedCoupleIDIfNeeded(dataManager: dataManager)
         guard let activeCouple = dataManager.preferences.couple, activeCouple.isLinked else { return }
 
-        guard activeCoupleID != activeCouple.id else { return }
+        guard activeCoupleID != activeCouple.id else {
+            await refreshAll(dataManager: dataManager)
+            return
+        }
         activeCoupleID = activeCouple.id
 
         await CoupleNotificationService.shared.requestAuthorizationIfNeeded()
@@ -78,6 +82,12 @@ final class CoupleSyncCoordinator: ObservableObject {
         guard let partnerRecordName else { return }
 
         do {
+            try await publishOwnData(dataManager: dataManager)
+        } catch {
+            // Still attempt to fetch partner data even if our publish failed.
+        }
+
+        do {
             partnerPrograms = try await CouplesCloudManager.fetchPartnerPrograms(
                 coupleID: couple.id,
                 partnerRecordName: partnerRecordName
@@ -93,8 +103,10 @@ final class CoupleSyncCoordinator: ObservableObject {
             }
 
             if let remotePrefs = try await CouplesCloudManager.fetchSharedPreferences(coupleID: couple.id) {
-                if remotePrefs != dataManager.preferences.couplesPreferences {
-                    dataManager.preferences.couplesPreferences = remotePrefs
+                var normalized = remotePrefs
+                normalized.normalizeGeography()
+                if normalized != dataManager.preferences.couplesPreferences {
+                    dataManager.preferences.couplesPreferences = normalized
                     dataManager.savePreferences()
                 }
             }
@@ -103,12 +115,12 @@ final class CoupleSyncCoordinator: ObservableObject {
             lastSyncError = nil
             NotificationCenter.default.post(name: .coupleDataDidChange, object: nil)
         } catch {
-            lastSyncError = error.localizedDescription
+            lastSyncError = CouplesCloudManager.userFacingMessage(for: error)
             logger.debug("Couple sync failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
-    func publishOwnData(dataManager: DataManager) async {
+    func publishOwnData(dataManager: DataManager) async throws {
         guard let couple = dataManager.preferences.couple,
               couple.isLinked,
               let myRecordName = AuthManager.shared.cloudKitUserRecordName else { return }
@@ -130,8 +142,11 @@ final class CoupleSyncCoordinator: ObservableObject {
                 editorRecordName: myRecordName
             )
             lastSyncedAt = Date()
+            lastPublishError = nil
         } catch {
+            lastPublishError = CouplesCloudManager.userFacingMessage(for: error)
             logger.debug("Publish couple data failed: \(error.localizedDescription, privacy: .public)")
+            throw error
         }
     }
 

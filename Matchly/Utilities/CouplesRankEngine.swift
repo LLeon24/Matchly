@@ -101,12 +101,18 @@ enum CouplesRankEngine {
     }
 
     private static func resolvedWeights(_ preferences: CouplesPreferences) -> EngineWeights {
-        var individual = preferences.prioritizeIndividualRankLists ? 0.20 : 0.35
-        var rankList = preferences.prioritizeIndividualRankLists ? 0.40 : 0.10
+        let individual = preferences.prioritizeIndividualRankLists ? 0.20 : 0.35
+        let rankList = preferences.prioritizeIndividualRankLists ? 0.40 : 0.10
         var geography = 0.15
-        if preferences.preferSameCity { geography += 0.20 }
-        if preferences.preferSameState { geography += 0.10 }
-        var hospital = preferences.preferSameHospital ? 0.30 : 0.05
+        switch preferences.geographyStrictness {
+        case .sameCity:
+            geography += 0.25
+        case .sameState:
+            geography += 0.15
+        case .withinDistance:
+            break
+        }
+        let hospital = preferences.preferSameHospital ? 0.30 : 0.05
 
         let total = max(individual + rankList + geography + hospital, 0.01)
         return EngineWeights(
@@ -131,14 +137,13 @@ enum CouplesRankEngine {
             return -.infinity
         }
 
-        if preferences.preferSameCity {
-            let sameCity = p1.city.caseInsensitiveCompare(p2.city) == .orderedSame && !p1.city.isEmpty
-            if !sameCity { return -.infinity }
-        }
-
-        if preferences.preferSameState && !preferences.preferSameCity {
-            let sameState = p1.state.caseInsensitiveCompare(p2.state) == .orderedSame && !p1.state.isEmpty
-            if !sameState { return -.infinity }
+        switch preferences.geographyStrictness {
+        case .sameCity:
+            if !programsShareCity(p1, p2) { return -.infinity }
+        case .sameState:
+            if !programsShareState(p1, p2) { return -.infinity }
+        case .withinDistance:
+            break
         }
 
         let maxScore = max(p1.finalScore, p2.finalScore, 1)
@@ -180,19 +185,29 @@ enum CouplesRankEngine {
     ) -> Double {
         let tolerance = max(Double(preferences.distanceTolerance), 1)
         let distanceScore = max(0, 1 - (miles / tolerance))
+        let cityMatch = programsShareCity(p1, p2) ? 1.0 : 0.0
+        let stateMatch = programsShareState(p1, p2) ? 1.0 : 0.0
 
-        let cityMatch = p1.city.caseInsensitiveCompare(p2.city) == .orderedSame
-            && !p1.city.isEmpty ? 1.0 : 0.0
-        let stateMatch = p1.state.caseInsensitiveCompare(p2.state) == .orderedSame
-            && !p1.state.isEmpty ? 0.85 : 0.0
+        switch preferences.geographyStrictness {
+        case .sameCity:
+            return cityMatch
+        case .sameState:
+            if cityMatch > 0 { return 1.0 }
+            if stateMatch > 0 { return 0.85 }
+            return distanceScore * 0.5
+        case .withinDistance:
+            return max(distanceScore, cityMatch * 0.95, stateMatch * 0.8)
+        }
+    }
 
-        if preferences.preferSameCity {
-            return cityMatch > 0 ? 1.0 : distanceScore * 0.3
-        }
-        if preferences.preferSameState {
-            return stateMatch > 0 ? 1.0 : (cityMatch > 0 ? 0.9 : distanceScore * 0.5)
-        }
-        return max(distanceScore, cityMatch * 0.95, stateMatch * 0.8)
+    private static func programsShareCity(_ p1: CoupleProgramSnapshot, _ p2: CoupleProgramSnapshot) -> Bool {
+        !p1.city.isEmpty
+            && p1.city.caseInsensitiveCompare(p2.city) == .orderedSame
+            && programsShareState(p1, p2)
+    }
+
+    private static func programsShareState(_ p1: CoupleProgramSnapshot, _ p2: CoupleProgramSnapshot) -> Bool {
+        !p1.state.isEmpty && p1.state.caseInsensitiveCompare(p2.state) == .orderedSame
     }
 
     private static func sameHospitalComponent(

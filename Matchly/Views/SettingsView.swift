@@ -135,6 +135,10 @@ struct SettingsView: View {
     
     private var appInformationSection: some View {
         Section("App Information") {
+                    NavigationLink(destination: AppGuideView(showsNavigationChrome: true)) {
+                        Label("How to Use Matchly", systemImage: "book.fill")
+                    }
+
                     Picker("Applying To", selection: Binding(
                         get: {
                             ProgramTrainingLevelFilter(rawValue: dataManager.preferences.applyingTrack) ?? .residency

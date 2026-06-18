@@ -50,23 +50,23 @@ enum CoupleLinkingActions {
 
         var linkedCouple = Couple(
             id: registration.coupleID,
-            user1ID: partnerRecordName,
-            user1Name: partnerName,
-            user1Email: authManager.currentUser?.email,
+            user1ID: registration.inviterRecordName,
+            user1Name: registration.inviterName,
+            user1Email: registration.inviterEmail,
             coupleCode: registration.code,
             inviteLink: Couple.generateInviteLink(code: registration.code),
             status: .linked
         )
-        linkedCouple.user2ID = registration.inviterRecordName
-        linkedCouple.user2Name = registration.inviterName
-        linkedCouple.user2Email = registration.inviterEmail
+        linkedCouple.user2ID = partnerRecordName
+        linkedCouple.user2Name = partnerName
+        linkedCouple.user2Email = authManager.currentUser?.email
         linkedCouple.linkedAt = Date()
 
         dataManager.preferences.couple = linkedCouple
         dataManager.savePreferences()
 
         Task {
-            await CoupleSyncCoordinator.shared.publishOwnData(dataManager: dataManager)
+            try? await CoupleSyncCoordinator.shared.publishOwnData(dataManager: dataManager)
             await CoupleSyncCoordinator.shared.startMonitoringIfNeeded(dataManager: dataManager)
         }
     }
@@ -106,7 +106,7 @@ enum CoupleLinkingActions {
         dataManager.savePreferences()
 
         Task {
-            await CoupleSyncCoordinator.shared.publishOwnData(dataManager: dataManager)
+            try? await CoupleSyncCoordinator.shared.publishOwnData(dataManager: dataManager)
             await CoupleSyncCoordinator.shared.startMonitoringIfNeeded(dataManager: dataManager)
         }
     }

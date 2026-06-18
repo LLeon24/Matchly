@@ -21,6 +21,8 @@ struct OnboardingFlowView: View {
     @State private var showMainApp = false
     @State private var iconScale: CGFloat = 1.0
     @State private var enableCalendarSync: Bool = false
+    @State private var includeRedFlaggedInRankList: Bool = true
+    @State private var preferredEMR: String = ""
     
     enum OnboardingStep: Int, CaseIterable {
         case welcome = 0
@@ -29,7 +31,9 @@ struct OnboardingFlowView: View {
         case name = 3
         case aamcID = 4
         case photo = 5
-        case calendarSync = 6
+        case appGuide = 6
+        case matchPreferences = 7
+        case calendarSync = 8
         
         var title: String {
             switch self {
@@ -39,6 +43,8 @@ struct OnboardingFlowView: View {
             case .name: return "What's your name?"
             case .aamcID: return "AAMC ID (Optional)"
             case .photo: return "Add Your Photo (Optional)"
+            case .appGuide: return "How Matchly Works"
+            case .matchPreferences: return "Match Preferences"
             case .calendarSync: return "Calendar Sync"
             }
         }
@@ -51,6 +57,8 @@ struct OnboardingFlowView: View {
             case .name: return "We'll use this to personalize your experience"
             case .aamcID: return "Your AAMC ID helps us provide better program matching"
             case .photo: return "Make your profile more personal"
+            case .appGuide: return "Swipe through a quick tour of each part of the app."
+            case .matchPreferences: return "A few defaults to get your rank list and scoring right from the start."
             case .calendarSync: return "Would you like to sync your interviews to your device calendar? You can change this anytime in Settings."
             }
         }
@@ -80,6 +88,10 @@ struct OnboardingFlowView: View {
                         aamcIDStep
                     case .photo:
                         photoStep
+                    case .appGuide:
+                        appGuideStep
+                    case .matchPreferences:
+                        matchPreferencesStep
                     case .calendarSync:
                         calendarSyncStep
                     }
@@ -183,10 +195,10 @@ struct OnboardingFlowView: View {
                     
                     // Feature highlights
                     VStack(spacing: 12) {
-                        FeatureRow(icon: "list.bullet.clipboard.fill", text: "Track & Rank Programs")
-                        FeatureRow(icon: "map.fill", text: "Visualize on Interactive Maps")
+                        FeatureRow(icon: "list.bullet.clipboard.fill", text: "Track & Score Programs")
+                        FeatureRow(icon: "chart.bar.fill", text: "Build Your NRMP Rank List")
                         FeatureRow(icon: "star.fill", text: "Manage ERAS Signals")
-                        FeatureRow(icon: "chart.bar.fill", text: "Personalized Analytics")
+                        FeatureRow(icon: "heart.fill", text: "Couples Match with Your Partner")
                     }
                     .padding(.top, 24)
                 }
@@ -389,14 +401,14 @@ struct OnboardingFlowView: View {
             },
             onNext: {
                 withAnimation {
-                    currentStep = .calendarSync
+                    currentStep = .appGuide
                 }
             },
             canContinue: true,
             showSkip: true,
             onSkip: {
                 withAnimation {
-                    currentStep = .calendarSync
+                    currentStep = .appGuide
                 }
             },
             buttonText: "Continue",
@@ -406,6 +418,115 @@ struct OnboardingFlowView: View {
                 }
             }
         )
+    }
+
+    // MARK: - App Guide Step
+    private var appGuideStep: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 8) {
+                Text(OnboardingStep.appGuide.title)
+                    .font(.arial(size: 28, weight: .bold))
+                    .multilineTextAlignment(.center)
+                Text(OnboardingStep.appGuide.subtitle)
+                    .font(.arial(size: 16))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, 32)
+            .padding(.top, 24)
+            .padding(.bottom, 8)
+
+            AppGuideView {
+                withAnimation {
+                    currentStep = .matchPreferences
+                }
+            }
+            .frame(maxHeight: .infinity)
+
+            Button(action: {
+                withAnimation {
+                    currentStep = .photo
+                }
+            }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.left")
+                        .font(.arial(size: 14, weight: .semibold))
+                    Text("Back")
+                        .font(.arial(size: 17, weight: .medium))
+                }
+                .foregroundColor(.secondary)
+            }
+            .padding(.bottom, 12)
+        }
+    }
+
+    // MARK: - Match Preferences Step
+    private var matchPreferencesStep: some View {
+        OnboardingStepView(
+            title: OnboardingStep.matchPreferences.title,
+            subtitle: OnboardingStep.matchPreferences.subtitle,
+            content: {
+                ScrollView {
+                    VStack(spacing: 20) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Label("Program Scoring", systemImage: "slider.horizontal.3")
+                                .font(.arial(size: 16, weight: .semibold))
+                            Text("Programs are scored using the questionnaire. Matchly starts with balanced weights — customize them anytime under Settings → Set Section Weights.")
+                                .font(.arial(size: 14))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .glassEffect(.regular, in: .rect(cornerRadius: 14))
+
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Preferred EMR (Optional)")
+                                .font(.arial(size: 16, weight: .semibold))
+                            Picker("Preferred EMR", selection: $preferredEMR) {
+                                Text("Not set").tag("")
+                                ForEach(EMRSystem.allCases) { system in
+                                    Text(system.displayName).tag(system.rawValue)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            Text("Programs using your preferred EMR score higher on the EMR factor.")
+                                .font(.arial(size: 13))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(16)
+                        .glassEffect(.regular, in: .rect(cornerRadius: 14))
+
+                        Toggle(isOn: $includeRedFlaggedInRankList) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Include Red-Flagged Programs in Rank List")
+                                    .font(.arial(size: 15, weight: .medium))
+                                Text("When off, programs you mark with red flags won't appear on your rank list.")
+                                    .font(.arial(size: 13))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(16)
+                        .glassEffect(.regular, in: .rect(cornerRadius: 14))
+                    }
+                }
+            },
+            onNext: {
+                withAnimation {
+                    currentStep = .calendarSync
+                }
+            },
+            canContinue: true,
+            buttonText: "Continue",
+            onBack: {
+                withAnimation {
+                    currentStep = .appGuide
+                }
+            }
+        )
+        .onAppear {
+            includeRedFlaggedInRankList = dataManager.preferences.includeRedFlaggedProgramsInRankList
+            preferredEMR = dataManager.preferences.preferredEMR ?? ""
+        }
     }
     
     // MARK: - Calendar Sync Step
@@ -457,7 +578,7 @@ struct OnboardingFlowView: View {
             buttonText: "Complete Setup",
             onBack: {
                 withAnimation {
-                    currentStep = .photo
+                    currentStep = .matchPreferences
                 }
             }
         )
@@ -583,10 +704,16 @@ struct OnboardingFlowView: View {
         // Save calendar sync preference
         dataManager.preferences.enableCalendarSync = enableCalendarSync
         dataManager.preferences.applyingTrack = selectedApplyingTrack.rawValue
+        dataManager.preferences.includeRedFlaggedProgramsInRankList = includeRedFlaggedInRankList
+        dataManager.preferences.preferredEMR = preferredEMR.isEmpty ? nil : preferredEMR
         
         // Mark onboarding as complete
         dataManager.preferences.hasCompletedOnboarding = true
         dataManager.savePreferences()
+        
+        if dataManager.preferences.preferredEMR != nil {
+            dataManager.recalculateAllScores()
+        }
         
         // If the user opted into calendar sync, actually request permission now.
         // If access is denied, turn the preference back off so the stored state

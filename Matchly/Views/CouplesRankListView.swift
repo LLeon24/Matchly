@@ -21,6 +21,9 @@ struct CouplesRankListView: View {
     @State private var showGenerateAlert = false
     @State private var isGenerating = false
     @State private var generateError: String?
+    @State private var didAutoGenerateForEmptyList = false
+    @State private var showRegenerateConfirm = false
+    @Environment(\.editMode) private var editMode
     
     private var sortedPairs: [CouplesRankPair] {
         dataManager.preferences.couplesRankPairs.sorted { $0.rank < $1.rank }
@@ -32,6 +35,18 @@ struct CouplesRankListView: View {
 
     private var partnerPrograms: [Program] {
         coupleSync.partnerPrograms.map { $0.asProgram() }
+    }
+
+    private var myScoredPrograms: [Program] {
+        myPrograms.filter { $0.isReviewed || $0.finalScore > 0 }
+    }
+
+    private var partnerScoredPrograms: [Program] {
+        partnerPrograms.filter { $0.finalScore > 0 }
+    }
+
+    private var canGenerateSuggestedList: Bool {
+        !myScoredPrograms.isEmpty && !partnerScoredPrograms.isEmpty
     }
     
     private func myProgram(for pair: CouplesRankPair, couple: Couple) -> Program? {
@@ -63,16 +78,32 @@ struct CouplesRankListView: View {
         guard let partnerRecord else { return false }
         return CouplesRankPairPerspective.isNoMatch(forRecordName: partnerRecord, in: pair, couple: couple)
     }
+
+    private func partnerDisplayName(couple: Couple) -> String {
+        guard let myRecord = authManager.cloudKitUserRecordName else {
+            return couple.user2Name ?? couple.user1Name
+        }
+        if myRecord == couple.user1ID {
+            return couple.user2Name ?? "your partner"
+        }
+        return couple.user1Name
+    }
     
     var body: some View {
         Form {
             if let couple = dataManager.preferences.couple, couple.isLinked {
                 Section {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Couples Rank List")
-                            .font(.arial(size: 15, weight: .semibold))
+                        HStack(spacing: 4) {
+                            Text("Couples Rank List")
+                                .font(.arial(size: 15, weight: .semibold))
+                            SettingsInfoButton(
+                                title: "Couples Rank List",
+                                message: "Each rank pairs one of your programs with one of your partner's scored programs, or No Match. Matchly can suggest a starting list — tap any pair to edit, swipe to delete, or use Reorder to adjust before NRMP submission."
+                            )
+                        }
                         
-                        Text("Each rank pairs one of your programs with one of your partner's programs (or 'No Match'). Tap **Generate Suggested List** to build a starting list from both rank orders and your shared criteria — then edit freely.")
+                        Text("Each rank pairs one of your programs with one of your partner's scored programs (or 'No Match'). Matchly can suggest a starting list — then tap any pair to change it, reorder, add, or delete freely.")
                             .font(.arial(size: 12))
                             .foregroundColor(.secondary)
                     }
@@ -92,15 +123,54 @@ struct CouplesRankListView: View {
                     }
                 } else if partnerPrograms.isEmpty {
                     Section {
-                        Text("Waiting for your partner to share their program list. Ask them to open Matchly while signed in to iCloud.")
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Your partner's programs haven't synced yet.")
+                                .font(.arial(size: 14, weight: .medium))
+
+                            Text("Ask \(partnerDisplayName(couple: couple)) to:")
+                                .font(.arial(size: 13))
+                                .foregroundColor(.secondary)
+
+                            VStack(alignment: .leading, spacing: 6) {
+                                Label("Open Matchly while signed in to iCloud", systemImage: "icloud.fill")
+                                Label("Add at least one program under My Programs", systemImage: "list.bullet")
+                                Label("Open the Couple tab (pull down to refresh)", systemImage: "arrow.triangle.2.circlepath")
+                            }
                             .font(.arial(size: 13))
                             .foregroundColor(.secondary)
+
+                            if let publishError = coupleSync.lastPublishError {
+                                Text("Your upload: \(publishError)")
+                                    .font(.arial(size: 12))
+                                    .foregroundColor(.orange)
+                            }
+                            if let syncError = coupleSync.lastSyncError {
+                                Text("Sync: \(syncError)")
+                                    .font(.arial(size: 12))
+                                    .foregroundColor(.orange)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    } header: {
+                        Text("Partner Programs")
+                    }
+                } else if partnerScoredPrograms.isEmpty {
+                    Section {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("\(partnerDisplayName(couple: couple)) has \(partnerPrograms.count) program\(partnerPrograms.count == 1 ? "" : "s") synced, but none are scored yet.")
+                                .font(.arial(size: 14))
+
+                            Text("Ask them to complete questionnaires for at least one program under My Programs.")
+                                .font(.arial(size: 13))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.vertical, 4)
                     } header: {
                         Text("Partner Programs")
                     }
                 } else {
                     Section {
-                        ForEach(Array(partnerPrograms.prefix(5).enumerated()), id: \.element.id) { index, program in
+                        ForEach(Array(partnerScoredPrograms.prefix(5).enumerated()), id: \.element.id) { index, program in
                             HStack {
                                 Text("#\(index + 1)")
                                     .font(.arial(size: 12, weight: .bold))
@@ -119,40 +189,64 @@ struct CouplesRankListView: View {
                                     .foregroundColor(.secondary)
                             }
                         }
-                        if partnerPrograms.count > 5 {
-                            Text("+ \(partnerPrograms.count - 5) more programs")
+                        if partnerScoredPrograms.count > 5 {
+                            Text("+ \(partnerScoredPrograms.count - 5) more scored programs")
                                 .font(.arial(size: 12))
                                 .foregroundColor(.secondary)
                         }
                     } header: {
-                        Text("Partner's Ranked Programs (\(partnerPrograms.count))")
+                        Text("Partner's Scored Programs (\(partnerScoredPrograms.count))")
+                    }
+                }
+
+                if myScoredPrograms.isEmpty && !partnerPrograms.isEmpty {
+                    Section {
+                        Text("Score at least one program under My Programs to build your couples rank list.")
+                            .font(.arial(size: 14))
+                            .foregroundColor(.secondary)
+                    } header: {
+                        Text("Your Programs")
                     }
                 }
                 
                 if sortedPairs.isEmpty {
                     Section {
                         VStack(spacing: 16) {
-                            Image(systemName: "list.number")
+                            Image(systemName: canGenerateSuggestedList ? "sparkles" : "list.number")
                                 .font(.arial(size: 40))
                                 .foregroundColor(.secondary)
                             
                             Text("No Rank Pairs Yet")
                                 .font(.arial(size: 17, weight: .semibold))
                             
-                            Text("Create your first rank pair to get started")
+                            Text(emptyPairsMessage)
                                 .font(.arial(size: 14))
                                 .foregroundColor(.secondary)
                                 .multilineTextAlignment(.center)
                             
-                            Button(action: {
-                                showAddPair = true
-                            }) {
-                                Text("Add First Pair")
+                            if canGenerateSuggestedList {
+                                Button(action: {
+                                    generateCouplesRankList()
+                                }) {
+                                    HStack {
+                                        if isGenerating {
+                                            ProgressView()
+                                                .tint(.white)
+                                        }
+                                        Text("Generate Suggested List")
+                                    }
                                     .font(.arial(size: 16, weight: .semibold))
                                     .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.glassProminent)
+                                .tint(AppColors.primaryBlue)
+                                .disabled(isGenerating)
+
+                                Button("Add a pair manually") {
+                                    showAddPair = true
+                                }
+                                .font(.arial(size: 14))
                             }
-                            .buttonStyle(.glassProminent)
-                            .tint(AppColors.primaryBlue)
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 40)
@@ -178,44 +272,62 @@ struct CouplesRankListView: View {
                         HStack {
                             Text("Rank Pairs (\(sortedPairs.count))")
                             Spacer()
-                            if sortedPairs.count > 0 {
-                                Button(action: {
-                                    validateRankList()
-                                }) {
-                                    Text("Validate")
-                                        .font(.arial(size: 12))
+                            Button(action: {
+                                validateRankList()
+                            }) {
+                                Text("Validate")
+                                    .font(.arial(size: 12))
+                            }
+                            Button(editMode?.wrappedValue == .active ? "Done" : "Reorder") {
+                                withAnimation {
+                                    if editMode?.wrappedValue == .active {
+                                        editMode?.wrappedValue = .inactive
+                                    } else {
+                                        editMode?.wrappedValue = .active
+                                    }
                                 }
                             }
+                            .font(.arial(size: 12))
                         }
+                    } footer: {
+                        Text("Tap a pair to edit programs or No Match. Swipe left to delete. Use Reorder to drag pairs into NRMP rank order.")
+                            .font(.arial(size: 12))
                     }
                 }
                 
-                Section {
-                    Button(action: {
-                        showAddPair = true
-                    }) {
-                        HStack {
-                            Image(systemName: "plus.circle.fill")
-                                .foregroundColor(.blue)
-                            Text("Add Rank Pair")
-                        }
-                    }
-                    
-                    if !myPrograms.isEmpty && !partnerPrograms.isEmpty {
+                if !sortedPairs.isEmpty {
+                    Section {
                         Button(action: {
-                            generateCouplesRankList()
+                            showAddPair = true
                         }) {
                             HStack {
-                                if isGenerating {
-                                    ProgressView()
-                                } else {
-                                    Image(systemName: "sparkles")
-                                        .foregroundColor(.blue)
-                                }
-                                Text("Generate Suggested List")
+                                Image(systemName: "plus.circle.fill")
+                                    .foregroundColor(.blue)
+                                Text("Add Rank Pair")
                             }
                         }
-                        .disabled(isGenerating)
+
+                        if canGenerateSuggestedList {
+                            Button(action: {
+                                showRegenerateConfirm = true
+                            }) {
+                                HStack {
+                                    if isGenerating {
+                                        ProgressView()
+                                    } else {
+                                        Image(systemName: "sparkles")
+                                            .foregroundColor(.blue)
+                                    }
+                                    Text("Regenerate Suggested List")
+                                }
+                            }
+                            .disabled(isGenerating)
+                        }
+                    } header: {
+                        Text("Edit List")
+                    } footer: {
+                        Text("Regenerating replaces the whole list with a new suggestion. Manual edits are kept until you regenerate.")
+                            .font(.arial(size: 12))
                     }
                 }
             } else {
@@ -232,7 +344,7 @@ struct CouplesRankListView: View {
         .navigationTitle(embeddedInHub ? "" : "Couples Rank List")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if !sortedPairs.isEmpty && !embeddedInHub {
+            if !sortedPairs.isEmpty {
                 EditButton()
             }
         }
@@ -268,9 +380,21 @@ struct CouplesRankListView: View {
             }
         }
         .alert("Rank List Generated", isPresented: $showGenerateAlert) {
-            Button("OK") { }
+            Button("Review & Edit") { }
         } message: {
-            Text("A suggested couples rank list was created from both partners' rank orders and your matching criteria. Review and adjust before submitting to NRMP.")
+            Text("A suggested list is ready. Tap any pair to change it, swipe to delete, or use Reorder to adjust rank order before submitting to NRMP.")
+        }
+        .confirmationDialog(
+            "Replace your current rank list?",
+            isPresented: $showRegenerateConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Regenerate List", role: .destructive) {
+                generateCouplesRankList()
+            }
+            Button("Keep Current List", role: .cancel) { }
+        } message: {
+            Text("This replaces all pairs with a new suggestion. Your manual edits will be lost.")
         }
         .alert("Could Not Generate", isPresented: Binding(
             get: { generateError != nil },
@@ -282,13 +406,43 @@ struct CouplesRankListView: View {
         }
         .task {
             await coupleSync.refreshAll(dataManager: dataManager)
+            tryAutoGenerateIfNeeded()
         }
         .refreshable {
             await coupleSync.refreshAll(dataManager: dataManager)
+            tryAutoGenerateIfNeeded()
         }
         .onReceive(NotificationCenter.default.publisher(for: .coupleDataDidChange)) { _ in
-            // Partner data updated via CloudKit.
+            tryAutoGenerateIfNeeded()
         }
+        .onChange(of: sortedPairs.count) { _, newCount in
+            if newCount == 0 {
+                didAutoGenerateForEmptyList = false
+            }
+        }
+    }
+
+    private var emptyPairsMessage: String {
+        if canGenerateSuggestedList {
+            return "You and your partner both have scored programs. Generate a suggested list to get started, or add pairs manually."
+        }
+        if partnerPrograms.isEmpty {
+            return "Rank pairs will appear here once your partner's programs sync."
+        }
+        if myScoredPrograms.isEmpty {
+            return "Score your programs first, then Matchly can build your couples list automatically."
+        }
+        return "Waiting for your partner to score at least one program."
+    }
+
+    private func tryAutoGenerateIfNeeded() {
+        guard !didAutoGenerateForEmptyList,
+              sortedPairs.isEmpty,
+              canGenerateSuggestedList,
+              !isGenerating else { return }
+
+        didAutoGenerateForEmptyList = true
+        generateCouplesRankList(showSuccessAlert: true)
     }
     
     private func addPair(_ pair: CouplesRankPair) {
@@ -333,25 +487,38 @@ struct CouplesRankListView: View {
         showValidationAlert = true
     }
     
-    private func generateCouplesRankList() {
+    private func generateCouplesRankList(showSuccessAlert: Bool = true) {
         guard !coupleSync.partnerPrograms.isEmpty else {
             generateError = "Your partner's programs are not available yet. Ask them to open Matchly while signed in to iCloud."
             return
         }
 
+        guard !myScoredPrograms.isEmpty else {
+            generateError = "Score at least one program under My Programs before generating a couples list."
+            return
+        }
+
+        guard !partnerScoredPrograms.isEmpty else {
+            generateError = "Your partner hasn't scored any programs yet. Ask them to complete at least one program questionnaire."
+            return
+        }
+
         isGenerating = true
-        let generatedPairs = dataManager.generateCouplesRankList(partnerPrograms: coupleSync.partnerPrograms)
+        let partnerScored = coupleSync.partnerPrograms.filter { $0.finalScore > 0 }
+        let generatedPairs = dataManager.generateCouplesRankList(partnerPrograms: partnerScored)
         isGenerating = false
 
         guard !generatedPairs.isEmpty else {
-            generateError = "Could not generate a list. Make sure both partners have ranked programs."
+            generateError = "Could not generate a list. Make sure both partners have scored programs."
             return
         }
 
         dataManager.preferences.couplesRankPairs = generatedPairs
         dataManager.savePreferences()
         dataManager.scheduleCoupleCloudPublish()
-        showGenerateAlert = true
+        if showSuccessAlert {
+            showGenerateAlert = true
+        }
     }
 }
 
@@ -392,9 +559,14 @@ struct CouplesRankPairRow: View {
                     
                     Spacer()
                     
-                    Image(systemName: "chevron.right")
-                        .font(.arial(size: 12))
-                        .foregroundColor(.secondary)
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Image(systemName: "chevron.right")
+                            .font(.arial(size: 12))
+                            .foregroundColor(.secondary)
+                        Text("Edit")
+                            .font(.arial(size: 10))
+                            .foregroundColor(.secondary)
+                    }
                 }
             }
             .padding(.vertical, 4)
@@ -524,35 +696,20 @@ struct CouplesPreferencesView: View {
     
     @State private var mustMatchTogether: Bool = true
     @State private var preferSameHospital: Bool = false
-    @State private var preferSameCity: Bool = false
-    @State private var preferSameState: Bool = true
+    @State private var geographyStrictness: CouplesPreferences.GeographyStrictness = .sameState
     @State private var prioritizeIndividualRankLists: Bool = true
     @State private var distanceTolerance: Double = 100
     
     var body: some View {
         MatchlyNavigationView {
             Form {
-                Section {
-                    Toggle("Must Match Together", isOn: $mustMatchTogether)
-                    Toggle("Prefer Same Hospital", isOn: $preferSameHospital)
-                    Toggle("Prefer Same City", isOn: $preferSameCity)
-                    Toggle("Prefer Same State", isOn: $preferSameState)
-                    Toggle("Prioritize Individual Rank Lists", isOn: $prioritizeIndividualRankLists)
-                } header: {
-                    Text("Matching Criteria")
-                } footer: {
-                    Text("These criteria guide Generate Suggested List on the couples rank list. Adjust pairs manually anytime.")
-                }
-
-                Section {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Maximum Distance: \(Int(distanceTolerance)) miles")
-                            .font(.arial(size: 15, weight: .medium))
-                        Slider(value: $distanceTolerance, in: 0...500, step: 25)
-                    }
-                } header: {
-                    Text("Geography")
-                }
+                CouplesSharedPreferencesSections(
+                    mustMatchTogether: $mustMatchTogether,
+                    preferSameHospital: $preferSameHospital,
+                    geographyStrictness: $geographyStrictness,
+                    prioritizeIndividualRankLists: $prioritizeIndividualRankLists,
+                    distanceTolerance: $distanceTolerance
+                )
             }
             .navigationTitle("Couples Preferences")
             .navigationBarTitleDisplayMode(.inline)
@@ -581,8 +738,7 @@ struct CouplesPreferencesView: View {
         let prefs = dataManager.preferences.couplesPreferences
         mustMatchTogether = prefs.mustMatchTogether
         preferSameHospital = prefs.preferSameHospital
-        preferSameCity = prefs.preferSameCity
-        preferSameState = prefs.preferSameState
+        geographyStrictness = prefs.geographyStrictness
         prioritizeIndividualRankLists = prefs.prioritizeIndividualRankLists
         distanceTolerance = Double(prefs.distanceTolerance)
     }
@@ -590,8 +746,8 @@ struct CouplesPreferencesView: View {
     private func savePreferences() {
         dataManager.preferences.couplesPreferences.mustMatchTogether = mustMatchTogether
         dataManager.preferences.couplesPreferences.preferSameHospital = preferSameHospital
-        dataManager.preferences.couplesPreferences.preferSameCity = preferSameCity
-        dataManager.preferences.couplesPreferences.preferSameState = preferSameState
+        dataManager.preferences.couplesPreferences.geographyStrictness = geographyStrictness
+        dataManager.preferences.couplesPreferences.normalizeGeography()
         dataManager.preferences.couplesPreferences.prioritizeIndividualRankLists = prioritizeIndividualRankLists
         dataManager.preferences.couplesPreferences.distanceTolerance = Int(distanceTolerance)
         dataManager.savePreferences()

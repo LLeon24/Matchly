@@ -167,4 +167,20 @@ enum CouplesCloudManager {
             }
         }
     }
+
+    static func userFacingMessage(for error: Error) -> String {
+        if let ckError = error as? CKError {
+            switch ckError.code {
+            case .notAuthenticated:
+                return "Sign in to iCloud to sync with your partner."
+            case .permissionFailure:
+                return "CloudKit permission denied. Check Security Roles for CoupleProgramBundle (Create, Read, Write for _icloud)."
+            case .invalidArguments, .serverRejectedRequest:
+                return "CloudKit schema error: add record types CoupleProgramBundle, CoupleRankList, and CoupleSharedPreferences in the dashboard (see setup docs)."
+            default:
+                return "\(ckError.localizedDescription) (CK \(ckError.code.rawValue))"
+            }
+        }
+        return error.localizedDescription
+    }
 }

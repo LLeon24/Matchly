@@ -173,6 +173,60 @@ struct CouplesPreferences: Codable, Hashable {
     var prioritizeIndividualRankLists: Bool = true
     var distanceTolerance: Int = 100
 
+    /// How strictly program locations must align when suggesting pairs.
+    /// Same city implies same state; same state does not imply same city.
+    enum GeographyStrictness: String, Codable, CaseIterable, Hashable {
+        case withinDistance
+        case sameState
+        case sameCity
+
+        var displayName: String {
+            switch self {
+            case .withinDistance: return "Within Max Distance"
+            case .sameState: return "Same State"
+            case .sameCity: return "Same City"
+            }
+        }
+
+        var detail: String {
+            switch self {
+            case .withinDistance:
+                return "Programs can be in different cities and states as long as they are within your distance limit."
+            case .sameState:
+                return "Programs must be in the same state. Different cities in that state are allowed."
+            case .sameCity:
+                return "Programs must be in the same city, which also means the same state."
+            }
+        }
+    }
+
+    var geographyStrictness: GeographyStrictness {
+        get {
+            if preferSameCity { return .sameCity }
+            if preferSameState { return .sameState }
+            return .withinDistance
+        }
+        set {
+            switch newValue {
+            case .withinDistance:
+                preferSameCity = false
+                preferSameState = false
+            case .sameState:
+                preferSameCity = false
+                preferSameState = true
+            case .sameCity:
+                preferSameCity = true
+                preferSameState = true
+            }
+        }
+    }
+
+    mutating func normalizeGeography() {
+        if preferSameCity {
+            preferSameState = true
+        }
+    }
+
     /// Legacy fields — kept for backward compatibility; UI uses toggles above.
     var geographicPriority: GeographicPriority = .balanced
     var programTypePriority: ProgramTypePriority = .balanced
@@ -270,6 +324,7 @@ extension CouplesPreferences {
                 break
             }
         }
+        normalizeGeography()
     }
 }
 
