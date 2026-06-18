@@ -217,6 +217,19 @@ When all five pass, Phase 1 setup is complete.
      - **Schema → Security Roles**: `_icloud` → Create + Read + Write on `CoupleCodeInvite`; `_world` → Read.
      - On the phone: **Generate New Code** → **Retry Publishing Invite** → confirm green **Invite ready**.
   4. Before TestFlight: **Schema → Deploy Schema Changes…** Development → Production.
+- **Partner chat fails to send or load:**
+  1. Chat uses record type **`CoupleMessageThread`** (one record per couple, fetched by ID — **no indexes required**).
+  2. In [CloudKit Dashboard](https://icloud.developer.apple.com/) → **`iCloud.com.matchly.Matchly`** → **Development** → **Schema → Record Types → +**:
+     - Name: **`CoupleMessageThread`**
+     - Fields:
+       - `coupleID` — **String**
+       - `messagesData` — **Bytes**
+       - `updatedAt` — **String**
+     - No queryable indexes needed for chat to work.
+  3. **Schema → Security Roles → `_icloud`**: Create, Read, Write on **`CoupleMessageThread`**.
+  4. For TestFlight: **Deploy Schema Changes…** Development → Production.
+  5. You can ignore the older **`CoupleMessage`** record type (one-record-per-message design); it is no longer used.
+  6. Both partners must use the same CloudKit environment (both Xcode debug or both TestFlight).
 
 ---
 

@@ -55,7 +55,7 @@ final class CoupleNotificationService: NSObject, ObservableObject {
 
         await createSubscription(
             id: "couple-message-\(coupleID)",
-            recordType: "CoupleMessage",
+            recordType: "CoupleMessageThread",
             predicate: NSPredicate(format: "coupleID == %@", coupleID),
             alertBody: "Your partner sent a new message."
         )

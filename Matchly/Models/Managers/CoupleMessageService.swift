@@ -2,7 +2,7 @@
 //  CoupleMessageService.swift
 //  Matchly
 //
-//  Lightweight partner notes synced via CloudKit public database.
+//  Partner chat synced via one CloudKit record per couple (no query indexes required).
 //
 
 import CloudKit
@@ -22,36 +22,25 @@ struct CoupleMessage: Identifiable, Hashable {
 }
 
 enum CoupleMessageService {
-    private static let recordType = "CoupleMessage"
+    /// One shared thread record per couple — fetched by record name, not query.
+    private static let recordType = "CoupleMessageThread"
     private static let container = CKContainer(identifier: AuthManager.cloudKitContainerID)
+    private static let encoder = JSONEncoder()
+    private static let decoder = JSONDecoder()
+    private static let timestampFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
 
     static func fetchMessages(coupleID: String) async throws -> [CoupleMessage] {
-        let predicate = NSPredicate(format: "coupleID == %@", coupleID)
-        let query = CKQuery(recordType: recordType, predicate: predicate)
-        query.sortDescriptors = [NSSortDescriptor(key: "sentAt", ascending: true)]
-
-        let records = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[CKRecord], Error>) in
-            var collected: [CKRecord] = []
-            let operation = CKQueryOperation(query: query)
-            operation.resultsLimit = 100
-
-            operation.recordMatchedBlock = { _, result in
-                if case .success(let record) = result {
-                    collected.append(record)
-                }
-            }
-            operation.queryResultBlock = { result in
-                switch result {
-                case .success:
-                    continuation.resume(returning: collected)
-                case .failure(let error):
-                    continuation.resume(throwing: error)
-                }
-            }
-            container.publicCloudDatabase.add(operation)
+        let recordID = threadRecordID(for: coupleID)
+        do {
+            let record = try await container.publicCloudDatabase.record(for: recordID)
+            return decodeMessages(from: record, coupleID: coupleID)
+        } catch let error as CKError where error.code == .unknownItem {
+            return []
         }
-
-        return records.compactMap(parse).sorted { $0.sentAt < $1.sentAt }
     }
 
     static func sendMessage(
@@ -65,14 +54,100 @@ enum CoupleMessageService {
             throw CoupleMessageError.emptyMessage
         }
 
-        let record = CKRecord(recordType: recordType)
-        record["coupleID"] = coupleID as CKRecordValue
-        record["senderRecordName"] = senderRecordName as CKRecordValue
-        record["senderName"] = senderName as CKRecordValue
-        record["text"] = trimmed as CKRecordValue
-        record["sentAt"] = Date() as CKRecordValue
+        let stored = StoredCoupleMessage(
+            id: UUID().uuidString,
+            senderRecordName: senderRecordName,
+            senderName: senderName,
+            text: trimmed,
+            sentAt: timestampString()
+        )
 
-        let saved = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<CKRecord, Error>) in
+        let saved = try await appendMessage(stored, coupleID: coupleID)
+        guard let message = saved else {
+            throw CoupleMessageError.saveFailed
+        }
+        return message
+    }
+
+    static func userFacingMessage(for error: Error) -> String {
+        if let messageError = error as? CoupleMessageError {
+            return messageError.localizedDescription
+        }
+
+        if let ckError = error as? CKError {
+            if ckError.code == .partialFailure,
+               let partial = ckError.partialErrorsByItemID?.values.first {
+                return userFacingMessage(for: partial)
+            }
+
+            switch ckError.code {
+            case .notAuthenticated:
+                return "Sign in to iCloud to message your partner."
+            case .permissionFailure:
+                return "CloudKit permission denied for chat. In CloudKit Dashboard, allow Create and Read on CoupleMessageThread for signed-in users."
+            case .invalidArguments, .serverRejectedRequest:
+                return "CloudKit schema error for chat: add record type CoupleMessageThread with String fields coupleID and updatedAt, plus Bytes field messagesData. Deploy to Production for TestFlight."
+            case .networkUnavailable, .networkFailure, .serviceUnavailable, .requestRateLimited, .zoneBusy:
+                return "Network or iCloud issue. Check your connection and try again."
+            default:
+                return "\(ckError.localizedDescription) (CK \(ckError.code.rawValue))"
+            }
+        }
+
+        return error.localizedDescription
+    }
+
+    // MARK: - Thread record
+
+    private static func threadRecordID(for coupleID: String) -> CKRecord.ID {
+        CKRecord.ID(recordName: "chat-\(coupleID)")
+    }
+
+    private static func appendMessage(
+        _ message: StoredCoupleMessage,
+        coupleID: String,
+        attempt: Int = 0
+    ) async throws -> CoupleMessage? {
+        guard attempt < 4 else { throw CoupleMessageError.saveFailed }
+
+        let recordID = threadRecordID(for: coupleID)
+        let database = container.publicCloudDatabase
+
+        let record: CKRecord
+        do {
+            record = try await database.record(for: recordID)
+        } catch let error as CKError where error.code == .unknownItem {
+            record = CKRecord(recordType: recordType, recordID: recordID)
+            record["coupleID"] = coupleID as CKRecordValue
+            record["messagesData"] = Data() as CKRecordValue
+        }
+
+        var stored = decodeStoredMessages(from: record)
+        stored.append(message)
+        record["messagesData"] = try encoder.encode(stored) as CKRecordValue
+        record["updatedAt"] = timestampString() as CKRecordValue
+
+        do {
+            _ = try await save(record)
+            return CoupleMessage(stored: message, coupleID: coupleID)
+        } catch let error as CKError where error.code == .serverRecordChanged {
+            return try await appendMessage(message, coupleID: coupleID, attempt: attempt + 1)
+        }
+    }
+
+    private static func decodeMessages(from record: CKRecord, coupleID: String) -> [CoupleMessage] {
+        decodeStoredMessages(from: record)
+            .map { CoupleMessage(stored: $0, coupleID: coupleID) }
+            .sorted { $0.sentAt < $1.sentAt }
+    }
+
+    private static func decodeStoredMessages(from record: CKRecord) -> [StoredCoupleMessage] {
+        guard let data = record["messagesData"] as? Data, !data.isEmpty else { return [] }
+        return (try? decoder.decode([StoredCoupleMessage].self, from: data)) ?? []
+    }
+
+    private static func save(_ record: CKRecord) async throws -> CKRecord {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<CKRecord, Error>) in
             container.publicCloudDatabase.save(record) { saved, error in
                 if let error {
                     continuation.resume(throwing: error)
@@ -83,29 +158,33 @@ enum CoupleMessageService {
                 }
             }
         }
-
-        guard let message = parse(saved) else {
-            throw CoupleMessageError.saveFailed
-        }
-        return message
     }
 
-    private static func parse(_ record: CKRecord) -> CoupleMessage? {
-        guard let coupleID = record["coupleID"] as? String,
-              let senderRecordName = record["senderRecordName"] as? String,
-              let senderName = record["senderName"] as? String,
-              let text = record["text"] as? String else {
-            return nil
-        }
+    private static func timestampString(from date: Date = Date()) -> String {
+        timestampFormatter.string(from: date)
+    }
 
-        return CoupleMessage(
-            id: record.recordID.recordName,
-            coupleID: coupleID,
-            senderRecordName: senderRecordName,
-            senderName: senderName,
-            text: text,
-            sentAt: record["sentAt"] as? Date ?? Date()
-        )
+    fileprivate static func parseTimestamp(_ string: String) -> Date {
+        timestampFormatter.date(from: string) ?? Date()
+    }
+}
+
+private struct StoredCoupleMessage: Codable {
+    let id: String
+    let senderRecordName: String
+    let senderName: String
+    let text: String
+    let sentAt: String
+}
+
+private extension CoupleMessage {
+    init(stored: StoredCoupleMessage, coupleID: String) {
+        id = stored.id
+        self.coupleID = coupleID
+        senderRecordName = stored.senderRecordName
+        senderName = stored.senderName
+        text = stored.text
+        sentAt = CoupleMessageService.parseTimestamp(stored.sentAt)
     }
 }
 

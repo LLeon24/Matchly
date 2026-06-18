@@ -43,6 +43,7 @@ final class CoupleSyncCoordinator: ObservableObject {
 
         await CoupleNotificationService.shared.requestAuthorizationIfNeeded()
         await CoupleNotificationService.shared.registerCoupleSubscriptions(coupleID: activeCouple.id)
+        repairLegacyRankPairOrientation(dataManager: dataManager, couple: activeCouple)
         await refreshAll(dataManager: dataManager)
 
         pollTask?.cancel()
@@ -161,5 +162,24 @@ final class CoupleSyncCoordinator: ObservableObject {
         dataManager.savePreferences()
         activeCoupleID = registration.coupleID
         logger.info("Repaired couple ID to shared CloudKit value")
+    }
+
+    /// Older builds stored rank pairs from the editor's perspective instead of canonical couple.user1ID slots.
+    private func repairLegacyRankPairOrientation(dataManager: DataManager, couple: Couple) {
+        guard let myRecord = AuthManager.shared.cloudKitUserRecordName,
+              myRecord != couple.user1ID else { return }
+
+        let pairs = dataManager.preferences.couplesRankPairs
+        guard !pairs.isEmpty else { return }
+
+        let myProgramIDs = Set(dataManager.programs.map(\.id))
+        let slot1Overlap = pairs.compactMap(\.user1ProgramID).filter { myProgramIDs.contains($0) }.count
+        let slot2Overlap = pairs.compactMap(\.user2ProgramID).filter { myProgramIDs.contains($0) }.count
+
+        guard slot1Overlap > slot2Overlap else { return }
+
+        dataManager.preferences.couplesRankPairs = pairs.map { CouplesRankPairPerspective.swapUserSlots($0) }
+        dataManager.savePreferences()
+        logger.info("Repaired legacy couples rank pair orientation")
     }
 }

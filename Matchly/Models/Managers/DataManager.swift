@@ -585,14 +585,26 @@ class DataManager: ObservableObject {
     // MARK: - Couples Matching
     
     func generateCouplesRankList(partnerPrograms: [CoupleProgramSnapshot]) -> [CouplesRankPair] {
-        let user1Programs = Program.rankedSnapshots(from: getRankedPrograms())
         let prefs = preferences.couplesPreferences
+        guard let couple = preferences.couple,
+              let myRecord = AuthManager.shared.cloudKitUserRecordName else { return [] }
 
-        guard !user1Programs.isEmpty, !partnerPrograms.isEmpty else { return [] }
+        let mySnapshots = Program.rankedSnapshots(from: getRankedPrograms())
+        guard !mySnapshots.isEmpty, !partnerPrograms.isEmpty else { return [] }
+
+        let user1Programs: [CoupleProgramSnapshot]
+        let user2Programs: [CoupleProgramSnapshot]
+        if myRecord == couple.user1ID {
+            user1Programs = mySnapshots
+            user2Programs = partnerPrograms
+        } else {
+            user1Programs = partnerPrograms
+            user2Programs = mySnapshots
+        }
 
         return CouplesRankEngine.generateRankList(
             user1Programs: user1Programs,
-            user2Programs: partnerPrograms,
+            user2Programs: user2Programs,
             preferences: prefs
         )
     }
@@ -613,33 +625,35 @@ class DataManager: ObservableObject {
     func validateCouplesRankList() -> (isValid: Bool, errors: [String]) {
         var errors: [String] = []
         let pairs = preferences.couplesRankPairs.sorted { $0.rank < $1.rank }
+        guard let couple = preferences.couple else {
+            return (false, ["Link with your partner before validating a couples rank list."])
+        }
         
-        // Check that all ranks are sequential
         for (index, pair) in pairs.enumerated() {
             if pair.rank != index + 1 {
                 errors.append("Rank #\(index + 1) is missing or out of order")
             }
         }
         
-        // Check that each pair has at least one program or "No Match"
         for pair in pairs {
             if !pair.user1NoMatch && pair.user1ProgramID == nil {
-                errors.append("Rank #\(pair.rank): Your program is not set")
+                errors.append("Rank #\(pair.rank): \(couple.user1Name)'s program is not set")
             }
             if !pair.user2NoMatch && pair.user2ProgramID == nil {
-                errors.append("Rank #\(pair.rank): Partner's program is not set")
+                let partnerLabel = couple.user2Name ?? "Partner"
+                errors.append("Rank #\(pair.rank): \(partnerLabel)'s program is not set")
             }
         }
         
-        // Check for duplicate programs
         let user1ProgramIDs = pairs.compactMap { $0.user1ProgramID }
         let user2ProgramIDs = pairs.compactMap { $0.user2ProgramID }
         
         if Set(user1ProgramIDs).count != user1ProgramIDs.count {
-            errors.append("You have duplicate programs in your rank list")
+            errors.append("\(couple.user1Name) has duplicate programs in the rank list")
         }
         if Set(user2ProgramIDs).count != user2ProgramIDs.count {
-            errors.append("Partner has duplicate programs in their rank list")
+            let partnerLabel = couple.user2Name ?? "Partner"
+            errors.append("\(partnerLabel) has duplicate programs in the rank list")
         }
         
         return (errors.isEmpty, errors)

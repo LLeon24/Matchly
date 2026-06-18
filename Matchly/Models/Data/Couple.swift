@@ -166,18 +166,21 @@ struct CouplesRankPair: Codable, Identifiable, Hashable {
 }
 
 struct CouplesPreferences: Codable, Hashable {
+    var mustMatchTogether: Bool = true
+    var preferSameHospital: Bool = false
+    var preferSameCity: Bool = false
+    var preferSameState: Bool = true
+    var prioritizeIndividualRankLists: Bool = true
+    var distanceTolerance: Int = 100
+
+    /// Legacy fields — kept for backward compatibility; UI uses toggles above.
     var geographicPriority: GeographicPriority = .balanced
     var programTypePriority: ProgramTypePriority = .balanced
-    var distanceTolerance: Int = 50 // Maximum distance in miles between programs
-    var mustMatchTogether: Bool = true // If false, allows individual matching if couple match fails
-
-    /// Relative importance sliders (0–1). Normalized inside `CouplesRankEngine`.
     var weightIndividualScores: Double = 0.35
     var weightGeography: Double = 0.30
     var weightSameHospital: Double = 0.15
     var weightEMR: Double = 0.10
     var weightProgramType: Double = 0.10
-    var preferSameHospital: Bool = false
 
     enum GeographicPriority: String, Codable, CaseIterable, Hashable {
         case sameCity = "Same City"
@@ -242,16 +245,31 @@ extension CouplesRankPair {
 extension CouplesPreferences {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.mustMatchTogether = try container.decodeIfPresent(Bool.self, forKey: .mustMatchTogether) ?? true
+        self.preferSameHospital = try container.decodeIfPresent(Bool.self, forKey: .preferSameHospital) ?? false
+        self.preferSameCity = try container.decodeIfPresent(Bool.self, forKey: .preferSameCity) ?? false
+        self.preferSameState = try container.decodeIfPresent(Bool.self, forKey: .preferSameState) ?? true
+        self.prioritizeIndividualRankLists = try container.decodeIfPresent(Bool.self, forKey: .prioritizeIndividualRankLists) ?? true
+        self.distanceTolerance = try container.decodeIfPresent(Int.self, forKey: .distanceTolerance) ?? 100
         self.geographicPriority = try container.decodeIfPresent(GeographicPriority.self, forKey: .geographicPriority) ?? .balanced
         self.programTypePriority = try container.decodeIfPresent(ProgramTypePriority.self, forKey: .programTypePriority) ?? .balanced
-        self.distanceTolerance = try container.decodeIfPresent(Int.self, forKey: .distanceTolerance) ?? 50
-        self.mustMatchTogether = try container.decodeIfPresent(Bool.self, forKey: .mustMatchTogether) ?? true
         self.weightIndividualScores = try container.decodeIfPresent(Double.self, forKey: .weightIndividualScores) ?? 0.35
         self.weightGeography = try container.decodeIfPresent(Double.self, forKey: .weightGeography) ?? 0.30
         self.weightSameHospital = try container.decodeIfPresent(Double.self, forKey: .weightSameHospital) ?? 0.15
         self.weightEMR = try container.decodeIfPresent(Double.self, forKey: .weightEMR) ?? 0.10
         self.weightProgramType = try container.decodeIfPresent(Double.self, forKey: .weightProgramType) ?? 0.10
-        self.preferSameHospital = try container.decodeIfPresent(Bool.self, forKey: .preferSameHospital) ?? false
+
+        if container.contains(.preferSameCity) == false {
+            switch geographicPriority {
+            case .sameCity:
+                preferSameCity = true
+                preferSameState = true
+            case .sameState, .sameRegion:
+                preferSameState = true
+            default:
+                break
+            }
+        }
     }
 }
 

@@ -63,6 +63,8 @@ struct CouplesMatchingView: View {
                         .padding(.vertical, 8)
                     } header: {
                         Text("Couple Status")
+                    } footer: {
+                        Text("Use the Couple tab in the bottom bar for chat, your shared rank list, and matching settings.")
                     }
                     
                     Section {

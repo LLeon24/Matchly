@@ -7,9 +7,11 @@ import SwiftUI
 
 struct CoupleChatView: View {
     @EnvironmentObject var dataManager: DataManager
+    @Environment(\.matchlyLayout) private var layout
     @ObservedObject private var authManager = AuthManager.shared
 
     let couple: Couple
+    var embeddedInHub: Bool = false
 
     @State private var messages: [CoupleMessage] = []
     @State private var draft = ""
@@ -28,14 +30,14 @@ struct CoupleChatView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        Group {
             if !authManager.isCloudKitAvailable {
                 ContentUnavailableView {
                     Label("iCloud Required", systemImage: "icloud.slash")
                 } description: {
                     Text(authManager.cloudUnavailableMessage ?? "Sign in to iCloud to message your partner.")
                 }
-                .frame(maxHeight: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -56,6 +58,7 @@ struct CoupleChatView: View {
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 12)
+                        .frame(maxWidth: .infinity)
                     }
                     .onChange(of: messages.count) { _, _ in
                         if let last = messages.last {
@@ -65,31 +68,13 @@ struct CoupleChatView: View {
                         }
                     }
                 }
-
-                Divider()
-
-                HStack(spacing: 10) {
-                    TextField("Message your partner…", text: $draft, axis: .vertical)
-                        .lineLimit(1...4)
-                        .font(.arial(size: 15))
-                        .focused($isInputFocused)
-
-                    Button(action: sendMessage) {
-                        if isSending {
-                            ProgressView()
-                        } else {
-                            Image(systemName: "paperplane.fill")
-                                .font(.arial(size: 16, weight: .semibold))
-                        }
-                    }
-                    .disabled(isSending || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    messageComposer
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(Color(.systemBackground))
             }
         }
-        .navigationTitle("Partner Chat")
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .navigationTitle(embeddedInHub ? "" : "Partner Chat")
         .navigationBarTitleDisplayMode(.inline)
         .task {
             await refreshMessages()
@@ -111,13 +96,58 @@ struct CoupleChatView: View {
         }
     }
 
+    private var messageComposer: some View {
+        let canSend = !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSending
+
+        return HStack(alignment: .bottom, spacing: 10) {
+            TextField("Message your partner…", text: $draft, axis: .vertical)
+                .lineLimit(1...6)
+                .font(.arial(size: 16))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .focused($isInputFocused)
+                .glassEffect(.regular, in: .rect(cornerRadius: 22))
+
+            Button(action: sendMessage) {
+                Group {
+                    if isSending {
+                        ProgressView()
+                            .tint(.white)
+                    } else {
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                }
+                .frame(width: 34, height: 34)
+                .background(
+                    Circle()
+                        .fill(canSend ? AppColors.primaryBlue : Color(.systemGray3))
+                )
+            }
+            .disabled(!canSend)
+            .animation(.easeInOut(duration: 0.15), value: canSend)
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 10)
+        .padding(.bottom, isInputFocused ? 8 : layout.tabBarScrollClearance)
+        .animation(.easeInOut(duration: 0.25), value: isInputFocused)
+        .background {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .overlay(alignment: .top) {
+                    Divider()
+                }
+        }
+    }
+
     private func refreshMessages(silent: Bool = false) async {
         if !silent { isLoading = true }
         defer { if !silent { isLoading = false } }
         do {
             messages = try await CoupleMessageService.fetchMessages(coupleID: couple.id)
         } catch {
-            errorMessage = "Could not load messages."
+            errorMessage = CoupleMessageService.userFacingMessage(for: error)
         }
     }
 
@@ -151,7 +181,7 @@ struct CoupleChatView: View {
             } catch let error as CoupleMessageError {
                 errorMessage = error.localizedDescription
             } catch {
-                errorMessage = "Could not send your message."
+                errorMessage = CoupleMessageService.userFacingMessage(for: error)
             }
         }
     }
@@ -161,32 +191,54 @@ private struct CoupleMessageBubble: View {
     let message: CoupleMessage
 
     var body: some View {
-        HStack {
-            if message.isFromCurrentUser { Spacer(minLength: 40) }
+        HStack(alignment: .bottom, spacing: 0) {
+            if message.isFromCurrentUser { Spacer(minLength: 48) }
 
             VStack(alignment: message.isFromCurrentUser ? .trailing : .leading, spacing: 4) {
                 if !message.isFromCurrentUser {
                     Text(message.senderName)
                         .font(.arial(size: 11, weight: .semibold))
                         .foregroundColor(.secondary)
+                        .padding(.leading, 4)
                 }
 
                 Text(message.text)
-                    .font(.arial(size: 15))
+                    .font(.arial(size: 16))
                     .foregroundColor(message.isFromCurrentUser ? .white : .primary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    .background {
+                        bubbleShape(isFromCurrentUser: message.isFromCurrentUser)
                             .fill(message.isFromCurrentUser ? AppColors.primaryBlue : Color(.systemGray5))
-                    )
+                    }
 
                 Text(message.sentAt, style: .time)
                     .font(.arial(size: 10))
                     .foregroundColor(.secondary)
+                    .padding(message.isFromCurrentUser ? .trailing : .leading, 4)
             }
 
-            if !message.isFromCurrentUser { Spacer(minLength: 40) }
+            if !message.isFromCurrentUser { Spacer(minLength: 48) }
         }
+    }
+
+    private func bubbleShape(isFromCurrentUser: Bool) -> UnevenRoundedRectangle {
+        if isFromCurrentUser {
+            return UnevenRoundedRectangle(
+                topLeadingRadius: 20,
+                bottomLeadingRadius: 20,
+                bottomTrailingRadius: 6,
+                topTrailingRadius: 20,
+                style: .continuous
+            )
+        }
+
+        return UnevenRoundedRectangle(
+            topLeadingRadius: 20,
+            bottomLeadingRadius: 6,
+            bottomTrailingRadius: 20,
+            topTrailingRadius: 20,
+            style: .continuous
+        )
     }
 }
