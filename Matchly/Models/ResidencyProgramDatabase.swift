@@ -366,19 +366,11 @@ final class ResidencyProgramDatabase: ObservableObject {
         if lowerQuery.isEmpty {
             matchesQuery = true
         } else {
-            let normalizedState = stateToAbbrev[lowerQuery] ?? lowerQuery
-
-            let cityExactMatch = program.city.lowercased() == lowerQuery
-            let cityContainsMatch = program.city.lowercased().contains(lowerQuery)
-            let stateExactMatch = program.state.lowercased() == lowerQuery ||
-                normalizedState.uppercased() == program.state.uppercased() ||
-                (stateToAbbrev[lowerQuery]?.uppercased() == program.state.uppercased())
-            let hospitalMatch = program.hospital.lowercased().contains(lowerQuery)
-            let nameMatch = program.name.lowercased().contains(lowerQuery)
-            let idMatch = program.accreditationID?.lowercased() == lowerQuery ||
-                (program.accreditationID?.lowercased().contains(lowerQuery) ?? false)
-
-            matchesQuery = cityExactMatch || cityContainsMatch || stateExactMatch || hospitalMatch || nameMatch || idMatch
+            matchesQuery = ProgramSearchMatcher.matches(
+                query: lowerQuery,
+                program: program,
+                stateToAbbrev: stateToAbbrev
+            )
         }
 
         return matchesSpecialty && matchesFellowshipType && matchesState && matchesType && matchesIMG && matchesQuery
@@ -434,6 +426,7 @@ final class ResidencyProgramDatabase: ObservableObject {
         residencyPrograms = loaded.filter { $0.trainingLevel == .residency }
         fellowshipPrograms = loaded.filter { $0.trainingLevel == .fellowship }
         lock.unlock()
+        ProgramSearchMatcher.warmCache(for: loaded)
         publishCatalogCounts()
     }
     
