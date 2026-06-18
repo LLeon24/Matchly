@@ -27,9 +27,22 @@ enum CoupleLinkingService {
     private static let recordType = "CoupleCodeInvite"
     private static let logger = Logger(subsystem: "com.matchly", category: "CoupleLinking")
     private static let container = CKContainer(identifier: AuthManager.cloudKitContainerID)
+    private static let timestampFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
 
     private static func recordID(for code: String) -> CKRecord.ID {
         CKRecord.ID(recordName: code.uppercased())
+    }
+
+    private static func timestampString(from date: Date = Date()) -> String {
+        timestampFormatter.string(from: date)
+    }
+
+    private static func setString(_ value: String, forKey key: String, on record: CKRecord) {
+        record[key] = value as CKRecordValue
     }
 
     static func registerPendingCouple(
@@ -39,36 +52,32 @@ enum CoupleLinkingService {
         inviterEmail: String?
     ) async throws {
         let code = couple.coupleCode.uppercased()
-        let database = container.publicCloudDatabase
 
         // Required before writing to the public database.
         _ = try await container.userRecordID()
 
-        let record: CKRecord
-        do {
-            let existing = try await database.record(for: recordID(for: code))
-            if let existingInviter = existing["inviterRecordName"] as? String,
-               existingInviter != inviterRecordName {
+        if let existing = try? await fetchRegistration(for: code) {
+            if existing.isClaimed {
                 throw CoupleLinkingError.codeAlreadyClaimed
             }
-            record = existing
-        } catch let error as CKError where error.code == .unknownItem {
-            record = CKRecord(recordType: recordType, recordID: recordID(for: code))
+            if existing.inviterRecordName != inviterRecordName {
+                throw CoupleLinkingError.codeAlreadyClaimed
+            }
         }
 
-        record["code"] = code as CKRecordValue
-        record["coupleID"] = couple.id as CKRecordValue
-        record["inviterRecordName"] = inviterRecordName as CKRecordValue
-        record["inviterName"] = inviterName as CKRecordValue
+        // Replace any stale/partial record so schema changes can take effect.
+        await deleteRegistration(for: code)
+
+        let record = CKRecord(recordType: recordType, recordID: recordID(for: code))
+        setString(code, forKey: "code", on: record)
+        setString(couple.id, forKey: "coupleID", on: record)
+        setString(inviterRecordName, forKey: "inviterRecordName", on: record)
+        setString(inviterName, forKey: "inviterName", on: record)
         if let inviterEmail, !inviterEmail.isEmpty {
-            record["inviterEmail"] = inviterEmail as CKRecordValue
-        } else {
-            record["inviterEmail"] = nil
+            setString(inviterEmail, forKey: "inviterEmail", on: record)
         }
-        record["status"] = "pending" as CKRecordValue
-        if record["createdAt"] == nil {
-            record["createdAt"] = Date() as CKRecordValue
-        }
+        setString("pending", forKey: "status", on: record)
+        setString(timestampString(), forKey: "createdAt", on: record)
 
         do {
             _ = try await save(record)
@@ -95,8 +104,9 @@ enum CoupleLinkingService {
             case .permissionFailure:
                 return .cloudKitPermissionDenied
             case .invalidArguments, .serverRejectedRequest:
+                let detail = ckError.userInfo[NSLocalizedDescriptionKey] as? String ?? ckError.localizedDescription
                 return .cloudKitFailed(
-                    "CloudKit rejected the invite (\(ckError.code.rawValue)). In CloudKit Dashboard, open Schema → Record Types → CoupleCodeInvite and confirm fields match: code, coupleID, inviterRecordName, inviterName, status, createdAt. Then check Security Roles for _icloud Write/Create and _world Read."
+                    "CloudKit schema error (12): \(detail). In Dashboard → CoupleCodeInvite, every custom field must be String (including createdAt). Save schema, rebuild the app, Generate New Code, then Retry."
                 )
             case .networkUnavailable, .networkFailure, .serviceUnavailable, .requestRateLimited, .zoneBusy:
                 return .cloudKitFailed("Network or iCloud service issue. Check your connection and try again.")
@@ -198,13 +208,13 @@ enum CoupleLinkingService {
         }
 
         let record = try await container.publicCloudDatabase.record(for: recordID(for: normalizedCode))
-        record["status"] = "linked" as CKRecordValue
-        record["partnerRecordName"] = partnerRecordName as CKRecordValue
-        record["partnerName"] = partnerName as CKRecordValue
+        setString("linked", forKey: "status", on: record)
+        setString(partnerRecordName, forKey: "partnerRecordName", on: record)
+        setString(partnerName, forKey: "partnerName", on: record)
         if let partnerEmail, !partnerEmail.isEmpty {
-            record["partnerEmail"] = partnerEmail as CKRecordValue
+            setString(partnerEmail, forKey: "partnerEmail", on: record)
         }
-        record["linkedAt"] = Date() as CKRecordValue
+        setString(timestampString(), forKey: "linkedAt", on: record)
 
         let saved = try await save(record)
         guard let parsed = parse(saved) else {
@@ -218,7 +228,8 @@ enum CoupleLinkingService {
             container.publicCloudDatabase.save(record) { saved, error in
                 if let error {
                     if let ckError = error as? CKError {
-                        logger.error("CloudKit save failed: \(ckError.localizedDescription, privacy: .public) code=\(ckError.code.rawValue, privacy: .public)")
+                        let serverMessage = ckError.userInfo[NSLocalizedDescriptionKey] as? String ?? ckError.localizedDescription
+                        logger.error("CloudKit save failed: \(serverMessage, privacy: .public) code=\(ckError.code.rawValue, privacy: .public)")
                     } else {
                         logger.error("CloudKit save failed: \(error.localizedDescription, privacy: .public)")
                     }

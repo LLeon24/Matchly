@@ -209,15 +209,13 @@ When all five pass, Phase 1 setup is complete.
 - **Couples link always says "No partner found with that code":**
   1. On the **inviting** phone, open Couples Matching and wait for **"Invite ready for your partner"** (green check). If you see an orange error, tap **Retry Publishing Invite** after confirming iCloud is signed in.
   2. Both phones must use the **same CloudKit environment**: two Xcode debug builds, or two TestFlight/App Store builds. A debug build from Xcode and a TestFlight build **cannot** see each other's invite codes.
-  3. **CloudKit Security Roles (required for "Could not publish invite")** — do this once in [CloudKit Dashboard](https://icloud.developer.apple.com/):
-     - Open container **`iCloud.com.matchly.Matchly`** → **Development** (for Xcode builds).
-     - Go to **Schema** → **Security Roles** → **Public Database**.
-     - Select record type **`CoupleCodeInvite`** (create it manually if missing: add fields `code`, `coupleID`, `inviterRecordName`, `inviterName`, `status`, `createdAt` as String/Date types).
-     - Set permissions:
-       - **Authenticated** → **Create**, **Read**, **Write**
-       - **World** → **Read**
-     - Click **Save** (schema changes).
-     - On the phone, tap **Retry Publishing Invite**, then **Data → Records → Query** — you should see a record named like `ZJG35V`.
+  3. **CloudKit schema + security (required for publish/link errors)** — in [CloudKit Dashboard](https://icloud.developer.apple.com/):
+     - Container **`iCloud.com.matchly.Matchly`** → **Development** (for Xcode builds).
+     - **Schema → Record Types → `CoupleCodeInvite`**: every field must be type **String**:
+       `code`, `coupleID`, `inviterRecordName`, `inviterName`, `inviterEmail`, `status`, `createdAt`, `partnerRecordName`, `partnerName`, `partnerEmail`, `linkedAt`.
+       Error **12** usually means `createdAt` (or another field) is **Date/Time** instead of **String** — fix the type and Save.
+     - **Schema → Security Roles**: `_icloud` → Create + Read + Write on `CoupleCodeInvite`; `_world` → Read.
+     - On the phone: **Generate New Code** → **Retry Publishing Invite** → confirm green **Invite ready**.
   4. Before TestFlight: **Schema → Deploy Schema Changes…** Development → Production.
 
 ---
