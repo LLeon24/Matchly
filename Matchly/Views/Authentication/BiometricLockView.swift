@@ -7,8 +7,6 @@ import SwiftUI
 
 struct BiometricLockView: View {
     @ObservedObject private var authManager = AuthManager.shared
-    @State private var isAuthenticating = false
-    @State private var errorMessage: String?
 
     private var biometric: BiometricKind {
         BiometricAuthManager.shared.kind
@@ -34,57 +32,53 @@ struct BiometricLockView: View {
                     .font(.arial(size: 24, weight: .semibold))
                     .foregroundColor(.primary)
 
-                Text("Use \(biometric.displayName) to continue.")
+                HStack(spacing: 10) {
+                    Image(systemName: biometric.systemImageName)
+                        .font(.arial(size: 20, weight: .semibold))
+                        .foregroundColor(AppColors.primaryBlue)
+                    Text(
+                        authManager.shouldShowBiometricRetry
+                            ? "Confirm \(biometric.displayName) to continue"
+                            : "Waiting for \(biometric.displayName)…"
+                    )
                     .font(.arial(size: 15))
                     .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-
-                Button(action: unlock) {
-                    HStack(spacing: 10) {
-                        Image(systemName: biometric.systemImageName)
-                            .font(.arial(size: 18, weight: .semibold))
-                        Text("Unlock with \(biometric.displayName)")
-                            .font(.arial(size: 16, weight: .semibold))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
                 }
-                .buttonStyle(.glassProminent)
-                .tint(AppColors.primaryBlue)
-                .disabled(isAuthenticating)
-                .padding(.horizontal, 32)
-                .padding(.top, 8)
+                .multilineTextAlignment(.center)
 
-                if let errorMessage {
+                if let errorMessage = authManager.biometricUnlockError {
                     Text(errorMessage)
                         .font(.arial(size: 13))
                         .foregroundColor(.red)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 32)
                 }
+
+                if authManager.shouldShowBiometricRetry {
+                    Button(action: retryUnlock) {
+                        HStack(spacing: 10) {
+                            Image(systemName: biometric.systemImageName)
+                                .font(.arial(size: 18, weight: .semibold))
+                            Text("Try \(biometric.displayName) Again")
+                                .font(.arial(size: 16, weight: .semibold))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .tint(AppColors.primaryBlue)
+                    .padding(.horizontal, 32)
+                }
             }
             .padding(.horizontal, 24)
         }
         .onAppear {
-            unlock()
+            authManager.attemptAutomaticBiometricUnlock()
         }
     }
 
-    private func unlock() {
-        guard !isAuthenticating else { return }
-        isAuthenticating = true
-        errorMessage = nil
-
-        Task {
-            defer { isAuthenticating = false }
-            do {
-                try await authManager.unlockWithBiometrics()
-            } catch BiometricAuthError.canceled {
-                errorMessage = nil
-            } catch {
-                errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            }
-        }
+    private func retryUnlock() {
+        authManager.attemptAutomaticBiometricUnlock()
     }
 }
 

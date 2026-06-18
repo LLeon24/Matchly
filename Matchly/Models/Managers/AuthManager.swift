@@ -100,6 +100,10 @@ class AuthManager: ObservableObject {
     @Published private(set) var isAppLocked = false
     @Published var isBiometricLoginEnabled: Bool = UserDefaults.standard.bool(forKey: biometricEnabledKey)
     @Published var shouldOfferBiometricSetup = false
+    @Published var biometricUnlockError: String?
+    @Published private(set) var shouldShowBiometricRetry = false
+
+    private var isBiometricUnlockInFlight = false
 
     /// Latest known CloudKit account status. Couples/CloudKit-dependent state should gate on
     /// `isCloudKitAvailable`. Defaults to `.couldNotDetermine` until the first check resolves.
@@ -244,13 +248,42 @@ class AuthManager: ObservableObject {
         isAppLocked = true
     }
 
+    func attemptAutomaticBiometricUnlock() {
+        guard isAppLocked else { return }
+        guard !isBiometricUnlockInFlight else { return }
+        guard isBiometricLoginEnabled, BiometricAuthManager.shared.canAuthenticate else { return }
+
+        isBiometricUnlockInFlight = true
+        biometricUnlockError = nil
+        shouldShowBiometricRetry = false
+
+        Task { @MainActor in
+            defer { isBiometricUnlockInFlight = false }
+            // Let splash / transition animations finish so Face ID can present.
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard isAppLocked else { return }
+
+            do {
+                try await unlockWithBiometrics()
+            } catch BiometricAuthError.canceled {
+                biometricUnlockError = nil
+                shouldShowBiometricRetry = true
+            } catch {
+                biometricUnlockError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                shouldShowBiometricRetry = true
+            }
+        }
+    }
+
     func unlockWithBiometrics() async throws {
         guard isAppLocked else { return }
         let success = try await BiometricAuthManager.shared.authenticate(
-            reason: "Unlock Matchly with \(biometricDisplayName)"
+            reason: "Unlock Matchly",
+            policy: .biometricsOnly
         )
         guard success else { throw BiometricAuthError.failed }
         isAppLocked = false
+        biometricUnlockError = nil
     }
 
     func signInWithBiometrics() async throws {
@@ -258,7 +291,8 @@ class AuthManager: ObservableObject {
         guard let cachedUser = cachedUserForBiometricLogin() else { throw AuthError.userNotFound }
 
         let success = try await BiometricAuthManager.shared.authenticate(
-            reason: "Sign in to Matchly with \(biometricDisplayName)"
+            reason: "Sign in to Matchly",
+            policy: .biometricsOnly
         )
         guard success else { throw BiometricAuthError.failed }
 

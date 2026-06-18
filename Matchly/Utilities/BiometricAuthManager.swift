@@ -54,6 +54,13 @@ enum BiometricKind {
     }
 }
 
+enum BiometricAuthPolicy {
+    /// Starts Face ID / Touch ID immediately (preferred for unlock).
+    case biometricsOnly
+    /// Allows passcode fallback (preferred when enabling the setting).
+    case biometricsOrPasscode
+}
+
 final class BiometricAuthManager {
     static let shared = BiometricAuthManager()
 
@@ -83,18 +90,27 @@ final class BiometricAuthManager {
         return context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error)
     }
 
-    func authenticate(reason: String) async throws -> Bool {
+    func authenticate(
+        reason: String,
+        policy: BiometricAuthPolicy = .biometricsOrPasscode
+    ) async throws -> Bool {
         let context = LAContext()
         context.localizedCancelTitle = "Cancel"
-        context.localizedFallbackTitle = "Use Passcode"
+        if policy == .biometricsOrPasscode {
+            context.localizedFallbackTitle = "Use Passcode"
+        }
+
+        let laPolicy: LAPolicy = policy == .biometricsOnly
+            ? .deviceOwnerAuthenticationWithBiometrics
+            : .deviceOwnerAuthentication
 
         var error: NSError?
-        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
+        guard context.canEvaluatePolicy(laPolicy, error: &error) else {
             throw BiometricAuthError.notAvailable
         }
 
         return try await withCheckedThrowingContinuation { continuation in
-            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { success, evaluateError in
+            context.evaluatePolicy(laPolicy, localizedReason: reason) { success, evaluateError in
                 if success {
                     continuation.resume(returning: true)
                     return

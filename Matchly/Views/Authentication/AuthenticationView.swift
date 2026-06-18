@@ -13,6 +13,7 @@ private let authViewLogger = Logger(subsystem: "com.matchly", category: "Authent
 
 struct AuthenticationView: View {
     @ObservedObject private var authManager = AuthManager.shared
+    @Environment(\.scenePhase) private var scenePhase
     @State private var showSignUp = false
     @State private var showEmailLogin = false
     @State private var showPhoneLogin = false
@@ -243,9 +244,23 @@ struct AuthenticationView: View {
             Text(errorMessage)
         }
         .onAppear {
-            if authManager.canUseBiometricLogin {
-                signInWithBiometrics()
+            attemptAutomaticBiometricSignIn()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                attemptAutomaticBiometricSignIn()
             }
+        }
+    }
+
+    private func attemptAutomaticBiometricSignIn() {
+        guard authManager.canUseBiometricLogin else { return }
+        guard !isBiometricSigningIn else { return }
+
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard authManager.canUseBiometricLogin else { return }
+            signInWithBiometrics()
         }
     }
 

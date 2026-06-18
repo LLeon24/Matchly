@@ -86,10 +86,22 @@ struct SplashView: View {
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .background {
                 authManager.lockAppIfNeeded()
+            } else if newPhase == .active, authManager.isAppLocked, !showSplash {
+                authManager.attemptAutomaticBiometricUnlock()
+            }
+        }
+        .onChange(of: showSplash) { _, showing in
+            if !showing, authManager.isAppLocked {
+                authManager.attemptAutomaticBiometricUnlock()
+            }
+        }
+        .onChange(of: authManager.isAppLocked) { _, locked in
+            if locked, !showSplash {
+                authManager.attemptAutomaticBiometricUnlock()
             }
         }
         .overlay {
-            if authManager.isAppLocked {
+            if !showSplash && authManager.isAppLocked {
                 BiometricLockView()
                     .transition(.opacity)
                     .zIndex(20)
