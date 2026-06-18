@@ -19,6 +19,7 @@ enum CouplesCloudManager {
     private static let programBundleType = "CoupleProgramBundle"
     private static let rankListType = "CoupleRankList"
     private static let sharedPrefsType = "CoupleSharedPreferences"
+    private static let profilePhotoType = "CoupleProfilePhoto"
     private static let logger = Logger(subsystem: "com.matchly", category: "CouplesCloud")
     private static let container = CKContainer(identifier: AuthManager.cloudKitContainerID)
     private static let encoder = JSONEncoder()
@@ -142,7 +143,48 @@ enum CouplesCloudManager {
         }
     }
 
+    // MARK: - Profile photos
+
+    static func publishOwnProfilePhoto(
+        coupleID: String,
+        ownerRecordName: String,
+        photoData: Data?
+    ) async throws {
+        let recordID = CKRecord.ID(recordName: profilePhotoRecordName(coupleID: coupleID, owner: ownerRecordName))
+
+        let record: CKRecord
+        do {
+            record = try await container.publicCloudDatabase.record(for: recordID)
+        } catch let error as CKError where error.code == .unknownItem {
+            record = CKRecord(recordType: profilePhotoType, recordID: recordID)
+        }
+
+        record["coupleID"] = coupleID as CKRecordValue
+        record["ownerRecordName"] = ownerRecordName as CKRecordValue
+        record["photoData"] = photoData as CKRecordValue?
+        record["updatedAt"] = Date() as CKRecordValue
+
+        try await save(record)
+    }
+
+    static func fetchPartnerProfilePhoto(
+        coupleID: String,
+        partnerRecordName: String
+    ) async throws -> Data? {
+        let recordID = CKRecord.ID(recordName: profilePhotoRecordName(coupleID: coupleID, owner: partnerRecordName))
+        do {
+            let record = try await container.publicCloudDatabase.record(for: recordID)
+            return record["photoData"] as? Data
+        } catch let error as CKError where error.code == .unknownItem {
+            return nil
+        }
+    }
+
     // MARK: - Record names
+
+    private static func profilePhotoRecordName(coupleID: String, owner: String) -> String {
+        "profile-\(coupleID)-\(owner)"
+    }
 
     private static func programBundleRecordName(coupleID: String, owner: String) -> String {
         "programs-\(coupleID)-\(owner)"
@@ -176,7 +218,7 @@ enum CouplesCloudManager {
             case .permissionFailure:
                 return "CloudKit permission denied. Check Security Roles for CoupleProgramBundle (Create, Read, Write for _icloud)."
             case .invalidArguments, .serverRejectedRequest:
-                return "CloudKit schema error: add record types CoupleProgramBundle, CoupleRankList, and CoupleSharedPreferences in the dashboard (see setup docs)."
+                return "CloudKit schema error: add record types CoupleProgramBundle, CoupleRankList, CoupleSharedPreferences, and CoupleProfilePhoto in the dashboard (see setup docs)."
             default:
                 return "\(ckError.localizedDescription) (CK \(ckError.code.rawValue))"
             }

@@ -19,6 +19,7 @@ final class CoupleSyncCoordinator: ObservableObject {
     static let shared = CoupleSyncCoordinator()
 
     @Published private(set) var partnerPrograms: [CoupleProgramSnapshot] = []
+    @Published private(set) var partnerProfilePhotoData: Data?
     @Published private(set) var isSyncing = false
     @Published private(set) var lastSyncError: String?
     @Published private(set) var lastPublishError: String?
@@ -65,6 +66,7 @@ final class CoupleSyncCoordinator: ObservableObject {
         pollTask = nil
         activeCoupleID = nil
         partnerPrograms = []
+        partnerProfilePhotoData = nil
     }
 
     func refreshAll(dataManager: DataManager) async {
@@ -89,6 +91,10 @@ final class CoupleSyncCoordinator: ObservableObject {
 
         do {
             partnerPrograms = try await CouplesCloudManager.fetchPartnerPrograms(
+                coupleID: couple.id,
+                partnerRecordName: partnerRecordName
+            )
+            partnerProfilePhotoData = try await CouplesCloudManager.fetchPartnerProfilePhoto(
                 coupleID: couple.id,
                 partnerRecordName: partnerRecordName
             )
@@ -140,6 +146,11 @@ final class CoupleSyncCoordinator: ObservableObject {
                 coupleID: couple.id,
                 preferences: dataManager.preferences.couplesPreferences,
                 editorRecordName: myRecordName
+            )
+            try await CouplesCloudManager.publishOwnProfilePhoto(
+                coupleID: couple.id,
+                ownerRecordName: myRecordName,
+                photoData: dataManager.preferences.profile.photoData
             )
             lastSyncedAt = Date()
             lastPublishError = nil

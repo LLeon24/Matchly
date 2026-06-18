@@ -226,6 +226,7 @@ struct ProfileEditView: View {
             dataManager.preferences.profile.avatarPresetID = nil
         }
         dataManager.savePreferences()
+        dataManager.scheduleCoupleCloudPublish()
         authManager.updateDisplayName(dataManager.preferences.profile.name)
         dataManager.objectWillChange.send() // Force UI refresh
         dismiss()

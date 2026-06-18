@@ -79,30 +79,44 @@ struct CouplesHubView: View {
         let partnerName = displayName(for: couple, isPartner: true)
 
         HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("You")
-                    .font(.arial(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
-                Text(myName)
-                    .font(.arial(size: 15, weight: .semibold))
-                    .lineLimit(1)
+            HStack(spacing: 10) {
+                ProfilePhotoView(
+                    photoData: dataManager.preferences.profile.photoData,
+                    size: 44
+                )
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("You")
+                        .font(.arial(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
+                    Text(myName)
+                        .font(.arial(size: 15, weight: .semibold))
+                        .lineLimit(1)
+                }
             }
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 4)
 
             Image(systemName: "heart.fill")
                 .foregroundColor(.pink)
                 .font(.arial(size: 18))
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 4)
 
-            VStack(alignment: .trailing, spacing: 2) {
-                Text("Partner")
-                    .font(.arial(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
-                Text(partnerName)
-                    .font(.arial(size: 15, weight: .semibold))
-                    .lineLimit(1)
+            HStack(spacing: 10) {
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("Partner")
+                        .font(.arial(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
+                    Text(partnerName)
+                        .font(.arial(size: 15, weight: .semibold))
+                        .lineLimit(1)
+                }
+
+                ProfilePhotoView(
+                    photoData: coupleSync.partnerProfilePhotoData,
+                    size: 44
+                )
             }
         }
         .padding(12)
