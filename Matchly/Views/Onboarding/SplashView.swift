@@ -10,9 +10,11 @@ import SwiftUI
 struct SplashView: View {
     @ObservedObject private var authManager = AuthManager.shared
     @ObservedObject private var dataManager = DataManager.shared
+    @Environment(\.scenePhase) private var scenePhase
     @State private var showSplash = true
     @State private var scale: CGFloat = 0.8
     @State private var opacity: Double = 0
+    @State private var showBiometricSetupAlert = false
     
     var body: some View {
         Group {
@@ -77,6 +79,34 @@ struct SplashView: View {
             if case .signedIn = newState {
                 showSplash = false
             }
+        }
+        .onChange(of: authManager.shouldOfferBiometricSetup) { _, shouldOffer in
+            showBiometricSetupAlert = shouldOffer
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .background {
+                authManager.lockAppIfNeeded()
+            }
+        }
+        .overlay {
+            if authManager.isAppLocked {
+                BiometricLockView()
+                    .transition(.opacity)
+                    .zIndex(20)
+            }
+        }
+        .alert(
+            "Use \(authManager.biometricDisplayName)?",
+            isPresented: $showBiometricSetupAlert
+        ) {
+            Button("Not Now", role: .cancel) {
+                authManager.declineBiometricSetup()
+            }
+            Button("Enable \(authManager.biometricDisplayName)") {
+                authManager.enableBiometricLogin()
+            }
+        } message: {
+            Text("Quickly unlock Matchly with \(authManager.biometricDisplayName) when you return to the app.")
         }
     }
     

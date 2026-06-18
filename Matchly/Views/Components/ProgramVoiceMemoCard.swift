@@ -176,10 +176,23 @@ private final class ProgramAudioPlayer: NSObject, ObservableObject, AVAudioPlaye
     @Published var playbackRate: Float
 
     private var progressTimer: DispatchSourceTimer?
+    private var stopObserver: AnyCancellable?
 
     override init() {
         playbackRate = VoiceMemoStorage.preferredPlaybackRate
         super.init()
+        stopObserver = NotificationCenter.default.publisher(for: .voiceMemoPlaybackDidStop)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.handleExternalStop()
+            }
+    }
+
+    private func handleExternalStop() {
+        progressTimer?.cancel()
+        progressTimer = nil
+        isPlaying = false
+        currentTime = 0
     }
 
     func setDurationHint(_ duration: TimeInterval) {
@@ -382,6 +395,9 @@ struct ProgramVoiceMemoCard: View {
         .padding(.vertical, 16)
         .onAppear {
             Task { await refreshMemoState() }
+        }
+        .onDisappear {
+            VoiceMemoPlayback.stopActivePlayback()
         }
         .onChange(of: programId) { _, _ in
             Task {

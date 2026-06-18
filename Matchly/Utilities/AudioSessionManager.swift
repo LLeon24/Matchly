@@ -5,6 +5,24 @@
 
 import AVFoundation
 
+extension Notification.Name {
+    static let voiceMemoPlaybackDidStop = Notification.Name("VoiceMemoPlaybackDidStop")
+}
+
+/// Stops any in-flight voice memo playback and notifies UI observers to reset.
+enum VoiceMemoPlayback {
+    static func stopActivePlayback() {
+        Task {
+            await AudioSessionManager.runVoid {
+                AudioSessionManager.clearPlayer()
+            }
+            await MainActor.run {
+                NotificationCenter.default.post(name: .voiceMemoPlaybackDidStop, object: nil)
+            }
+        }
+    }
+}
+
 enum AudioSessionError: Error {
     case recordFailed
     case playbackFailed

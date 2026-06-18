@@ -43,7 +43,7 @@ struct OnboardingFlowView: View {
             case .name: return "What's your name?"
             case .aamcID: return "AAMC ID (Optional)"
             case .photo: return "Add Your Photo (Optional)"
-            case .appGuide: return "How Matchly Works"
+            case .appGuide: return "Quick App Tour"
             case .matchPreferences: return "Match Preferences"
             case .calendarSync: return "Calendar Sync"
             }
@@ -57,7 +57,7 @@ struct OnboardingFlowView: View {
             case .name: return "We'll use this to personalize your experience"
             case .aamcID: return "Your AAMC ID helps us provide better program matching"
             case .photo: return "Make your profile more personal"
-            case .appGuide: return "Swipe through a quick tour of each part of the app."
+            case .appGuide: return "After setup, we'll walk you through the real app with arrows and highlights — not a slideshow."
             case .matchPreferences: return "A few defaults to get your rank list and scoring right from the start."
             case .calendarSync: return "Would you like to sync your interviews to your device calendar? You can change this anytime in Settings."
             }
@@ -422,41 +422,71 @@ struct OnboardingFlowView: View {
 
     // MARK: - App Guide Step
     private var appGuideStep: some View {
-        VStack(spacing: 0) {
-            VStack(spacing: 8) {
-                Text(OnboardingStep.appGuide.title)
-                    .font(.arial(size: 28, weight: .bold))
-                    .multilineTextAlignment(.center)
-                Text(OnboardingStep.appGuide.subtitle)
-                    .font(.arial(size: 16))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            .padding(.horizontal, 32)
-            .padding(.top, 24)
-            .padding(.bottom, 8)
+        OnboardingStepView(
+            title: OnboardingStep.appGuide.title,
+            subtitle: OnboardingStep.appGuide.subtitle,
+            content: {
+                VStack(spacing: 24) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .fill(AppColors.primaryBlue.opacity(0.08))
+                            .frame(height: 180)
 
-            AppGuideView {
+                        VStack(spacing: 16) {
+                            Image(systemName: "hand.point.up.left.fill")
+                                .font(.system(size: 42))
+                                .foregroundStyle(AppColors.primaryBlue)
+                                .rotationEffect(.degrees(-8))
+
+                            Text("Interactive guided tour")
+                                .font(.arial(size: 18, weight: .semibold))
+
+                            Text("We'll dim the screen, spotlight each tab, and draw arrows with tips — like the in-app tours you see in other apps.")
+                                .font(.arial(size: 14))
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 20)
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        tourPreviewRow(icon: "house.fill", title: "Dashboard", tint: AppColors.primaryBlue)
+                        tourPreviewRow(icon: "list.bullet", title: "My Programs", tint: AppColors.accentGreen)
+                        tourPreviewRow(icon: "chart.bar.fill", title: "Rank List", tint: AppColors.accentPink)
+                        tourPreviewRow(icon: "map.fill", title: "Map", tint: AppColors.accentTeal)
+                        tourPreviewRow(icon: "gearshape.fill", title: "Settings", tint: AppColors.accentPurple)
+                    }
+                    .padding(16)
+                    .glassEffect(.regular, in: .rect(cornerRadius: 14))
+                }
+            },
+            onNext: {
                 withAnimation {
                     currentStep = .matchPreferences
                 }
-            }
-            .frame(maxHeight: .infinity)
-
-            Button(action: {
+            },
+            canContinue: true,
+            buttonText: "Continue",
+            onBack: {
                 withAnimation {
                     currentStep = .photo
                 }
-            }) {
-                HStack(spacing: 6) {
-                    Image(systemName: "chevron.left")
-                        .font(.arial(size: 14, weight: .semibold))
-                    Text("Back")
-                        .font(.arial(size: 17, weight: .medium))
-                }
-                .foregroundColor(.secondary)
             }
-            .padding(.bottom, 12)
+        )
+    }
+
+    private func tourPreviewRow(icon: String, title: String, tint: Color) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.arial(size: 14, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 24)
+            Text(title)
+                .font(.arial(size: 15, weight: .medium))
+            Spacer()
+            Image(systemName: "arrow.turn.down.right")
+                .font(.arial(size: 12))
+                .foregroundColor(.secondary)
         }
     }
 
@@ -709,6 +739,7 @@ struct OnboardingFlowView: View {
         
         // Mark onboarding as complete
         dataManager.preferences.hasCompletedOnboarding = true
+        dataManager.preferences.hasCompletedFeatureTour = false
         dataManager.savePreferences()
         
         if dataManager.preferences.preferredEMR != nil {

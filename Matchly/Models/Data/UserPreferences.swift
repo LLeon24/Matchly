@@ -13,6 +13,10 @@ struct UserPreferences: Codable, Hashable {
     /// Residency or Fellowship — drives default program search track.
     var applyingTrack: String = ProgramTrainingLevelFilter.residency.rawValue
     var hasCompletedOnboarding: Bool = false
+    /// Interactive tab-bar tour shown once after onboarding (replayable from Settings).
+    var hasCompletedFeatureTour: Bool = false
+    /// Spotlight tour for the Couple tab when couples matching is first activated.
+    var hasCompletedCoupleFeatureTour: Bool = false
     
     // User profile
     var profile: UserProfile = UserProfile()
@@ -210,10 +214,22 @@ extension UserPreferences {
         self.applyingTrack = try container.decodeIfPresent(String.self, forKey: .applyingTrack)
             ?? ProgramTrainingLevelFilter.residency.rawValue
         self.hasCompletedOnboarding = try container.decodeIfPresent(Bool.self, forKey: .hasCompletedOnboarding) ?? false
+        if let completedFeatureTour = try container.decodeIfPresent(Bool.self, forKey: .hasCompletedFeatureTour) {
+            self.hasCompletedFeatureTour = completedFeatureTour
+        } else {
+            // Profiles saved before the guided tour existed already finished onboarding.
+            self.hasCompletedFeatureTour = self.hasCompletedOnboarding
+        }
         self.profile = try container.decodeIfPresent(UserProfile.self, forKey: .profile) ?? UserProfile()
         self.userID = try container.decodeIfPresent(String.self, forKey: .userID) ?? UUID().uuidString
         self.nrmpID = try container.decodeIfPresent(String.self, forKey: .nrmpID)
         self.couple = try container.decodeIfPresent(Couple.self, forKey: .couple)
+        if let completedCoupleTour = try container.decodeIfPresent(Bool.self, forKey: .hasCompletedCoupleFeatureTour) {
+            self.hasCompletedCoupleFeatureTour = completedCoupleTour
+        } else {
+            // Linked users who finished the main tour before the couple tour existed.
+            self.hasCompletedCoupleFeatureTour = self.hasCompletedFeatureTour && (self.couple?.isLinked == true)
+        }
         self.couplesPreferences = try container.decodeIfPresent(CouplesPreferences.self, forKey: .couplesPreferences) ?? CouplesPreferences()
         self.couplesRankPairs = try container.decodeIfPresent([CouplesRankPair].self, forKey: .couplesRankPairs) ?? []
         self.sentInvites = try container.decodeIfPresent([CoupleInvite].self, forKey: .sentInvites) ?? []

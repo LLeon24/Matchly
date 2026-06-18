@@ -2,7 +2,7 @@
 //  AppGuideView.swift
 //  Matchly
 //
-//  Reusable walkthrough of Matchly's main areas — used in onboarding and Settings.
+//  Static feature overview — the interactive tab tour lives in AppFeatureTourOverlay.
 //
 
 import SwiftUI

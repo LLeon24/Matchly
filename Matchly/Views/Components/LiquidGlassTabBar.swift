@@ -20,7 +20,8 @@ struct LiquidGlassTabBar: View {
                     icon: "house.fill",
                     title: "Dashboard",
                     isSelected: selectedTab == 0,
-                    color: AppColors.primaryBlue
+                    color: AppColors.primaryBlue,
+                    tourAnchorID: FeatureTourAnchorID.dashboardTab
                 ) {
                     handleTabSelection(targetTab: 0)
                 }
@@ -29,7 +30,8 @@ struct LiquidGlassTabBar: View {
                     icon: "list.bullet",
                     title: "My Programs",
                     isSelected: selectedTab == 1,
-                    color: AppColors.accentGreen
+                    color: AppColors.accentGreen,
+                    tourAnchorID: FeatureTourAnchorID.programsTab
                 ) {
                     handleTabSelection(targetTab: 1)
                 }
@@ -38,7 +40,8 @@ struct LiquidGlassTabBar: View {
                     icon: "chart.bar.fill",
                     title: "Rank List",
                     isSelected: selectedTab == 2,
-                    color: AppColors.accentPink
+                    color: AppColors.accentPink,
+                    tourAnchorID: FeatureTourAnchorID.rankListTab
                 ) {
                     handleTabSelection(targetTab: 2)
                 }
@@ -48,7 +51,8 @@ struct LiquidGlassTabBar: View {
                         icon: "heart.fill",
                         title: "Couple",
                         isSelected: selectedTab == 3,
-                        color: .pink
+                        color: .pink,
+                        tourAnchorID: FeatureTourAnchorID.coupleTab
                     ) {
                         handleTabSelection(targetTab: 3)
                     }
@@ -58,7 +62,8 @@ struct LiquidGlassTabBar: View {
                     icon: "map.fill",
                     title: "Map",
                     isSelected: selectedTab == (isCoupleLinked ? 4 : 3),
-                    color: AppColors.accentTeal
+                    color: AppColors.accentTeal,
+                    tourAnchorID: FeatureTourAnchorID.mapTab
                 ) {
                     handleTabSelection(targetTab: isCoupleLinked ? 4 : 3)
                 }
@@ -67,7 +72,8 @@ struct LiquidGlassTabBar: View {
                     icon: "gearshape.fill",
                     title: "Settings",
                     isSelected: selectedTab == (isCoupleLinked ? 5 : 4),
-                    color: AppColors.accentPurple
+                    color: AppColors.accentPurple,
+                    tourAnchorID: FeatureTourAnchorID.settingsTab
                 ) {
                     handleTabSelection(targetTab: isCoupleLinked ? 5 : 4)
                 }
@@ -113,6 +119,7 @@ struct TabBarButton: View {
     let title: String
     let isSelected: Bool
     let color: Color
+    var tourAnchorID: String? = nil
     let action: () -> Void
     @Environment(\.matchlyLayout) private var layout
 
@@ -128,9 +135,10 @@ struct TabBarButton: View {
                     .font(.arial(size: layout.tabBarTitleFont, weight: isSelected ? .semibold : .regular))
                     .foregroundColor(isSelected ? color : .secondary)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .minimumScaleFactor(0.75)
             }
             .frame(maxWidth: .infinity)
+            .padding(.vertical, layout == .compactVertical ? 4 : 6)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -138,6 +146,14 @@ struct TabBarButton: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(title)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .background {
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: FeatureTourAnchorPreferenceKey.self,
+                    value: tourAnchorID.map { [$0: proxy.frame(in: .global)] } ?? [:]
+                )
+            }
+        }
     }
 }
 

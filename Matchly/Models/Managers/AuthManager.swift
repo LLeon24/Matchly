@@ -91,9 +91,15 @@ class AuthManager: ObservableObject {
     /// Keychain identifiers for the persisted Apple login id.
     private static let keychainService = "com.matchly.auth"
     private static let keychainAppleUserAccount = "apple_user_id"
+    private static let keychainCachedUserAccount = "cached_user_session"
+    private static let biometricEnabledKey = "matchly_biometric_login_enabled"
+    private static let biometricOfferDeclinedKey = "matchly_biometric_offer_declined"
 
     @Published var authState: AuthState = .loading
     @Published var currentUser: User?
+    @Published private(set) var isAppLocked = false
+    @Published var isBiometricLoginEnabled: Bool = UserDefaults.standard.bool(forKey: biometricEnabledKey)
+    @Published var shouldOfferBiometricSetup = false
 
     /// Latest known CloudKit account status. Couples/CloudKit-dependent state should gate on
     /// `isCloudKitAvailable`. Defaults to `.couldNotDetermine` until the first check resolves.
@@ -112,6 +118,18 @@ class AuthManager: ObservableObject {
 
     /// The stable Apple login id persisted in the Keychain (survives UserDefaults clears).
     var storedAppleUserID: String? { Self.keychainRead(account: Self.keychainAppleUserAccount) }
+
+    /// Whether Face ID / Touch ID can restore a previous session on the login screen.
+    var canUseBiometricLogin: Bool {
+        isBiometricLoginEnabled
+            && BiometricAuthManager.shared.canAuthenticate
+            && storedAppleUserID != nil
+            && cachedUserForBiometricLogin() != nil
+    }
+
+    var biometricDisplayName: String {
+        BiometricAuthManager.shared.kind.displayName
+    }
 
     /// User-facing explanation when CloudKit isn't usable yet (mirrors CloudSyncManager style).
     var cloudUnavailableMessage: String? {
@@ -148,6 +166,8 @@ class AuthManager: ObservableObject {
     
     // MARK: - Auth State Management
     func checkAuthState() {
+        isBiometricLoginEnabled = UserDefaults.standard.bool(forKey: Self.biometricEnabledKey)
+
         // Check if user is already signed in. We do NOT wipe legacy stub users here; if a
         // previously "signed in" email/phone stub exists we keep them signed in and let the
         // next Apple sign-in map them onto a real Apple identity.
@@ -155,8 +175,12 @@ class AuthManager: ObservableObject {
            let user = try? JSONDecoder().decode(User.self, from: userData) {
             self.currentUser = user
             self.authState = .signedIn(user)
+            if isBiometricLoginEnabled && BiometricAuthManager.shared.canAuthenticate {
+                self.isAppLocked = true
+            }
         } else {
             self.authState = .signedOut
+            self.isAppLocked = false
         }
     }
     
@@ -183,6 +207,85 @@ class AuthManager: ObservableObject {
             self.currentUser = updatedUser
             Self.logger.info("Saved user to UserDefaults: displayName=\(updatedUser.displayName ?? "nil", privacy: .public)")
         }
+
+        if isBiometricLoginEnabled {
+            cacheUserForBiometricLogin(updatedUser)
+        } else if BiometricAuthManager.shared.canAuthenticate,
+                  !UserDefaults.standard.bool(forKey: Self.biometricOfferDeclinedKey) {
+            shouldOfferBiometricSetup = true
+        }
+    }
+
+    func enableBiometricLogin() {
+        isBiometricLoginEnabled = true
+        UserDefaults.standard.set(true, forKey: Self.biometricEnabledKey)
+        if let user = currentUser {
+            cacheUserForBiometricLogin(user)
+        }
+        shouldOfferBiometricSetup = false
+    }
+
+    func disableBiometricLogin() {
+        isBiometricLoginEnabled = false
+        UserDefaults.standard.set(false, forKey: Self.biometricEnabledKey)
+        Self.keychainDelete(account: Self.keychainCachedUserAccount)
+        isAppLocked = false
+    }
+
+    func declineBiometricSetup() {
+        UserDefaults.standard.set(true, forKey: Self.biometricOfferDeclinedKey)
+        shouldOfferBiometricSetup = false
+    }
+
+    func lockAppIfNeeded() {
+        guard isBiometricLoginEnabled,
+              BiometricAuthManager.shared.canAuthenticate,
+              case .signedIn = authState else { return }
+        isAppLocked = true
+    }
+
+    func unlockWithBiometrics() async throws {
+        guard isAppLocked else { return }
+        let success = try await BiometricAuthManager.shared.authenticate(
+            reason: "Unlock Matchly with \(biometricDisplayName)"
+        )
+        guard success else { throw BiometricAuthError.failed }
+        isAppLocked = false
+    }
+
+    func signInWithBiometrics() async throws {
+        guard canUseBiometricLogin else { throw BiometricAuthError.notAvailable }
+        guard let cachedUser = cachedUserForBiometricLogin() else { throw AuthError.userNotFound }
+
+        let success = try await BiometricAuthManager.shared.authenticate(
+            reason: "Sign in to Matchly with \(biometricDisplayName)"
+        )
+        guard success else { throw BiometricAuthError.failed }
+
+        let provider = ASAuthorizationAppleIDProvider()
+        let state: ASAuthorizationAppleIDProvider.CredentialState = await withCheckedContinuation { continuation in
+            provider.getCredentialState(forUserID: cachedUser.id) { state, _ in
+                continuation.resume(returning: state)
+            }
+        }
+
+        switch state {
+        case .authorized:
+            await MainActor.run {
+                signIn(user: cachedUser)
+            }
+            await refreshCloudKitIdentity()
+        case .revoked, .notFound:
+            await MainActor.run {
+                disableBiometricLogin()
+                Self.keychainDelete(account: Self.keychainAppleUserAccount)
+            }
+            throw AuthError.invalidCredentials
+        case .transferred:
+            throw AuthError.invalidCredentials
+        @unknown default:
+            throw AuthError.invalidCredentials
+        }
     }
     
     func signOut() {
@@ -191,8 +294,13 @@ class AuthManager: ObservableObject {
         self.authState = .signedOut
         self.cloudAccountStatus = .couldNotDetermine
         self.currentAppleNonce = nil
+        self.isAppLocked = false
         UserDefaults.standard.removeObject(forKey: authKey)
-        Self.keychainDelete(account: Self.keychainAppleUserAccount)
+
+        if !isBiometricLoginEnabled {
+            Self.keychainDelete(account: Self.keychainAppleUserAccount)
+            Self.keychainDelete(account: Self.keychainCachedUserAccount)
+        }
     }
 
     /// Best available name for UI: auth display name, profile name, email local-part, then fallback.
@@ -561,6 +669,16 @@ class AuthManager: ObservableObject {
 
     // MARK: - Keychain
 
+    private func cacheUserForBiometricLogin(_ user: User) {
+        guard let data = try? JSONEncoder().encode(user) else { return }
+        Self.keychainSaveData(data, account: Self.keychainCachedUserAccount)
+    }
+
+    private func cachedUserForBiometricLogin() -> User? {
+        guard let data = Self.keychainReadData(account: Self.keychainCachedUserAccount) else { return nil }
+        return try? JSONDecoder().decode(User.self, from: data)
+    }
+
     private static func keychainSave(_ value: String, account: String) {
         guard let data = value.data(using: .utf8) else { return }
         let query: [String: Any] = [
@@ -577,6 +695,36 @@ class AuthManager: ObservableObject {
         if status != errSecSuccess {
             logger.error("Keychain save failed (status: \(status, privacy: .public))")
         }
+    }
+
+    private static func keychainSaveData(_ data: Data, account: String) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: account
+        ]
+        SecItemDelete(query as CFDictionary)
+        var addQuery = query
+        addQuery[kSecValueData as String] = data
+        addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        let status = SecItemAdd(addQuery as CFDictionary, nil)
+        if status != errSecSuccess {
+            logger.error("Keychain data save failed (status: \(status, privacy: .public))")
+        }
+    }
+
+    private static func keychainReadData(account: String) -> Data? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        guard status == errSecSuccess else { return nil }
+        return item as? Data
     }
 
     private static func keychainRead(account: String) -> String? {

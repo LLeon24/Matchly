@@ -18,6 +18,11 @@ struct AuthenticationView: View {
     @State private var showPhoneLogin = false
     @State private var showError = false
     @State private var errorMessage = ""
+    @State private var isBiometricSigningIn = false
+
+    private var biometricKind: BiometricKind {
+        BiometricAuthManager.shared.kind
+    }
     
     var body: some View {
         ZStack {
@@ -51,6 +56,39 @@ struct AuthenticationView: View {
                     
                     // Sign In Options
                     VStack(spacing: 16) {
+                        if authManager.canUseBiometricLogin {
+                            Button(action: signInWithBiometrics) {
+                                HStack {
+                                    Spacer()
+                                    Image(systemName: biometricKind.systemImageName)
+                                        .font(.arial(size: 16))
+                                        .frame(width: 24)
+                                    Text("Sign in with \(biometricKind.displayName)")
+                                        .font(.arial(size: 16, weight: .medium))
+                                    Spacer()
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 16)
+                            }
+                            .buttonStyle(.glassProminent)
+                            .tint(AppColors.primaryBlue)
+                            .disabled(isBiometricSigningIn)
+
+                            HStack {
+                                Rectangle()
+                                    .fill(Color.secondary.opacity(0.3))
+                                    .frame(height: 1)
+                                Text("OR")
+                                    .font(.arial(size: 12, weight: .medium))
+                                    .foregroundColor(.secondary)
+                                    .padding(.horizontal, 12)
+                                Rectangle()
+                                    .fill(Color.secondary.opacity(0.3))
+                                    .frame(height: 1)
+                            }
+                            .padding(.vertical, 4)
+                        }
+
                         // v1 ships Apple Sign In ONLY. The email/phone entry points below are
                         // hidden (not deleted) behind `AuthManager.allowsNonAppleProviders` so
                         // they remain reversible. Couples Match requires iCloud, which Apple
@@ -203,6 +241,32 @@ struct AuthenticationView: View {
             Button("OK", role: .cancel) { }
         } message: {
             Text(errorMessage)
+        }
+        .onAppear {
+            if authManager.canUseBiometricLogin {
+                signInWithBiometrics()
+            }
+        }
+    }
+
+    private func signInWithBiometrics() {
+        guard !isBiometricSigningIn else { return }
+        isBiometricSigningIn = true
+
+        Task { @MainActor in
+            defer { isBiometricSigningIn = false }
+            do {
+                try await authManager.signInWithBiometrics()
+            } catch BiometricAuthError.canceled {
+                return
+            } catch {
+                if let authError = error as? LocalizedError, let description = authError.errorDescription {
+                    errorMessage = description
+                } else {
+                    errorMessage = error.localizedDescription
+                }
+                showError = true
+            }
         }
     }
 }

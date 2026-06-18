@@ -60,7 +60,11 @@ struct SettingsView: View {
                     authManager.signOut()
                 }
             } message: {
-                Text("Are you sure you want to sign out? You'll need to sign in again to access your data.")
+                Text(
+                    authManager.isBiometricLoginEnabled
+                        ? "You'll sign out of this session. Sign back in with \(authManager.biometricDisplayName) or Apple Sign In."
+                        : "Are you sure you want to sign out? You'll need to sign in again to access your data."
+                )
             }
             .sheet(isPresented: $showSpecialtyChange) {
                 SpecialtySelectionView()
@@ -135,8 +139,14 @@ struct SettingsView: View {
     
     private var appInformationSection: some View {
         Section("App Information") {
+                    Button {
+                        NotificationCenter.default.post(name: NSNotification.Name("ShowFeatureTour"), object: nil)
+                    } label: {
+                        Label("Replay Guided Tour", systemImage: "hand.point.up.left.fill")
+                    }
+
                     NavigationLink(destination: AppGuideView(showsNavigationChrome: true)) {
-                        Label("How to Use Matchly", systemImage: "book.fill")
+                        Label("Feature Overview", systemImage: "book.fill")
                     }
 
                     Picker("Applying To", selection: Binding(
@@ -325,6 +335,21 @@ struct SettingsView: View {
     
     private var accountSection: some View {
         Section("Account") {
+                    if BiometricAuthManager.shared.canAuthenticate {
+                        Toggle(isOn: biometricLoginBinding) {
+                            Label {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Use \(authManager.biometricDisplayName)")
+                                    Text("Unlock Matchly and sign in faster on this device.")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            } icon: {
+                                Image(systemName: BiometricAuthManager.shared.kind.systemImageName)
+                            }
+                        }
+                    }
+
                     if let user = authManager.currentUser {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Signed in as")
@@ -365,6 +390,30 @@ struct SettingsView: View {
                 }
     }
     
+    private var biometricLoginBinding: Binding<Bool> {
+        Binding(
+            get: { authManager.isBiometricLoginEnabled },
+            set: { enabled in
+                if enabled {
+                    Task { @MainActor in
+                        do {
+                            let success = try await BiometricAuthManager.shared.authenticate(
+                                reason: "Enable \(authManager.biometricDisplayName) for Matchly"
+                            )
+                            if success {
+                                authManager.enableBiometricLogin()
+                            }
+                        } catch {
+                            authManager.disableBiometricLogin()
+                        }
+                    }
+                } else {
+                    authManager.disableBiometricLogin()
+                }
+            }
+        )
+    }
+
     private func resetAllData() {
         dataManager.programs = []
         dataManager.preferences = UserPreferences()

@@ -8,14 +8,32 @@
 import SwiftUI
 import UIKit
 
+private enum FeatureTourMode {
+    case full
+    case coupleOnly
+}
+
 struct MainTabView: View {
     @ObservedObject private var dataManager = DataManager.shared
     @State private var selectedTab: Int = 0
     @State private var dashboardRefreshKey: UUID = UUID()
     @State private var isKeyboardVisible: Bool = false
+    @State private var showFeatureTour = false
+    @State private var featureTourStepIndex = 0
+    @State private var featureTourMode: FeatureTourMode = .full
+    @State private var tourAnchorRects: [String: CGRect] = [:]
 
     private var isCoupleLinked: Bool {
         dataManager.preferences.couple?.isLinked == true
+    }
+
+    private var featureTourSteps: [FeatureTourStep] {
+        switch featureTourMode {
+        case .full:
+            return AppFeatureTourSteps.steps(isCoupleLinked: isCoupleLinked)
+        case .coupleOnly:
+            return AppFeatureTourSteps.coupleMatchSteps()
+        }
     }
 
     var body: some View {
@@ -58,13 +76,45 @@ struct MainTabView: View {
                 LiquidGlassTabBar(selectedTab: $selectedTab, isCoupleLinked: isCoupleLinked)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
+
+            if showFeatureTour {
+                AppFeatureTourOverlay(
+                    steps: featureTourSteps,
+                    anchorRects: tourAnchorRects,
+                    stepIndex: $featureTourStepIndex,
+                    selectedTab: $selectedTab,
+                    onFinish: completeFeatureTour,
+                    onSkip: completeFeatureTour
+                )
+                .transition(.opacity)
+                .zIndex(10)
+            }
         }
         .matchlyAdaptiveLayout()
         .environmentObject(dataManager)
         .onAppear {
             dataManager.startCoupleSyncIfNeeded()
+            if !dataManager.preferences.hasCompletedFeatureTour {
+                featureTourMode = .full
+                showFeatureTour = true
+                featureTourStepIndex = 0
+            }
         }
-        .onChange(of: isCoupleLinked) { _, linked in
+        .onPreferenceChange(FeatureTourAnchorPreferenceKey.self) { tourAnchorRects = $0 }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ShowFeatureTour"))) { _ in
+            featureTourMode = .full
+            featureTourStepIndex = 0
+            selectedTab = 0
+            showFeatureTour = true
+        }
+        .onChange(of: selectedTab) { oldTab, newTab in
+            guard oldTab != newTab else { return }
+            VoiceMemoPlayback.stopActivePlayback()
+        }
+        .onChange(of: isCoupleLinked) { wasLinked, linked in
+            if linked && !wasLinked {
+                handleCoupleMatchActivated()
+            }
             guard !linked else { return }
             switch selectedTab {
             case 3:
@@ -78,6 +128,7 @@ struct MainTabView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("PopToRoot"))) { _ in
+            VoiceMemoPlayback.stopActivePlayback()
             dashboardRefreshKey = UUID()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
@@ -90,6 +141,38 @@ struct MainTabView: View {
                 isKeyboardVisible = false
             }
         }
+    }
+
+    private func handleCoupleMatchActivated() {
+        if showFeatureTour && featureTourMode == .full {
+            if let coupleIndex = AppFeatureTourSteps.steps(isCoupleLinked: true).firstIndex(where: { $0.id == "couple" }) {
+                featureTourStepIndex = coupleIndex
+            }
+            return
+        }
+
+        guard dataManager.preferences.hasCompletedFeatureTour else { return }
+        guard !dataManager.preferences.hasCompletedCoupleFeatureTour else { return }
+
+        featureTourMode = .coupleOnly
+        featureTourStepIndex = 0
+        selectedTab = 3
+        showFeatureTour = true
+    }
+
+    private func completeFeatureTour() {
+        switch featureTourMode {
+        case .coupleOnly:
+            dataManager.preferences.hasCompletedCoupleFeatureTour = true
+        case .full:
+            dataManager.preferences.hasCompletedFeatureTour = true
+            if isCoupleLinked {
+                dataManager.preferences.hasCompletedCoupleFeatureTour = true
+            }
+        }
+        dataManager.savePreferences()
+        showFeatureTour = false
+        featureTourMode = .full
     }
 }
 
