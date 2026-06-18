@@ -12,6 +12,8 @@ struct UserProfile: Codable, Hashable {
     var name: String = ""
     var aamcID: String? // Optional AAMC ID
     var photoData: Data? // Store photo as Data for Codable
+    /// Set when the user picks a built-in avatar preset (cleared for custom photos).
+    var avatarPresetID: String?
     
     var hasPhoto: Bool {
         photoData != nil
@@ -30,6 +32,7 @@ extension UserProfile {
         self.name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
         self.aamcID = try container.decodeIfPresent(String.self, forKey: .aamcID)
         self.photoData = try container.decodeIfPresent(Data.self, forKey: .photoData)
+        self.avatarPresetID = try container.decodeIfPresent(String.self, forKey: .avatarPresetID)
     }
 }
 

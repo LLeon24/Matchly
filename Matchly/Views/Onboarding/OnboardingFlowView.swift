@@ -56,7 +56,7 @@ struct OnboardingFlowView: View {
             case .specialties: return "Choose the specialties you're applying to. You can select multiple if you're dual applying."
             case .name: return "We'll use this to personalize your experience"
             case .aamcID: return "Your AAMC ID helps us provide better program matching"
-            case .photo: return "Make your profile more personal"
+            case .photo: return "Upload a photo or pick an avatar"
             case .appGuide: return "After setup, we'll walk you through the real app with arrows and highlights — not a slideshow."
             case .matchPreferences: return "A few defaults to get your rank list and scoring right from the start."
             case .calendarSync: return "Would you like to sync your interviews to your device calendar? You can change this anytime in Settings."
@@ -123,6 +123,7 @@ struct OnboardingFlowView: View {
             ImageCropView(image: item.image) { croppedImage in
                 if let data = croppedImage.jpegData(compressionQuality: 0.9) {
                     profile.photoData = data
+                    profile.avatarPresetID = nil
                 }
             }
         }
@@ -388,6 +389,7 @@ struct OnboardingFlowView: View {
                     if profile.hasPhoto {
                         Button(action: {
                             profile.photoData = nil
+                            profile.avatarPresetID = nil
                             selectedPhoto = nil
                         }) {
                             Text("Remove Photo")
@@ -395,6 +397,13 @@ struct OnboardingFlowView: View {
                                 .foregroundColor(.red)
                         }
                     }
+
+                    ProfileAvatarPresetPicker(selectedPresetID: profile.avatarPresetID) { preset, data in
+                        selectedPhoto = nil
+                        profile.photoData = data
+                        profile.avatarPresetID = preset.id
+                    }
+                    .padding(.horizontal, 4)
                     
                     Spacer()
                 }

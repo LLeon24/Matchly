@@ -14,7 +14,7 @@ enum VoiceMemoStorageError: Error {
 
 enum VoiceMemoStorage {
     static let subdirectory = "VoiceMemos"
-    static let maxDurationSeconds: TimeInterval = 300
+    nonisolated static let maxDurationSeconds: TimeInterval = 300
     static let playbackRateOptions: [Float] = [0.75, 1.0, 1.25, 1.5, 2.0]
     private static let playbackRateDefaultsKey = "voiceMemoPlaybackRate"
 

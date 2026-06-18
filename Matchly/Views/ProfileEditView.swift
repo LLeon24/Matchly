@@ -18,6 +18,7 @@ struct ProfileEditView: View {
     @State private var aamcID: String = ""
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var photoData: Data?
+    @State private var avatarPresetID: String?
     @State private var cropImageItem: CropImageItem?
     @State private var isLoadingPhoto = false
     
@@ -95,14 +96,23 @@ struct ProfileEditView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.top, 24) // Increased padding for Dynamic Island
-                .padding(.bottom, 20) // Increased bottom padding
+                .padding(.bottom, 8)
+
+                ProfileAvatarPresetPicker(selectedPresetID: avatarPresetID) { preset, data in
+                    selectedPhoto = nil
+                    photoData = data
+                    avatarPresetID = preset.id
+                }
+                .padding(.bottom, 12)
                 
                 if photoData != nil || dataManager.preferences.profile.photoData != nil {
                     Button(role: .destructive, action: {
                         photoData = nil
+                        avatarPresetID = nil
                         selectedPhoto = nil
                         // Immediately update UI
                         dataManager.preferences.profile.photoData = nil
+                        dataManager.preferences.profile.avatarPresetID = nil
                     }) {
                         HStack {
                             Spacer()
@@ -190,6 +200,7 @@ struct ProfileEditView: View {
             ImageCropView(image: item.image) { croppedImage in
                 if let data = croppedImage.jpegData(compressionQuality: 0.9) {
                     photoData = data
+                    avatarPresetID = nil
                 }
             }
         }
@@ -199,6 +210,7 @@ struct ProfileEditView: View {
         name = dataManager.preferences.profile.name
         aamcID = dataManager.preferences.profile.aamcID ?? ""
         photoData = dataManager.preferences.profile.photoData
+        avatarPresetID = dataManager.preferences.profile.avatarPresetID
     }
     
     private func saveProfile() {
@@ -207,9 +219,11 @@ struct ProfileEditView: View {
         // Always save the photoData if it exists, even if it's nil (to allow removal)
         if photoData != nil {
             dataManager.preferences.profile.photoData = photoData
+            dataManager.preferences.profile.avatarPresetID = avatarPresetID
         } else if photoData == nil && dataManager.preferences.profile.photoData != nil && selectedPhoto == nil {
             // Only clear if user explicitly removed it
             dataManager.preferences.profile.photoData = nil
+            dataManager.preferences.profile.avatarPresetID = nil
         }
         dataManager.savePreferences()
         authManager.updateDisplayName(dataManager.preferences.profile.name)
