@@ -375,6 +375,8 @@ struct CompactProgramRowView: View {
                         }
                         .foregroundColor(.red)
                     }
+
+                    ProgramVoiceMemoBadge(program: program)
                 }
             }
             

@@ -2213,6 +2213,8 @@ struct TopProgramRow: View {
                             .font(.arial(size: 13, weight: .semibold))
                     }
                     .foregroundColor(scoreColor(program.finalScore))
+
+                    ProgramVoiceMemoBadge(program: program, iconSize: 9, textSize: 11)
                 }
             }
             
@@ -2255,6 +2257,8 @@ struct UpcomingInterviewRow: View {
                         .font(.arial(size: 13))
                         .foregroundColor(.secondary)
                 }
+
+                ProgramVoiceMemoBadge(program: program, iconSize: 9, textSize: 11)
             }
             
             Spacer()

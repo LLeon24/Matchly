@@ -123,6 +123,8 @@ struct ProgramNeedingInterviewDateRow: View {
                 Text("No interview date")
                     .font(.arial(size: 12, weight: .medium))
                     .foregroundColor(AppColors.accentOrange)
+
+                ProgramVoiceMemoBadge(program: program, iconSize: 9, textSize: 11)
             }
 
             Spacer(minLength: 0)

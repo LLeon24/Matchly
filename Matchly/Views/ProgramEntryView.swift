@@ -49,6 +49,8 @@ struct ProgramEntryView: View {
     @FocusState private var isNotesFocused: Bool
     @State private var showNotes: Bool = true
     @State private var keyboardHeight: CGFloat = 0
+    @State private var draftProgramId: String = UUID().uuidString
+    @State private var originalVoiceMemoReference: String?
     
     // Contact information
     @State private var websiteURL: String = ""
@@ -247,6 +249,13 @@ struct ProgramEntryView: View {
                     }
                     .padding(.horizontal, 20)
                     .padding(.vertical, 16)
+                }
+                .padding(.horizontal, 20)
+
+                whiteCardContainer {
+                    ProgramVoiceMemoCard(programId: draftProgramId) {
+                        hasUnsavedChanges = true
+                    }
                 }
                 .padding(.horizontal, 20)
                 
@@ -557,7 +566,7 @@ struct ProgramEntryView: View {
                                 let finalSpecialty = specialty.isEmpty ? (program?.specialty ?? dataManager.preferences.specialties.first ?? "Unknown") : specialty
                                 let finalScore = questionnaire.totalWeightedScore(preferences: dataManager.preferences, programEMR: emr)
                                 let updatedProgram = Program(
-                                    id: program?.id ?? UUID().uuidString,
+                                    id: program?.id ?? draftProgramId,
                                     specialty: finalSpecialty,
                                     name: name,
                                     hospital: hospital,
@@ -575,7 +584,7 @@ struct ProgramEntryView: View {
                                     questionnaire: questionnaire,
                                     notes: notes,
                                     interviewDate: interviewDate,
-                                    voiceMemoURL: nil,
+                                    voiceMemoURL: currentVoiceMemoReference,
                                     websiteURL: websiteURL.isEmpty ? nil : websiteURL,
                                     contactEmail: contactEmail.isEmpty ? nil : contactEmail,
                                     contactPhone: contactPhone.isEmpty ? nil : contactPhone,
@@ -750,8 +759,10 @@ struct ProgramEntryView: View {
         mainContentView
             .onAppear {
                 if let program = program {
+                    draftProgramId = program.id
                     loadProgram(program)
                 } else {
+                    draftProgramId = UUID().uuidString
                     isInitialLoad = false
                 }
                 if let sectionA = questionnaire.sections.first(where: { $0.title.contains("Section A") }) {
@@ -937,6 +948,19 @@ struct ProgramEntryView: View {
                                 }
                                 .foregroundColor(.red)
                             }
+
+                            if VoiceMemoStorage.programHasVoiceMemo(
+                                id: draftProgramId,
+                                reference: program?.voiceMemoURL ?? currentVoiceMemoReference
+                            ) {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "waveform")
+                                        .font(.arial(size: 10))
+                                    Text("Voice Memo")
+                                        .font(.arial(size: 12, weight: .medium))
+                                }
+                                .foregroundColor(.purple)
+                            }
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1037,15 +1061,25 @@ struct ProgramEntryView: View {
         
         // Load questionnaire
         questionnaire = program.questionnaire
+
+        originalVoiceMemoReference = VoiceMemoStorage.normalizedReference(
+            from: program.voiceMemoURL,
+            programId: program.id
+        )
+    }
+
+    private var currentVoiceMemoReference: String? {
+        VoiceMemoStorage.referenceIfMemoExists(forProgramId: draftProgramId)
     }
     
     private func saveProgram() {
+        let programId = program?.id ?? draftProgramId
         let normalizedSpecialty = SpecialtyFormatter.normalizedUserSpecialty(
             !specialty.isEmpty ? specialty : (program?.specialty ?? dataManager.preferences.specialties.first ?? dataManager.preferences.specialty ?? "Unknown")
         )
         
         let newProgram = Program(
-            id: program?.id ?? UUID().uuidString,
+            id: programId,
             specialty: normalizedSpecialty,
             name: name,
             hospital: hospital,
@@ -1063,7 +1097,7 @@ struct ProgramEntryView: View {
             questionnaire: questionnaire,
             notes: notes,
             interviewDate: hasInterviewDate ? interviewDate : nil,
-            voiceMemoURL: nil,
+            voiceMemoURL: currentVoiceMemoReference,
             websiteURL: websiteURL.isEmpty ? nil : websiteURL,
             contactEmail: contactEmail.isEmpty ? nil : contactEmail,
             contactPhone: contactPhone.isEmpty ? nil : contactPhone,
@@ -1102,6 +1136,7 @@ struct ProgramEntryView: View {
             // For new programs, check if any fields are filled (quick checks)
             return !name.isEmpty || !hospital.isEmpty || !city.isEmpty || !state.isEmpty ||
                    !notes.isEmpty || hasInterviewDate || signalType != .none || !signalNote.isEmpty || emr != nil ||
+                   currentVoiceMemoReference != nil ||
                    questionnaire.sections.contains { section in
                        section.items.contains { $0.programRating > 0 }
                    }
@@ -1118,7 +1153,8 @@ struct ProgramEntryView: View {
         // Quick string comparisons first
         if program.name != name || program.hospital != hospital || program.city != city ||
            program.state != state || program.notes != notes || program.signalType != signalType ||
-           program.signalNote != trimmedSignalNote || program.emr != emr {
+           program.signalNote != trimmedSignalNote || program.emr != emr ||
+           program.voiceMemoURL != currentVoiceMemoReference {
             return true
         }
         

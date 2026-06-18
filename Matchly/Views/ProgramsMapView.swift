@@ -272,6 +272,14 @@ struct ProgramMapCard: View {
                                         .foregroundColor(program.signalType == .gold ? .yellow : .gray)
                                         .padding(.top, 2) // Align with first line of text
                                 }
+
+                                if program.hasVoiceMemo {
+                                    Image(systemName: "waveform")
+                                        .font(.arial(size: 14))
+                                        .foregroundColor(.purple)
+                                        .padding(.top, 2)
+                                        .accessibilityLabel("Has voice memo")
+                                }
                             }
                             
                             if let address = program.address, !address.isEmpty {

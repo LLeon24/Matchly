@@ -133,6 +133,7 @@ struct AllSignaledProgramsView: View {
 
                 HStack(spacing: 8) {
                     signalBadge(for: program)
+                    ProgramVoiceMemoBadge(program: program)
                     if let note = program.signalNote, !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Label("Statement", systemImage: "text.quote")
                             .font(.arial(size: 10, weight: .medium))

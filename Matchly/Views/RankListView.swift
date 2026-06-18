@@ -578,6 +578,8 @@ struct RankListItemView: View {
                         }
                         .foregroundColor(.red)
                     }
+
+                    ProgramVoiceMemoBadge(program: program, iconSize: 9, textSize: 11)
                 }
             }
             

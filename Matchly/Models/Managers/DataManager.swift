@@ -530,6 +530,7 @@ class DataManager: ObservableObject {
     }
     
     func deleteProgram(_ program: Program) {
+        VoiceMemoStorage.deleteMemo(reference: program.voiceMemoURL)
         programs.removeAll { $0.id == program.id }
         savePrograms()
     }

@@ -669,6 +669,8 @@ struct InterviewRow: View {
                     }
                     .foregroundColor(.secondary)
                 }
+
+                ProgramVoiceMemoBadge(program: program, iconSize: 9, textSize: 11)
             }
             
             Spacer()

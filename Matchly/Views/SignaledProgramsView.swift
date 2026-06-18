@@ -141,6 +141,8 @@ struct SignaledProgramsView: View {
                                         }
                                         .foregroundColor(.red)
                                     }
+
+                                    ProgramVoiceMemoBadge(program: program)
                                 }
                             }
                             

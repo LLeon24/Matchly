@@ -162,6 +162,8 @@ struct ProgramsNeedingReviewView: View {
                                                     }
                                                     .foregroundColor(.red)
                                                 }
+
+                                                ProgramVoiceMemoBadge(program: program)
                                                 
                                                 // "No Data" indicator - styled consistently
                                                 HStack(spacing: 3) {
