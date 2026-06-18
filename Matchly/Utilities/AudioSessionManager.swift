@@ -114,12 +114,20 @@ enum AudioSessionManager {
         deactivateSession()
     }
 
-    static func makePlayer(for url: URL) throws -> AVAudioPlayer {
+    static func makePlayer(for url: URL, rate: Float = 1.0) throws -> AVAudioPlayer {
         try prepareForPlayback()
         let player = try AVAudioPlayer(contentsOf: url)
+        player.enableRate = true
+        player.rate = rate
         player.prepareToPlay()
         activePlayer = player
         return player
+    }
+
+    static func setPlaybackRate(_ rate: Float) {
+        guard let player = activePlayer else { return }
+        player.enableRate = true
+        player.rate = rate
     }
 
     static func clearPlayer() {

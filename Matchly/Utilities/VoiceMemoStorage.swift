@@ -15,6 +15,38 @@ enum VoiceMemoStorageError: Error {
 enum VoiceMemoStorage {
     static let subdirectory = "VoiceMemos"
     static let maxDurationSeconds: TimeInterval = 300
+    static let playbackRateOptions: [Float] = [0.75, 1.0, 1.25, 1.5, 2.0]
+    private static let playbackRateDefaultsKey = "voiceMemoPlaybackRate"
+
+    static var preferredPlaybackRate: Float {
+        get {
+            let stored = UserDefaults.standard.object(forKey: playbackRateDefaultsKey) as? Float
+            return playbackRateOptions.contains(stored ?? 1.0) ? (stored ?? 1.0) : 1.0
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: playbackRateDefaultsKey)
+        }
+    }
+
+    static func transcriptURL(forProgramId id: String) -> URL {
+        baseDirectory().appendingPathComponent("\(id).txt")
+    }
+
+    static func loadTranscript(forProgramId id: String) -> String? {
+        let url = transcriptURL(forProgramId: id)
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return try? String(contentsOf: url, encoding: .utf8)
+    }
+
+    static func saveTranscript(_ text: String, forProgramId id: String) throws {
+        let directory = baseDirectory()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try text.write(to: transcriptURL(forProgramId: id), atomically: true, encoding: .utf8)
+    }
+
+    static func deleteTranscript(forProgramId id: String) {
+        try? FileManager.default.removeItem(at: transcriptURL(forProgramId: id))
+    }
 
     static func fileURL(forProgramId id: String) -> URL {
         let directory = baseDirectory()
@@ -65,6 +97,11 @@ enum VoiceMemoStorage {
     static func deleteMemo(forProgramId id: String) {
         let url = fileURL(forProgramId: id)
         try? FileManager.default.removeItem(at: url)
+        deleteTranscript(forProgramId: id)
+    }
+
+    static func invalidateTranscript(forProgramId id: String) {
+        deleteTranscript(forProgramId: id)
     }
 
     static func deleteMemo(reference: String?) {

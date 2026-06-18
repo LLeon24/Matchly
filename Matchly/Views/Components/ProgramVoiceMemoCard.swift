@@ -100,6 +100,9 @@ private final class ProgramAudioRecorder: ObservableObject {
                         into: destination
                     )
                     try? FileManager.default.removeItem(at: segmentURL)
+                    VoiceMemoStorage.invalidateTranscript(
+                        forProgramId: destination.deletingPathExtension().lastPathComponent
+                    )
                     completion?(destination)
                 } catch {
                     try? FileManager.default.removeItem(at: segmentURL)
@@ -170,12 +173,28 @@ private final class ProgramAudioPlayer: NSObject, ObservableObject, AVAudioPlaye
     @Published var isPlaying = false
     @Published var currentTime: TimeInterval = 0
     @Published var duration: TimeInterval = 0
+    @Published var playbackRate: Float
 
     private var progressTimer: DispatchSourceTimer?
+
+    override init() {
+        playbackRate = VoiceMemoStorage.preferredPlaybackRate
+        super.init()
+    }
 
     func setDurationHint(_ duration: TimeInterval) {
         if !isPlaying {
             self.duration = duration
+        }
+    }
+
+    func setPlaybackRate(_ rate: Float) {
+        playbackRate = rate
+        VoiceMemoStorage.preferredPlaybackRate = rate
+        Task {
+            await AudioSessionManager.runVoid {
+                AudioSessionManager.setPlaybackRate(rate)
+            }
         }
     }
 
@@ -200,12 +219,15 @@ private final class ProgramAudioPlayer: NSObject, ObservableObject, AVAudioPlaye
             }
 
             do {
+                let rate = await MainActor.run { self.playbackRate }
                 try await AudioSessionManager.run {
                     let player: AVAudioPlayer
                     if let existing = AudioSessionManager.currentPlayer() {
                         player = existing
+                        player.enableRate = true
+                        player.rate = rate
                     } else {
-                        player = try AudioSessionManager.makePlayer(for: url)
+                        player = try AudioSessionManager.makePlayer(for: url, rate: rate)
                         player.delegate = self
                     }
 
@@ -313,7 +335,12 @@ struct ProgramVoiceMemoCard: View {
     @StateObject private var player = ProgramAudioPlayer()
     @State private var hasMemo = false
     @State private var showPermissionAlert = false
+    @State private var showSpeechPermissionAlert = false
     @State private var remainingDuration: TimeInterval = VoiceMemoStorage.maxDurationSeconds
+    @State private var showTranscript = false
+    @State private var transcriptText: String?
+    @State private var isTranscribing = false
+    @State private var transcriptError: String?
 
     private var memoURL: URL {
         VoiceMemoStorage.fileURL(forProgramId: programId)
@@ -359,6 +386,7 @@ struct ProgramVoiceMemoCard: View {
         .onChange(of: programId) { _, _ in
             Task {
                 await player.stop()
+                resetTranscriptState()
                 await refreshMemoState()
             }
         }
@@ -367,20 +395,109 @@ struct ProgramVoiceMemoCard: View {
         } message: {
             Text("Enable microphone access for Matchly in Settings to record voice memos.")
         }
+        .alert("Speech Recognition Needed", isPresented: $showSpeechPermissionAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Enable speech recognition for Matchly in Settings to generate transcripts on this device.")
+        }
         .onChange(of: recorder.permissionDenied) { _, denied in
             if denied { showPermissionAlert = true }
         }
         .onChange(of: recorder.isRecording) { wasRecording, isRecording in
             if wasRecording && !isRecording && !recorder.isMerging {
+                resetTranscriptState()
                 Task { await refreshMemoState() }
             }
         }
         .onChange(of: recorder.isMerging) { wasMerging, isMerging in
             if wasMerging && !isMerging {
+                resetTranscriptState()
                 Task {
                     await refreshMemoState()
                     onMemoChanged()
                 }
+            }
+        }
+    }
+
+    private var playbackSpeedMenu: some View {
+        Menu {
+            ForEach(VoiceMemoStorage.playbackRateOptions, id: \.self) { rate in
+                Button {
+                    player.setPlaybackRate(rate)
+                } label: {
+                    if rate == player.playbackRate {
+                        Label(formattedPlaybackRate(rate), systemImage: "checkmark")
+                    } else {
+                        Text(formattedPlaybackRate(rate))
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "gauge.with.dots.needle.33percent")
+                    .font(.arial(size: 11))
+                Text(formattedPlaybackRate(player.playbackRate))
+                    .font(.arial(size: 12, weight: .medium))
+                    .monospacedDigit()
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color(.tertiarySystemFill))
+            .clipShape(Capsule())
+        }
+    }
+
+    private var transcriptSection: some View {
+        DisclosureGroup(isExpanded: $showTranscript) {
+            VStack(alignment: .leading, spacing: 10) {
+                if isTranscribing {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                        Text("Creating transcript on this device…")
+                            .font(.arial(size: 13))
+                            .foregroundColor(.secondary)
+                    }
+                } else if let transcriptError {
+                    Text(transcriptError)
+                        .font(.arial(size: 13))
+                        .foregroundColor(.red)
+
+                    Button("Try Again") {
+                        Task { await generateTranscript(force: true) }
+                    }
+                    .font(.arial(size: 13, weight: .medium))
+                } else if let transcriptText, !transcriptText.isEmpty {
+                    Text(transcriptText)
+                        .font(.arial(size: 14))
+                        .foregroundColor(.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+
+                    Button("Refresh Transcript") {
+                        Task { await generateTranscript(force: true) }
+                    }
+                    .font(.arial(size: 12, weight: .medium))
+                    .foregroundColor(.secondary)
+                } else {
+                    Text("Generate a readable transcript from this recording.")
+                        .font(.arial(size: 13))
+                        .foregroundColor(.secondary)
+
+                    Button("Generate Transcript") {
+                        Task { await generateTranscript(force: true) }
+                    }
+                    .font(.arial(size: 13, weight: .medium))
+                }
+            }
+            .padding(.top, 6)
+        } label: {
+            Label("Transcript", systemImage: "text.quote")
+                .font(.arial(size: 14, weight: .medium))
+        }
+        .onChange(of: showTranscript) { _, expanded in
+            if expanded {
+                Task { await loadTranscriptIfNeeded() }
             }
         }
     }
@@ -441,6 +558,11 @@ struct ProgramVoiceMemoCard: View {
                 .buttonStyle(.plain)
 
                 VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        playbackSpeedMenu
+                        Spacer()
+                    }
+
                     if player.duration > 0 {
                         Slider(value: Binding(
                             get: { player.currentTime },
@@ -479,6 +601,7 @@ struct ProgramVoiceMemoCard: View {
                         VoiceMemoStorage.deleteMemo(forProgramId: programId)
                         hasMemo = false
                         remainingDuration = VoiceMemoStorage.maxDurationSeconds
+                        resetTranscriptState()
                         onMemoChanged()
                         startRecording()
                     }
@@ -493,6 +616,7 @@ struct ProgramVoiceMemoCard: View {
                         VoiceMemoStorage.deleteMemo(forProgramId: programId)
                         hasMemo = false
                         remainingDuration = VoiceMemoStorage.maxDurationSeconds
+                        resetTranscriptState()
                         onMemoChanged()
                     }
                 }
@@ -505,6 +629,8 @@ struct ProgramVoiceMemoCard: View {
                     .font(.arial(size: 11))
                     .foregroundColor(.secondary)
             }
+
+            transcriptSection
         }
         .padding(12)
         .background(Color(.secondarySystemBackground))
@@ -530,6 +656,8 @@ struct ProgramVoiceMemoCard: View {
 
     private func startRecording() {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        VoiceMemoStorage.invalidateTranscript(forProgramId: programId)
+        resetTranscriptState()
         recorder.startRecording(to: memoURL, appending: false)
     }
 
@@ -541,10 +669,64 @@ struct ProgramVoiceMemoCard: View {
     private func finishRecording() {
         recorder.stopRecording { url in
             if url != nil {
+                resetTranscriptState()
                 onMemoChanged()
             }
             Task { await refreshMemoState() }
         }
+    }
+
+    private func resetTranscriptState() {
+        showTranscript = false
+        transcriptText = nil
+        transcriptError = nil
+        isTranscribing = false
+    }
+
+    private func loadTranscriptIfNeeded() async {
+        if isTranscribing { return }
+
+        if let cached = VoiceMemoStorage.loadTranscript(forProgramId: programId) {
+            transcriptText = cached
+            transcriptError = nil
+            return
+        }
+
+        await generateTranscript(force: false)
+    }
+
+    private func generateTranscript(force: Bool) async {
+        guard hasMemo else { return }
+        if isTranscribing { return }
+
+        if !force, let cached = VoiceMemoStorage.loadTranscript(forProgramId: programId) {
+            transcriptText = cached
+            transcriptError = nil
+            return
+        }
+
+        isTranscribing = true
+        transcriptError = nil
+
+        do {
+            let text = try await VoiceMemoTranscriber.transcribe(audioAt: memoURL)
+            try VoiceMemoStorage.saveTranscript(text, forProgramId: programId)
+            transcriptText = text
+        } catch VoiceMemoTranscriberError.notAuthorized {
+            showSpeechPermissionAlert = true
+            transcriptError = VoiceMemoTranscriberError.notAuthorized.errorDescription
+        } catch {
+            transcriptError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+
+        isTranscribing = false
+    }
+
+    private func formattedPlaybackRate(_ rate: Float) -> String {
+        if rate == floor(rate) {
+            return String(format: "%.0f×", rate)
+        }
+        return String(format: "%.2g×", rate)
     }
 
     private func refreshMemoState() async {
