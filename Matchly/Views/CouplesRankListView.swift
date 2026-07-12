@@ -475,12 +475,17 @@ struct CouplesRankListView: View {
         generateCouplesRankList(showSuccessAlert: true)
     }
     
+    private func markRankListEdited() {
+        dataManager.preferences.couplesRankListUpdatedAt = Date()
+        dataManager.savePreferences()
+        dataManager.scheduleCoupleCloudPublish()
+    }
+
     private func addPair(_ pair: CouplesRankPair) {
         var newPair = pair
         newPair.rank = dataManager.preferences.couplesRankPairs.count + 1
         dataManager.preferences.couplesRankPairs.append(newPair)
-        dataManager.savePreferences()
-        dataManager.scheduleCoupleCloudPublish()
+        markRankListEdited()
     }
     
     private func updatePair(_ oldPair: CouplesRankPair, with newPair: CouplesRankPair) {
@@ -488,8 +493,7 @@ struct CouplesRankListView: View {
             var updated = newPair
             updated.rank = oldPair.rank
             dataManager.preferences.couplesRankPairs[index] = updated
-            dataManager.savePreferences()
-            dataManager.scheduleCoupleCloudPublish()
+            markRankListEdited()
         }
     }
     
@@ -498,8 +502,7 @@ struct CouplesRankListView: View {
         for (index, _) in dataManager.preferences.couplesRankPairs.enumerated() {
             dataManager.preferences.couplesRankPairs[index].rank = index + 1
         }
-        dataManager.savePreferences()
-        dataManager.scheduleCoupleCloudPublish()
+        markRankListEdited()
     }
     
     private func movePairs(from source: IndexSet, to destination: Int) {
@@ -507,8 +510,7 @@ struct CouplesRankListView: View {
         for (index, _) in dataManager.preferences.couplesRankPairs.enumerated() {
             dataManager.preferences.couplesRankPairs[index].rank = index + 1
         }
-        dataManager.savePreferences()
-        dataManager.scheduleCoupleCloudPublish()
+        markRankListEdited()
     }
     
     private func validateRankList() {
@@ -544,8 +546,7 @@ struct CouplesRankListView: View {
         }
 
         dataManager.preferences.couplesRankPairs = generatedPairs
-        dataManager.savePreferences()
-        dataManager.scheduleCoupleCloudPublish()
+        markRankListEdited()
         if showSuccessAlert {
             showGenerateAlert = true
         }

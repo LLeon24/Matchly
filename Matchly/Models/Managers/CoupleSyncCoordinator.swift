@@ -37,18 +37,19 @@ final class CoupleSyncCoordinator: ObservableObject {
             return
         }
 
-        await repairCoupleFromRegistrationIfNeeded(dataManager: dataManager)
+        let repaired = await repairCoupleFromRegistrationIfNeeded(dataManager: dataManager)
         guard let activeCouple = dataManager.preferences.couple, activeCouple.isLinked else { return }
 
-        guard activeCoupleID != activeCouple.id else {
+        if repaired || activeCoupleID != activeCouple.id {
+            activeCoupleID = activeCouple.id
+            await CoupleNotificationService.shared.requestAuthorizationIfNeeded()
+            await CoupleNotificationService.shared.registerCoupleSubscriptions(coupleID: activeCouple.id)
+            repairLegacyRankPairOrientation(dataManager: dataManager, couple: activeCouple)
+        } else {
             await refreshAll(dataManager: dataManager)
             return
         }
-        activeCoupleID = activeCouple.id
 
-        await CoupleNotificationService.shared.requestAuthorizationIfNeeded()
-        await CoupleNotificationService.shared.registerCoupleSubscriptions(coupleID: activeCouple.id)
-        repairLegacyRankPairOrientation(dataManager: dataManager, couple: activeCouple)
         await refreshAll(dataManager: dataManager)
 
         pollTask?.cancel()
@@ -59,6 +60,12 @@ final class CoupleSyncCoordinator: ObservableObject {
                 await self.refreshAll(dataManager: dataManager)
             }
         }
+    }
+
+    /// Repairs couple state from CloudKit, starts polling, and performs an immediate sync.
+    func ensureSyncStarted(dataManager: DataManager) async {
+        await startMonitoringIfNeeded(dataManager: dataManager)
+        await refreshAll(dataManager: dataManager)
     }
 
     func stopMonitoring() {
@@ -81,7 +88,10 @@ final class CoupleSyncCoordinator: ObservableObject {
         defer { isSyncing = false }
 
         let partnerRecordName = partnerRecordName(for: couple, myRecordName: myRecordName)
-        guard let partnerRecordName else { return }
+        guard let partnerRecordName else {
+            lastSyncError = Self.partnerIdentityMessage
+            return
+        }
 
         do {
             try await publishOwnData(dataManager: dataManager)
@@ -100,10 +110,17 @@ final class CoupleSyncCoordinator: ObservableObject {
             )
 
             if let remote = try await CouplesCloudManager.fetchRankList(coupleID: couple.id) {
-                let shouldApplyRemote = remote.lastEditorRecordName != myRecordName
-                    || dataManager.preferences.couplesRankPairs.isEmpty
+                let localUpdated = dataManager.preferences.couplesRankListUpdatedAt
+                let remoteIsNewer = remote.updatedAt.map { remoteDate in
+                    guard let localUpdated else { return true }
+                    return remoteDate > localUpdated
+                } ?? false
+                let shouldApplyRemote = dataManager.preferences.couplesRankPairs.isEmpty
+                    || remote.lastEditorRecordName != myRecordName
+                    || remoteIsNewer
                 if shouldApplyRemote, remote.pairs != dataManager.preferences.couplesRankPairs {
                     dataManager.preferences.couplesRankPairs = remote.pairs
+                    dataManager.preferences.couplesRankListUpdatedAt = remote.updatedAt ?? Date()
                     dataManager.savePreferences()
                 }
             }
@@ -152,6 +169,8 @@ final class CoupleSyncCoordinator: ObservableObject {
                 ownerRecordName: myRecordName,
                 photoData: dataManager.preferences.profile.photoData
             )
+            dataManager.preferences.couplesRankListUpdatedAt = Date()
+            dataManager.savePreferences()
             lastSyncedAt = Date()
             lastPublishError = nil
         } catch {
@@ -169,6 +188,9 @@ final class CoupleSyncCoordinator: ObservableObject {
         await refreshAll(dataManager: dataManager)
     }
 
+    private static let partnerIdentityMessage =
+        "Could not resolve your partner's iCloud identity. Open Couples Matching and re-link using your partner's QR code."
+
     private func partnerRecordName(for couple: Couple, myRecordName: String) -> String? {
         if couple.user1ID == myRecordName {
             return couple.user2ID
@@ -176,22 +198,34 @@ final class CoupleSyncCoordinator: ObservableObject {
         if couple.user2ID == myRecordName {
             return couple.user1ID
         }
-        return couple.user2ID ?? couple.user1ID
+        // Legacy links stored Apple login IDs instead of CloudKit record names.
+        if let user2 = couple.user2ID, !user2.isEmpty, user2 != myRecordName {
+            return user2
+        }
+        if !couple.user1ID.isEmpty, couple.user1ID != myRecordName {
+            return couple.user1ID
+        }
+        return nil
     }
 
     /// Aligns local couple state with the CloudKit registration so both partners share the same
     /// couple ID, CloudKit record names, and display names (required for chat + program sync).
-    private func repairCoupleFromRegistrationIfNeeded(dataManager: DataManager) async {
-        guard var couple = dataManager.preferences.couple,
-              let registration = try? await CoupleLinkingService.fetchRegistration(for: couple.coupleCode) else {
-            return
+    @discardableResult
+    private func repairCoupleFromRegistrationIfNeeded(dataManager: DataManager) async -> Bool {
+        guard var couple = dataManager.preferences.couple else { return false }
+
+        guard let registration = try? await CoupleLinkingService.fetchRegistration(for: couple.coupleCode) else {
+            if couple.isLinked {
+                lastSyncError = Self.environmentMismatchMessage
+            }
+            return false
         }
 
         var changed = false
 
         if couple.id != registration.coupleID {
             couple = Couple(copying: couple, id: registration.coupleID)
-            activeCoupleID = registration.coupleID
+            activeCoupleID = nil
             changed = true
         }
 
@@ -231,11 +265,26 @@ final class CoupleSyncCoordinator: ObservableObject {
             }
         }
 
-        guard changed else { return }
+        guard changed else { return false }
 
         dataManager.preferences.couple = couple
         dataManager.savePreferences()
+        lastSyncError = nil
         logger.info("Repaired couple from CloudKit registration")
+        return true
+    }
+
+    private static var environmentMismatchMessage: String {
+        #if DEBUG
+        let build = "Xcode debug (CloudKit Development)"
+        #else
+        let build = "TestFlight or App Store (CloudKit Production)"
+        #endif
+        return """
+        Could not find your couple invite in iCloud. Both partners must use the same app build type \
+        (both from Xcode, or both from TestFlight). This device is running \(build). \
+        If your partner uses a different build, deploy the CloudKit schema to Production in the dashboard.
+        """
     }
 
     /// Older builds stored rank pairs from the editor's perspective instead of canonical couple.user1ID slots.

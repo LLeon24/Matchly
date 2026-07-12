@@ -12,6 +12,9 @@ struct InviteManagementView: View {
     @ObservedObject private var authManager = AuthManager.shared
     @Environment(\.dismiss) var dismiss
     
+    @State private var linkingError: String?
+    @State private var isLinkingInvite = false
+    
     var pendingReceivedInvites: [CoupleInvite] {
         dataManager.preferences.receivedInvites.filter { $0.status == .pending && !$0.isExpired }
     }
@@ -85,55 +88,35 @@ struct InviteManagementView: View {
                     }
                 }
             }
+            .alert("Could Not Link", isPresented: Binding(
+                get: { linkingError != nil },
+                set: { if !$0 { linkingError = nil } }
+            )) {
+                Button("OK") { linkingError = nil }
+            } message: {
+                Text(linkingError ?? "")
+            }
         }
     }
     
     private func acceptInvite(_ invite: CoupleInvite) {
-        // Update invite status
-        if let index = dataManager.preferences.receivedInvites.firstIndex(where: { $0.id == invite.id }) {
-            var updatedInvite = invite
-            updatedInvite.status = .accepted
-            updatedInvite.respondedAt = Date()
-            dataManager.preferences.receivedInvites[index] = updatedInvite
+        guard !isLinkingInvite else { return }
+        isLinkingInvite = true
+        Task { @MainActor in
+            defer { isLinkingInvite = false }
+            do {
+                try await CoupleLinkingActions.acceptReceivedInvite(
+                    invite,
+                    dataManager: dataManager,
+                    authManager: authManager
+                )
+                dismiss()
+            } catch let error as CoupleLinkingError {
+                linkingError = error.localizedDescription
+            } catch {
+                linkingError = CoupleLinkingService.mapError(error).localizedDescription
+            }
         }
-        
-        // Link the couple
-        if let couple = dataManager.preferences.couple {
-            var updatedCouple = couple
-            updatedCouple.user2ID = invite.fromUserID
-            updatedCouple.user2Name = invite.fromUserName
-            updatedCouple.user2Email = invite.fromUserEmail
-            updatedCouple.status = .linked
-            updatedCouple.linkedAt = Date()
-            dataManager.preferences.couple = updatedCouple
-        } else {
-            // Create new couple from invite
-            let newCouple = Couple(
-                user1ID: authManager.currentUser?.id ?? dataManager.preferences.userID,
-                user1Name: authManager.currentUser?.displayName ?? (dataManager.preferences.profile.name.isEmpty ? "You" : dataManager.preferences.profile.name),
-                user1Email: authManager.currentUser?.email,
-                coupleCode: invite.coupleCode,
-                inviteLink: invite.inviteLink,
-                status: .linked
-            )
-            var updatedCouple = newCouple
-            updatedCouple.user2ID = invite.fromUserID
-            updatedCouple.user2Name = invite.fromUserName
-            updatedCouple.user2Email = invite.fromUserEmail
-            updatedCouple.linkedAt = Date()
-            dataManager.preferences.couple = updatedCouple
-        }
-        
-        // Update sent invite status on sender's side (in real app, this would sync via server)
-        if let index = dataManager.preferences.sentInvites.firstIndex(where: { $0.id == invite.id }) {
-            var sentInvite = dataManager.preferences.sentInvites[index]
-            sentInvite.status = .accepted
-            sentInvite.respondedAt = Date()
-            dataManager.preferences.sentInvites[index] = sentInvite
-        }
-        
-        dataManager.savePreferences()
-        dismiss()
     }
     
     private func declineInvite(_ invite: CoupleInvite) {

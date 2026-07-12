@@ -29,6 +29,8 @@ struct UserPreferences: Codable, Hashable {
     var couple: Couple? // Current couple relationship
     var couplesPreferences: CouplesPreferences = CouplesPreferences()
     var couplesRankPairs: [CouplesRankPair] = [] // Paired rank list for couples matching
+    /// Local timestamp of the last couples rank list edit (used to resolve CloudKit conflicts).
+    var couplesRankListUpdatedAt: Date?
     var sentInvites: [CoupleInvite] = [] // Invites sent by this user
     var receivedInvites: [CoupleInvite] = [] // Invites received by this user
     
@@ -232,6 +234,7 @@ extension UserPreferences {
         }
         self.couplesPreferences = try container.decodeIfPresent(CouplesPreferences.self, forKey: .couplesPreferences) ?? CouplesPreferences()
         self.couplesRankPairs = try container.decodeIfPresent([CouplesRankPair].self, forKey: .couplesRankPairs) ?? []
+        self.couplesRankListUpdatedAt = try container.decodeIfPresent(Date.self, forKey: .couplesRankListUpdatedAt)
         self.sentInvites = try container.decodeIfPresent([CoupleInvite].self, forKey: .sentInvites) ?? []
         self.receivedInvites = try container.decodeIfPresent([CoupleInvite].self, forKey: .receivedInvites) ?? []
         self.enabledSectionIds = try container.decodeIfPresent(Set<String>.self, forKey: .enabledSectionIds) ?? []

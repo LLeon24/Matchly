@@ -508,7 +508,7 @@ struct CouplesMatchingView: View {
         dataManager.preferences.couple = couple
         dataManager.savePreferences()
 
-        await coupleSync.startMonitoringIfNeeded(dataManager: dataManager)
+        await coupleSync.ensureSyncStarted(dataManager: dataManager)
         try? await coupleSync.publishOwnData(dataManager: dataManager)
     }
 

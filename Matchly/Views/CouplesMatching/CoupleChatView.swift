@@ -83,6 +83,7 @@ struct CoupleChatView: View {
         .navigationTitle(embeddedInHub ? "" : "Partner Chat")
         .navigationBarTitleDisplayMode(.inline)
         .task(id: activeCoupleID) {
+            await CoupleSyncCoordinator.shared.ensureSyncStarted(dataManager: dataManager)
             await refreshMessages()
             await pollMessagesWhileVisible()
         }

@@ -29,8 +29,7 @@ struct CouplesHubView: View {
             }
         }
         .task {
-            await coupleSync.refreshAll(dataManager: dataManager)
-            dataManager.startCoupleSyncIfNeeded()
+            await coupleSync.ensureSyncStarted(dataManager: dataManager)
         }
     }
 

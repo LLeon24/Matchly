@@ -21,18 +21,11 @@ enum CoupleLinkingActions {
             throw CoupleLinkingError.cannotLinkOwnCode
         }
 
-        if let matchingInvite = dataManager.preferences.receivedInvites.first(where: {
-            $0.coupleCode.uppercased() == code && $0.status == .pending && !$0.isExpired
-        }) {
-            let coupleID = (try? await CoupleLinkingService.fetchRegistration(for: code))?.coupleID
-                ?? matchingInvite.id
-            acceptInvite(matchingInvite, coupleID: coupleID, dataManager: dataManager, authManager: authManager)
-            return
-        }
-
         guard authManager.isCloudKitAvailable else {
             throw CoupleLinkingError.iCloudRequired
         }
+
+        await authManager.refreshCloudKitIdentity()
 
         guard let partnerRecordName = authManager.cloudKitUserRecordName else {
             throw CoupleLinkingError.identityUnavailable
@@ -48,6 +41,32 @@ enum CoupleLinkingActions {
             partnerEmail: authManager.currentUser?.email
         )
 
+        markInviteAccepted(code: code, dataManager: dataManager)
+
+        applyLinkedCouple(
+            registration: registration,
+            partnerRecordName: partnerRecordName,
+            partnerName: partnerName,
+            partnerEmail: authManager.currentUser?.email,
+            dataManager: dataManager
+        )
+    }
+
+    static func acceptReceivedInvite(
+        _ invite: CoupleInvite,
+        dataManager: DataManager,
+        authManager: AuthManager
+    ) async throws {
+        try await link(withCode: invite.coupleCode, dataManager: dataManager, authManager: authManager)
+    }
+
+    private static func applyLinkedCouple(
+        registration: CoupleCodeRegistration,
+        partnerRecordName: String,
+        partnerName: String,
+        partnerEmail: String?,
+        dataManager: DataManager
+    ) {
         var linkedCouple = Couple(
             id: registration.coupleID,
             user1ID: registration.inviterRecordName,
@@ -59,55 +78,36 @@ enum CoupleLinkingActions {
         )
         linkedCouple.user2ID = partnerRecordName
         linkedCouple.user2Name = partnerName
-        linkedCouple.user2Email = authManager.currentUser?.email
+        linkedCouple.user2Email = partnerEmail
         linkedCouple.linkedAt = Date()
 
         dataManager.preferences.couple = linkedCouple
         dataManager.savePreferences()
 
         Task {
-            try? await CoupleSyncCoordinator.shared.publishOwnData(dataManager: dataManager)
-            await CoupleSyncCoordinator.shared.startMonitoringIfNeeded(dataManager: dataManager)
+            await CoupleSyncCoordinator.shared.ensureSyncStarted(dataManager: dataManager)
         }
     }
 
-    private static func acceptInvite(
-        _ invite: CoupleInvite,
-        coupleID: String,
-        dataManager: DataManager,
-        authManager: AuthManager
-    ) {
-        if let index = dataManager.preferences.receivedInvites.firstIndex(where: { $0.id == invite.id }) {
-            var updatedInvite = invite
+    private static func markInviteAccepted(code: String, dataManager: DataManager) {
+        let normalized = code.uppercased()
+
+        if let index = dataManager.preferences.receivedInvites.firstIndex(where: {
+            $0.coupleCode.uppercased() == normalized && $0.status == .pending
+        }) {
+            var updatedInvite = dataManager.preferences.receivedInvites[index]
             updatedInvite.status = .accepted
             updatedInvite.respondedAt = Date()
             dataManager.preferences.receivedInvites[index] = updatedInvite
         }
 
-        let userID = authManager.cloudKitUserRecordName
-            ?? authManager.currentUser?.id
-            ?? dataManager.preferences.userID
-
-        var updatedCouple = Couple(
-            id: coupleID,
-            user1ID: userID,
-            user1Name: authManager.currentUser?.displayName
-                ?? (dataManager.preferences.profile.name.isEmpty ? "You" : dataManager.preferences.profile.name),
-            user1Email: authManager.currentUser?.email,
-            coupleCode: invite.coupleCode,
-            inviteLink: invite.inviteLink,
-            status: .linked
-        )
-        updatedCouple.user2ID = invite.fromUserID
-        updatedCouple.user2Name = invite.fromUserName
-        updatedCouple.user2Email = invite.fromUserEmail
-        updatedCouple.linkedAt = Date()
-        dataManager.preferences.couple = updatedCouple
-        dataManager.savePreferences()
-
-        Task {
-            try? await CoupleSyncCoordinator.shared.publishOwnData(dataManager: dataManager)
-            await CoupleSyncCoordinator.shared.startMonitoringIfNeeded(dataManager: dataManager)
+        if let index = dataManager.preferences.sentInvites.firstIndex(where: {
+            $0.coupleCode.uppercased() == normalized && $0.status == .pending
+        }) {
+            var sentInvite = dataManager.preferences.sentInvites[index]
+            sentInvite.status = .accepted
+            sentInvite.respondedAt = Date()
+            dataManager.preferences.sentInvites[index] = sentInvite
         }
     }
 }
