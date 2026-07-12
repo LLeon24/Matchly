@@ -422,6 +422,27 @@ struct CouplesRankListView: View {
         }
     }
 
+    private var emptyGenerationMessage: String {
+        let prefs = dataManager.preferences.couplesPreferences
+        switch prefs.geographyStrictness {
+        case .sameCity:
+            return """
+            No program pairs share the same city. In Couple → Settings, switch geography to \
+            "Same State" or "Within Max Distance", or add programs in the same city.
+            """
+        case .sameState:
+            return """
+            No program pairs are in the same state. In Couple → Settings, switch geography to \
+            "Within Max Distance", or add programs in overlapping states.
+            """
+        case .withinDistance:
+            return """
+            No program pairs are within your \(prefs.distanceTolerance)-mile limit. Increase max \
+            distance in Couple → Settings, or add programs closer together.
+            """
+        }
+    }
+
     private var emptyPairsMessage: String {
         if canGenerateSuggestedList {
             return "You and your partner both have scored programs. Generate a suggested list to get started, or add pairs manually."
@@ -431,6 +452,15 @@ struct CouplesRankListView: View {
         }
         if myScoredPrograms.isEmpty {
             return "Score your programs first, then Matchly can build your couples list automatically."
+        }
+        if partnerScoredPrograms.isEmpty {
+            return "Waiting for your partner to score at least one program."
+        }
+        if canGenerateSuggestedList {
+            return """
+            You both have scored programs. Tap Generate Suggested List — if nothing appears, \
+            check geography settings in Couple → Settings (default is Same State).
+            """
         }
         return "Waiting for your partner to score at least one program."
     }
@@ -509,7 +539,7 @@ struct CouplesRankListView: View {
         isGenerating = false
 
         guard !generatedPairs.isEmpty else {
-            generateError = "Could not generate a list. Make sure both partners have scored programs."
+            generateError = emptyGenerationMessage
             return
         }
 

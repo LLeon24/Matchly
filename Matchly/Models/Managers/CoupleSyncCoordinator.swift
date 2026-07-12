@@ -37,7 +37,7 @@ final class CoupleSyncCoordinator: ObservableObject {
             return
         }
 
-        await repairSharedCoupleIDIfNeeded(dataManager: dataManager)
+        await repairCoupleFromRegistrationIfNeeded(dataManager: dataManager)
         guard let activeCouple = dataManager.preferences.couple, activeCouple.isLinked else { return }
 
         guard activeCoupleID != activeCouple.id else {
@@ -179,15 +179,63 @@ final class CoupleSyncCoordinator: ObservableObject {
         return couple.user2ID ?? couple.user1ID
     }
 
-    private func repairSharedCoupleIDIfNeeded(dataManager: DataManager) async {
-        guard let couple = dataManager.preferences.couple,
-              let registration = try? await CoupleLinkingService.fetchRegistration(for: couple.coupleCode),
-              registration.coupleID != couple.id else { return }
+    /// Aligns local couple state with the CloudKit registration so both partners share the same
+    /// couple ID, CloudKit record names, and display names (required for chat + program sync).
+    private func repairCoupleFromRegistrationIfNeeded(dataManager: DataManager) async {
+        guard var couple = dataManager.preferences.couple,
+              let registration = try? await CoupleLinkingService.fetchRegistration(for: couple.coupleCode) else {
+            return
+        }
 
-        dataManager.preferences.couple = Couple(copying: couple, id: registration.coupleID)
+        var changed = false
+
+        if couple.id != registration.coupleID {
+            couple = Couple(copying: couple, id: registration.coupleID)
+            activeCoupleID = registration.coupleID
+            changed = true
+        }
+
+        if couple.user1ID != registration.inviterRecordName {
+            couple.user1ID = registration.inviterRecordName
+            changed = true
+        }
+        if couple.user1Name != registration.inviterName {
+            couple.user1Name = registration.inviterName
+            changed = true
+        }
+        if let inviterEmail = registration.inviterEmail, couple.user1Email != inviterEmail {
+            couple.user1Email = inviterEmail
+            changed = true
+        }
+
+        if registration.isClaimed, let partnerRecord = registration.partnerRecordName {
+            if couple.user2ID != partnerRecord {
+                couple.user2ID = partnerRecord
+                changed = true
+            }
+            if let partnerName = registration.partnerName, couple.user2Name != partnerName {
+                couple.user2Name = partnerName
+                changed = true
+            }
+            if let partnerEmail = registration.partnerEmail, couple.user2Email != partnerEmail {
+                couple.user2Email = partnerEmail
+                changed = true
+            }
+            if couple.status != .linked {
+                couple.status = .linked
+                changed = true
+            }
+            if couple.linkedAt == nil {
+                couple.linkedAt = Date()
+                changed = true
+            }
+        }
+
+        guard changed else { return }
+
+        dataManager.preferences.couple = couple
         dataManager.savePreferences()
-        activeCoupleID = registration.coupleID
-        logger.info("Repaired couple ID to shared CloudKit value")
+        logger.info("Repaired couple from CloudKit registration")
     }
 
     /// Older builds stored rank pairs from the editor's perspective instead of canonical couple.user1ID slots.

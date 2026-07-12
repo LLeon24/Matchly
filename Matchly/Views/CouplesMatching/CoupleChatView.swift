@@ -13,6 +13,12 @@ struct CoupleChatView: View {
     let couple: Couple
     var embeddedInHub: Bool = false
 
+    /// Prefer the live couple from preferences so chat stays on the shared CloudKit couple ID
+    /// after registration repair (the struct passed from the parent can be stale).
+    private var activeCoupleID: String {
+        dataManager.preferences.couple?.id ?? couple.id
+    }
+
     @State private var messages: [CoupleMessage] = []
     @State private var draft = ""
     @State private var isLoading = false
@@ -76,7 +82,7 @@ struct CoupleChatView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .navigationTitle(embeddedInHub ? "" : "Partner Chat")
         .navigationBarTitleDisplayMode(.inline)
-        .task {
+        .task(id: activeCoupleID) {
             await refreshMessages()
             await pollMessagesWhileVisible()
         }
@@ -145,7 +151,7 @@ struct CoupleChatView: View {
         if !silent { isLoading = true }
         defer { if !silent { isLoading = false } }
         do {
-            messages = try await CoupleMessageService.fetchMessages(coupleID: couple.id)
+            messages = try await CoupleMessageService.fetchMessages(coupleID: activeCoupleID)
         } catch {
             errorMessage = CoupleMessageService.userFacingMessage(for: error)
         }
@@ -169,7 +175,7 @@ struct CoupleChatView: View {
             defer { isSending = false }
             do {
                 let message = try await CoupleMessageService.sendMessage(
-                    coupleID: couple.id,
+                    coupleID: activeCoupleID,
                     senderRecordName: senderRecordName,
                     senderName: senderName,
                     text: draft

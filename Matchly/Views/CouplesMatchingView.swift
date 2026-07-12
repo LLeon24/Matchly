@@ -494,6 +494,12 @@ struct CouplesMatchingView: View {
             return
         }
 
+        if couple.id != registration.coupleID {
+            couple = Couple(copying: couple, id: registration.coupleID)
+        }
+        couple.user1ID = registration.inviterRecordName
+        couple.user1Name = registration.inviterName
+        couple.user1Email = registration.inviterEmail
         couple.user2ID = partnerID
         couple.user2Name = partnerName
         couple.user2Email = registration.partnerEmail
