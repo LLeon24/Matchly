@@ -78,24 +78,39 @@ enum AddressFormatter {
     ) -> ResolvedAddress {
         let raw = address ?? ""
 
+        let normalizedState = USState.abbreviation(for: state)
+        let normalizedCity = city.trimmingCharacters(in: .whitespacesAndNewlines)
+
         if let override = campusOverride(hospital: hospital, rawAddress: raw, accreditationID: accreditationID) {
             return override
         }
 
         if let parsed = parseStreetFromRaw(raw) {
+            let parsedState = USState.abbreviation(for: parsed.state)
+            if !parsed.state.isEmpty,
+               !normalizedState.isEmpty,
+               parsedState != normalizedState {
+                // PDF blobs sometimes contain a different campus address; keep catalog city/state.
+                return ResolvedAddress(street: "", city: normalizedCity, state: normalizedState, siteName: nil)
+            }
             return ResolvedAddress(
                 street: parsed.street,
-                city: parsed.city.isEmpty ? city : parsed.city,
-                state: parsed.state.isEmpty ? state : parsed.state,
+                city: parsed.city.isEmpty ? normalizedCity : parsed.city,
+                state: parsed.state.isEmpty ? normalizedState : parsedState,
                 siteName: nil
             )
         }
 
         if looksLikeGarbageAddress(raw) {
-            return ResolvedAddress(street: "", city: city, state: state, siteName: nil)
+            return ResolvedAddress(street: "", city: normalizedCity, state: normalizedState, siteName: nil)
         }
 
-        return ResolvedAddress(street: raw.trimmingCharacters(in: .whitespacesAndNewlines), city: city, state: state, siteName: nil)
+        return ResolvedAddress(
+            street: raw.trimmingCharacters(in: .whitespacesAndNewlines),
+            city: normalizedCity,
+            state: normalizedState,
+            siteName: nil
+        )
     }
 
     // MARK: - Campus overrides (multi-site programs)
@@ -143,6 +158,24 @@ enum AddressFormatter {
             city: "Kissimmee",
             state: "FL",
             siteName: "HCA Florida Osceola Hospital"
+        ),
+        "1101100196": ResolvedAddress(
+            street: "20900 Biscayne Blvd",
+            city: "Aventura",
+            state: "FL",
+            siteName: "HCA Florida Aventura Hospital"
+        ),
+        "1411114290": ResolvedAddress(
+            street: "20900 Biscayne Blvd",
+            city: "Aventura",
+            state: "FL",
+            siteName: "HCA Florida Aventura Hospital"
+        ),
+        "1401100924": ResolvedAddress(
+            street: "20900 Biscayne Blvd",
+            city: "Aventura",
+            state: "FL",
+            siteName: "HCA Florida Aventura Hospital"
         ),
     ]
 

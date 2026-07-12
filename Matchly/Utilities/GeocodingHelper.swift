@@ -16,33 +16,52 @@ enum GeocodingHelper {
     /// - Parameter addressString: The address to geocode (e.g., "123 Main St, New York, NY")
     /// - Returns: A CLLocation with the coordinates of the address
     /// - Throws: An error if geocoding fails
-    static func geocodeAddress(_ addressString: String) async throws -> CLLocation {
+    static func geocodeAddress(_ addressString: String, expectedState: String? = nil) async throws -> CLLocation {
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = addressString
         request.resultTypes = [.address, .pointOfInterest]
-        
+
+        if let stateAbbrev = expectedState.flatMap({ normalizedState($0) }),
+           let region = searchRegion(forState: stateAbbrev) {
+            request.region = region
+        }
+
         let search = MKLocalSearch(request: request)
         let response = try await search.start()
-        
+
         guard let mapItem = response.mapItems.first else {
             throw GeocodingError.noLocationFound
         }
-        
-        // In iOS 26.0+, location is non-optional
+
         let location = mapItem.location
+        let coordinate = location.coordinate
+
+        if let stateAbbrev = expectedState.flatMap({ normalizedState($0) }),
+           !isPlausible(coordinate, forState: stateAbbrev) {
+            throw GeocodingError.noLocationFound
+        }
+
         return location
     }
 
     /// Resolve a program pin using the same query string as external Maps directions.
     static func coordinate(for program: Program) async -> CLLocationCoordinate2D {
+        let resolved = AddressFormatter.resolved(
+            hospital: program.hospital,
+            address: program.address,
+            city: program.city,
+            state: program.state,
+            accreditationID: program.accreditationID
+        )
         let query = AddressFormatter.geocodingQuery(for: program)
+        let expectedState = resolved.state
 
         if let cached = await coordinateCache.lookup(query) {
             return cached
         }
 
         do {
-            let location = try await geocodeAddress(query)
+            let location = try await geocodeAddress(query, expectedState: expectedState)
             let coordinate = location.coordinate
             await coordinateCache.store(coordinate, for: query)
             return coordinate
@@ -66,7 +85,7 @@ enum GeocodingHelper {
         if !program.state.isEmpty {
             return coordinate(for: program.state)
         }
-        return CLLocationCoordinate2D(latitude: 39.8283, longitude: -98.5795)
+        return defaultUSCenter
     }
 
     static func fallbackCoordinate(for snapshot: CoupleProgramSnapshot) -> CLLocationCoordinate2D {
@@ -76,7 +95,7 @@ enum GeocodingHelper {
         if !snapshot.state.isEmpty {
             return coordinate(for: snapshot.state)
         }
-        return CLLocationCoordinate2D(latitude: 39.8283, longitude: -98.5795)
+        return defaultUSCenter
     }
 
     /// Fast synchronous distance estimate using city/state lookup tables.
@@ -116,68 +135,81 @@ enum GeocodingHelper {
     
     /// Get coordinate for city and state (synchronous fallback)
     static func coordinate(for city: String, state: String) -> CLLocationCoordinate2D {
-        // First try to find the city in major cities lookup
+        let stateAbbrev = normalizedState(state)
         let cityKey = city.lowercased().trimmingCharacters(in: .whitespaces)
-        let cities = majorCities
-        
-        if let cityCoords = cities[cityKey] {
+
+        if let cityCoords = majorCities[cityKey] {
             return CLLocationCoordinate2D(latitude: cityCoords.lat, longitude: cityCoords.lon)
         }
-        
+
         // Try with state disambiguation for cities with same name
-        let stateAbbrev = state.uppercased()
         if cityKey == "springfield" {
-            if stateAbbrev == "MA", let cityCoords = cities["springfield ma"] {
+            if stateAbbrev == "MA", let cityCoords = majorCities["springfield ma"] {
                 return CLLocationCoordinate2D(latitude: cityCoords.lat, longitude: cityCoords.lon)
             }
-            if stateAbbrev == "MO", let cityCoords = cities["springfield mo"] {
+            if stateAbbrev == "MO", let cityCoords = majorCities["springfield mo"] {
                 return CLLocationCoordinate2D(latitude: cityCoords.lat, longitude: cityCoords.lon)
             }
         }
-        
+
         if cityKey == "rochester" {
-            if stateAbbrev == "NY", let cityCoords = cities["rochester"] {
+            if stateAbbrev == "NY", let cityCoords = majorCities["rochester"] {
                 return CLLocationCoordinate2D(latitude: cityCoords.lat, longitude: cityCoords.lon)
             }
-            if stateAbbrev == "MN", let cityCoords = cities["rochester mn"] {
+            if stateAbbrev == "MN", let cityCoords = majorCities["rochester mn"] {
                 return CLLocationCoordinate2D(latitude: cityCoords.lat, longitude: cityCoords.lon)
             }
         }
-        
-        // Fallback to state center
-        return coordinate(for: state)
+
+        if !stateAbbrev.isEmpty {
+            return coordinate(for: stateAbbrev)
+        }
+
+        return defaultUSCenter
     }
-    
-    /// Geographic center of each US state. Built once and cached.
-    private static let stateCenters: [String: (lat: Double, lon: Double)] = [
-        "AL": (32.806671, -86.791130), "AK": (61.370716, -152.404419), "AZ": (33.729759, -111.431221),
-        "AR": (34.969704, -92.373123), "CA": (36.116203, -119.681564), "CO": (39.059811, -105.311104),
-        "CT": (41.597782, -72.755371), "DE": (39.318523, -75.507141), "FL": (27.766279, -81.686783),
-        "GA": (33.040619, -83.643074), "HI": (21.094318, -157.498337), "ID": (44.240459, -114.478828),
-        "IL": (40.349457, -88.986137), "IN": (39.849426, -86.258278), "IA": (42.011539, -93.210526),
-        "KS": (38.526600, -96.726486), "KY": (37.668140, -84.670067), "LA": (31.169546, -91.867805),
-        "ME": (44.323535, -69.765261), "MD": (39.063946, -76.802101), "MA": (42.2352, -71.0275),
-        "MI": (43.326618, -84.536095), "MN": (45.694454, -93.900192), "MS": (32.320, -89.207),
-        "MO": (38.456085, -92.288368), "MT": (46.921925, -110.454353), "NE": (41.125370, -98.268082),
-        "NV": (38.313515, -117.055374), "NH": (43.452492, -71.563896), "NJ": (40.298904, -74.521011),
-        "NM": (34.840515, -106.248482), "NY": (42.165726, -74.948051), "NC": (35.630066, -79.806419),
-        "ND": (47.528912, -99.784012), "OH": (40.388783, -82.764915), "OK": (35.565342, -96.928917),
-        "OR": (44.572021, -122.070938), "PA": (40.590752, -77.209755), "RI": (41.680893, -71.51178),
-        "SC": (33.856892, -80.945007), "SD": (44.299782, -99.438828), "TN": (35.747845, -86.692345),
-        "TX": (31.054487, -97.563461), "UT": (40.150032, -111.862434), "VT": (44.045876, -72.710686),
-        "VA": (37.769337, -78.169968), "WA": (47.400902, -121.490494), "WV": (38.491226, -80.954453),
-        "WI": (44.268543, -89.616508), "WY": (42.755966, -107.302490), "DC": (38.907192, -77.036873)
-    ]
-    
+
     /// Get coordinate for state only
     static func coordinate(for state: String) -> CLLocationCoordinate2D {
-        let stateAbbrev = state.uppercased()
-        if let coords = stateCenters[stateAbbrev] {
+        let stateAbbrev = normalizedState(state)
+        if let coords = USState.centers[stateAbbrev] {
             return CLLocationCoordinate2D(latitude: coords.lat, longitude: coords.lon)
         }
-        
-        // Default to center of USA
-        return CLLocationCoordinate2D(latitude: 39.8283, longitude: -98.5795)
+
+        return defaultUSCenter
+    }
+
+    private static let defaultUSCenter = CLLocationCoordinate2D(latitude: 39.8283, longitude: -98.5795)
+
+    private static func normalizedState(_ state: String) -> String {
+        USState.abbreviation(for: state)
+    }
+
+    private static func searchRegion(forState stateAbbrev: String) -> MKCoordinateRegion? {
+        guard let center = USState.centers[stateAbbrev] else { return nil }
+        let span: Double
+        switch stateAbbrev {
+        case "AK": span = 18
+        case "TX", "CA", "MT": span = 10
+        default: span = 6
+        }
+        return MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: center.lat, longitude: center.lon),
+            span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span)
+        )
+    }
+
+    private static func isPlausible(_ coordinate: CLLocationCoordinate2D, forState stateAbbrev: String) -> Bool {
+        guard let center = USState.centers[stateAbbrev] else { return true }
+        let centerLocation = CLLocation(latitude: center.lat, longitude: center.lon)
+        let candidate = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        let miles = centerLocation.distance(from: candidate) / 1609.344
+        let limit: Double
+        switch stateAbbrev {
+        case "AK": limit = 1_200
+        case "TX", "CA", "MT": limit = 650
+        default: limit = 450
+        }
+        return miles <= limit
     }
     
     /// Major city coordinates lookup.
@@ -200,6 +232,18 @@ enum GeocodingHelper {
         cities["gainesville"] = (29.6516, -82.3248)
         cities["clearwater"] = (27.9659, -82.8001)
         cities["st. petersburg"] = (27.7676, -82.6403)
+        cities["aventura"] = (25.9565, -80.1392)
+        cities["brandon"] = (27.9378, -82.2859)
+        cities["boynton beach"] = (26.5256, -80.0664)
+        cities["boca raton"] = (26.3683, -80.1289)
+        cities["naples"] = (26.1420, -81.7948)
+        cities["ocala"] = (29.1872, -82.1401)
+        cities["lakeland"] = (28.0395, -81.9498)
+        cities["fort myers"] = (26.6406, -81.8723)
+        cities["hollywood"] = (26.0112, -80.1495)
+        cities["coral gables"] = (25.7215, -80.2684)
+        cities["hialeah"] = (25.8576, -80.2781)
+        cities["palm beach gardens"] = (26.8234, -80.1387)
         
         // Louisiana
         cities["baton rouge"] = (30.4515, -91.1871)
