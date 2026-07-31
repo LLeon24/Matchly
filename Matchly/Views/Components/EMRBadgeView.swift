@@ -103,15 +103,32 @@ struct EMRValueView: View {
     var style: EMRBadgeView.Style = .regular
 
     var body: some View {
-        if let rawValue, let system = EMRSystem(rawValue: rawValue) {
+        if let rawValue, let system = EMRSystem(rawValue: rawValue), system != .other {
             EMRBadgeView(system: system, style: style)
         } else if let rawValue, !rawValue.isEmpty {
-            Text(rawValue)
-                .font(.arial(size: style == .compact ? 10 : 14, weight: .semibold))
-                .foregroundColor(.primary)
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-                .minimumScaleFactor(0.7)
+            // Custom typed name (or bare "Other") — show as text, with Other badge styling when empty custom.
+            if rawValue == EMRSystem.other.rawValue {
+                EMRBadgeView(system: .other, style: style)
+            } else {
+                VStack(spacing: style == .compact ? 3 : 5) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.secondary.opacity(0.16))
+                            .frame(width: style == .compact ? 24 : 30, height: style == .compact ? 24 : 30)
+                        Text("?")
+                            .font(.arial(size: (style == .compact ? 24 : 30) * 0.46, weight: .bold))
+                            .foregroundColor(.secondary)
+                    }
+                    Text(rawValue)
+                        .font(.arial(size: style == .compact ? 9 : 13, weight: .semibold))
+                        .foregroundColor(.primary)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.65)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .accessibilityLabel(rawValue)
+            }
         } else {
             Text("Not set")
                 .font(.arial(size: style == .compact ? 11 : 14, weight: .semibold))

@@ -61,8 +61,10 @@ struct ProgramEntryView: View {
     // IMG-friendly status
     @State private var isIMGFriendly: Bool? = nil
     
-    // Electronic Medical Record (EMR) used by this hospital (EMRSystem.rawValue)
+    // Electronic Medical Record (EMR) used by this hospital (EMRSystem.rawValue,
+    // or a free-typed name when the user picks Other and enters a custom system).
     @State private var emr: String? = nil
+    @State private var emrOtherDetail: String = ""
     
     // ERAS Signaling
     @State private var signalType: SignalType = .none
@@ -286,6 +288,7 @@ struct ProgramEntryView: View {
         let preferred = dataManager.preferences.preferredEMR
         let selectedIsSpecific = emr.flatMap { EMRSystem(rawValue: $0)?.isSpecific } ?? false
         let preferredIsSpecific = preferred.flatMap { EMRSystem(rawValue: $0)?.isSpecific } ?? false
+        let isOtherSelected = EMRSystem.isOtherOrCustom(emr)
 
         return whiteCardContainer {
             VStack(alignment: .leading, spacing: 12) {
@@ -304,7 +307,10 @@ struct ProgramEntryView: View {
                     .foregroundColor(.secondary)
 
                 Menu {
-                    Button(action: { emr = nil }) {
+                    Button(action: {
+                        emr = nil
+                        emrOtherDetail = ""
+                    }) {
                         if emr == nil {
                             Label("Not selected", systemImage: "checkmark")
                         } else {
@@ -312,8 +318,8 @@ struct ProgramEntryView: View {
                         }
                     }
                     ForEach(EMRSystem.allCases) { system in
-                        Button(action: { emr = system.rawValue }) {
-                            if emr == system.rawValue {
+                        Button(action: { selectEMR(system) }) {
+                            if EMRSystem.matchesSelection(emr, system: system) {
                                 Label(system.displayName, systemImage: "checkmark")
                             } else {
                                 Text(system.displayName)
@@ -322,7 +328,7 @@ struct ProgramEntryView: View {
                     }
                 } label: {
                     HStack {
-                        Text(emr ?? "Select EMR")
+                        Text(emrMenuLabel)
                             .font(.arial(size: 15, weight: .medium))
                             .foregroundColor(emr == nil ? .secondary : .primary)
                         Spacer()
@@ -335,6 +341,20 @@ struct ProgramEntryView: View {
                     .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 10))
                 }
                 .buttonStyle(.plain)
+
+                if isOtherSelected {
+                    TextField("Type EMR name", text: $emrOtherDetail)
+                        .font(.arial(size: 15))
+                        .textInputAutocapitalization(.words)
+                        .autocorrectionDisabled()
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 10))
+                        .onChange(of: emrOtherDetail) { _, newValue in
+                            let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                            emr = trimmed.isEmpty ? EMRSystem.other.rawValue : trimmed
+                        }
+                }
 
                 // Surface the scoring impact relative to the applicant's preferred EMR.
                 if preferredIsSpecific, selectedIsSpecific, let preferred = preferred {
@@ -357,6 +377,25 @@ struct ProgramEntryView: View {
             .padding(.vertical, 16)
         }
         .padding(.horizontal, 20)
+    }
+
+    private var emrMenuLabel: String {
+        guard let emr else { return "Select EMR" }
+        if EMRSystem.isOtherOrCustom(emr) {
+            let trimmed = emrOtherDetail.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? EMRSystem.other.displayName : trimmed
+        }
+        return emr
+    }
+
+    private func selectEMR(_ system: EMRSystem) {
+        if system == .other {
+            let trimmed = emrOtherDetail.trimmingCharacters(in: .whitespacesAndNewlines)
+            emr = trimmed.isEmpty ? EMRSystem.other.rawValue : trimmed
+        } else {
+            emr = system.rawValue
+            emrOtherDetail = ""
+        }
     }
 
     // MARK: - Questionnaire Sections
@@ -990,33 +1029,12 @@ struct ProgramEntryView: View {
                 }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    HStack(spacing: 8) {
-                        // Menu for additional actions (including delete) - only show when editing
-                        if program != nil {
-                            Menu {
-                                Button(role: .destructive, action: {
-                                    if let program = program {
-                                        dataManager.deleteProgram(program)
-                                        dismiss()
-                                    }
-                                }) {
-                                    Label("Delete Program", systemImage: "trash")
-                                }
-                            } label: {
-                                Image(systemName: "ellipsis.circle")
-                                    .foregroundColor(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        
                         Button("Save") {
                             saveProgram()
                         }
                         .font(.arial(size: 16, weight: .medium))
                         .buttonStyle(.glassProminent)
                         .tint(.blue)
-                    }
-                    .background(Color.clear)
                 }
             }
         }
@@ -1054,6 +1072,11 @@ struct ProgramEntryView: View {
         
         // Load EMR selection
         emr = program.emr
+        if let stored = program.emr, EMRSystem.isOtherOrCustom(stored) {
+            emrOtherDetail = stored == EMRSystem.other.rawValue ? "" : stored
+        } else {
+            emrOtherDetail = ""
+        }
         
         // Load signal type
         signalType = program.signalType
