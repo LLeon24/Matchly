@@ -44,7 +44,7 @@ struct Program: Identifiable, Codable {
     
     // Electronic Medical Record (EMR) the hospital uses.
     // Optional for backward compatibility with programs saved before EMR existed.
-    // Stores an `EMRSystem.rawValue` String (nil = not selected).
+    // Stores an `EMRSystem.rawValue`, or a free-typed name when the user picks Other.
     var emr: String?
     
     // ERAS Signaling
@@ -66,6 +66,16 @@ struct Program: Identifiable, Codable {
         } || questionnaire.customSections.contains { section in
             section.items.contains { $0.programRating > 0 && $0.programRating < 6 }
         }
+    }
+
+    /// Share of enabled questionnaire items answered (0…1), respecting customization prefs.
+    func questionnaireCompletionRatio(preferences: UserPreferences) -> Double {
+        questionnaire.questionnaireCompletionRatio(preferences: preferences)
+    }
+
+    /// True when enabled questionnaire items still need answers (matches Dashboard "To Score").
+    func needsScoring(preferences: UserPreferences) -> Bool {
+        questionnaire.needsScoring(preferences: preferences)
     }
     
     // Pre-calculated interview status for sorting optimization

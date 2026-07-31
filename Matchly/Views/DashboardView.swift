@@ -668,31 +668,17 @@ struct DashboardView: View {
     /// Invites with a past interview date but an incomplete questionnaire.
     private var postInterviewNeedingScoreCount: Int {
         let now = Date()
+        let prefs = dataManager.preferences
         return dataManager.programs.filter { program in
             guard let date = program.interviewDate, date < now else { return false }
-            return programQuestionnaireCompletion(program) < 1.0
+            return program.needsScoring(preferences: prefs)
         }.count
     }
 
     /// Invites whose questionnaire isn't fully scored yet.
     private var programsNeedingScoringCount: Int {
-        dataManager.programs.filter { programQuestionnaireCompletion($0) < 1.0 }.count
-    }
-
-    private func programQuestionnaireCompletion(_ program: Program) -> Double {
-        var total = 0
-        var answered = 0
-        for section in program.questionnaire.sections {
-            if section.title.contains("Red flags") { continue }
-            for item in section.items {
-                total += 1
-                if item.programRating > 0 && item.programRating < 6 {
-                    answered += 1
-                }
-            }
-        }
-        guard total > 0 else { return 0 }
-        return Double(answered) / Double(total)
+        let prefs = dataManager.preferences
+        return dataManager.programs.filter { $0.needsScoring(preferences: prefs) }.count
     }
 
     /// Ring fill: share of enabled questionnaire questions answered across all programs.
@@ -1822,14 +1808,6 @@ struct DashboardView: View {
                 color: AppColors.primaryBlue,
                 destination: AnyView(ProgramsNeedingReviewView())
             ))
-        } else if programsNeedingReview > 0 {
-            steps.append(NextStep(
-                title: "Review \(programsNeedingReview) program\(programsNeedingReview == 1 ? "" : "s")",
-                subtitle: "Complete questionnaire data",
-                icon: "square.and.pencil",
-                color: AppColors.accentTeal,
-                destination: AnyView(ProgramsNeedingReviewView())
-            ))
         }
 
         // Upcoming interview within the next week.
@@ -1887,13 +1865,7 @@ struct DashboardView: View {
     }
     
     private var programsNeedingReview: Int {
-        dataManager.programs.filter { program in
-            // Program has no questionnaire data or very incomplete data
-            let hasAnyRating = program.questionnaire.sections.contains { section in
-                section.items.contains { $0.programRating > 0 }
-            }
-            return !hasAnyRating
-        }.count
+        programsNeedingScoringCount
     }
     
     private var topProgramScore: Double {
@@ -1943,24 +1915,10 @@ struct DashboardView: View {
     private var completionPercentage: Double {
         let programs = dataManager.programs
         guard !programs.isEmpty else { return 0 }
-        
-        var totalQuestions = 0
-        var answeredQuestions = 0
-        
-        for program in programs {
-            for section in program.questionnaire.sections {
-                if section.title.contains("Red flags") { continue }
-                for item in section.items {
-                    totalQuestions += 1
-                    if item.programRating > 0 {
-                        answeredQuestions += 1
-                    }
-                }
-            }
-        }
-        
-        guard totalQuestions > 0 else { return 0 }
-        return (Double(answeredQuestions) / Double(totalQuestions)) * 100
+        let prefs = dataManager.preferences
+
+        let ratios = programs.map { $0.questionnaireCompletionRatio(preferences: prefs) }
+        return (ratios.reduce(0, +) / Double(ratios.count)) * 100
     }
     
     private func getSignalProgress() -> Double {

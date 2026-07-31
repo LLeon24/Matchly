@@ -307,26 +307,39 @@ struct Questionnaire: Codable, Equatable {
         return weightedSum * 20 * completion
     }
 
-    /// Share of enabled, scorable questions that have a 1–5 rating (excludes N/A and red flags).
-    private func questionnaireCompletionRatio(preferences: UserPreferences) -> Double {
+    /// Share of enabled, non–red-flag questions that have a deliberate answer.
+    /// Counts 1–5 ratings and N/A (6) as complete; ignores disabled sections/questions.
+    /// When nothing is enabled, returns 1.0 (nothing left to score).
+    func questionnaireCompletionRatio(preferences: UserPreferences) -> Double {
         var answered = 0
         var total = 0
         let allSections = sections + customSections
 
         for section in allSections {
-            if section.title.contains("Red flags") { continue }
+            if isRedFlagSection(section) { continue }
             guard sectionIsEnabled(section, preferences: preferences, allSections: allSections) else { continue }
 
             for item in enabledItems(for: section, preferences: preferences) {
                 total += 1
-                if item.programRating > 0 && item.programRating < 6 {
+                // 0 = unanswered; 1–5 = rated; 6 = N/A (still a deliberate answer)
+                if item.programRating > 0 {
                     answered += 1
                 }
             }
         }
 
-        guard total > 0 else { return 0 }
+        guard total > 0 else { return 1.0 }
         return Double(answered) / Double(total)
+    }
+
+    /// True when any enabled questionnaire item still needs an answer.
+    func needsScoring(preferences: UserPreferences) -> Bool {
+        questionnaireCompletionRatio(preferences: preferences) < 1.0
+    }
+
+    private func isRedFlagSection(_ section: QuestionnaireSection) -> Bool {
+        let title = section.title.lowercased()
+        return title.contains("red flags") || title.contains("red flag")
     }
     
     // Get enabled sections based on preferences (standard + custom)
@@ -340,15 +353,17 @@ struct Questionnaire: Codable, Equatable {
     // Get enabled items for a section based on preferences (includes custom questions added to standard sections)
     func enabledItems(for section: QuestionnaireSection, preferences: UserPreferences) -> [QuestionnaireItem] {
         var allItems = section.items
-        
-        // Add custom questions that were added to this standard section
+        let existingIDs = Set(section.items.map(\.id))
+
+        // Add custom questions that were added to this standard section (skip duplicates already merged onto the program)
         if let customQuestions = preferences.customQuestionsInSections[section.id] {
-            let customQuestionnaireItems = customQuestions.map { customItem in
-                QuestionnaireItem(id: customItem.id, question: customItem.question)
+            let customQuestionnaireItems = customQuestions.compactMap { customItem -> QuestionnaireItem? in
+                guard !existingIDs.contains(customItem.id) else { return nil }
+                return QuestionnaireItem(id: customItem.id, question: customItem.question)
             }
             allItems.append(contentsOf: customQuestionnaireItems)
         }
-        
+
         return allItems.filter { item in
             itemIsEnabled(item, section: section, preferences: preferences, candidateItems: allItems)
         }
