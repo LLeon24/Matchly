@@ -22,7 +22,9 @@ struct SettingsView: View {
             Form {
                 profileSection
                 appInformationSection
-                couplesMatchingSection
+                if FeatureFlags.couplesMatchEnabled {
+                    couplesMatchingSection
+                }
                 questionnaireSection
                 calendarSection
                 dataManagementSection

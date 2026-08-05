@@ -10,7 +10,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        CoupleNotificationService.shared.configure()
+        if FeatureFlags.couplesMatchEnabled {
+            CoupleNotificationService.shared.configure()
+        }
         return true
     }
 
@@ -33,6 +35,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         didReceiveRemoteNotification userInfo: [AnyHashable: Any],
         fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
     ) {
+        guard FeatureFlags.couplesMatchEnabled else {
+            completionHandler(.noData)
+            return
+        }
         CoupleNotificationService.shared.handleRemoteNotification(
             userInfo,
             completionHandler: completionHandler

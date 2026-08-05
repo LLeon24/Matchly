@@ -37,6 +37,8 @@ struct FeatureTourStep: Identifiable {
 
 enum AppFeatureTourSteps {
     static func steps(isCoupleLinked: Bool) -> [FeatureTourStep] {
+        let showCouple = FeatureFlags.couplesMatchEnabled && isCoupleLinked
+
         var steps: [FeatureTourStep] = [
             FeatureTourStep(
                 id: "intro",
@@ -72,7 +74,7 @@ enum AppFeatureTourSteps {
             )
         ]
 
-        if isCoupleLinked {
+        if showCouple {
             steps.append(
                 FeatureTourStep(
                     id: "couple",
@@ -88,18 +90,22 @@ enum AppFeatureTourSteps {
         steps.append(contentsOf: [
             FeatureTourStep(
                 id: "map",
-                tabIndex: isCoupleLinked ? 4 : 3,
+                tabIndex: showCouple ? 4 : 3,
                 anchorID: FeatureTourAnchorID.mapTab,
                 title: "Map",
-                message: "See programs geographically and compare distances — helpful for geography and couples planning.",
+                message: showCouple
+                    ? "See programs geographically and compare distances — helpful for geography and couples planning."
+                    : "See programs geographically and compare distances as you plan where you want to train.",
                 placesBubbleAboveSpotlight: true
             ),
             FeatureTourStep(
                 id: "settings",
-                tabIndex: isCoupleLinked ? 5 : 4,
+                tabIndex: showCouple ? 5 : 4,
                 anchorID: FeatureTourAnchorID.settingsTab,
                 title: "Settings",
-                message: "Adjust specialties, questionnaire weights, dashboard layout, calendar sync, and couples preferences.",
+                message: showCouple
+                    ? "Adjust specialties, questionnaire weights, dashboard layout, calendar sync, and couples preferences."
+                    : "Adjust specialties, questionnaire weights, dashboard layout, and calendar sync.",
                 placesBubbleAboveSpotlight: true
             ),
             FeatureTourStep(
@@ -117,7 +123,8 @@ enum AppFeatureTourSteps {
 
     /// Shown when couples matching is activated after the main app tour was already completed.
     static func coupleMatchSteps() -> [FeatureTourStep] {
-        [
+        guard FeatureFlags.couplesMatchEnabled else { return [] }
+        return [
             FeatureTourStep(
                 id: "couple-intro",
                 tabIndex: 3,

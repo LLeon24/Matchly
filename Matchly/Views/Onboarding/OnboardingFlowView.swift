@@ -199,7 +199,10 @@ struct OnboardingFlowView: View {
                         FeatureRow(icon: "list.bullet.clipboard.fill", text: "Track & Score Programs")
                         FeatureRow(icon: "chart.bar.fill", text: "Build Your NRMP Rank List")
                         FeatureRow(icon: "star.fill", text: "Manage ERAS Signals")
-                        FeatureRow(icon: "heart.fill", text: "Couples Match with Your Partner")
+                        FeatureRow(icon: "calendar", text: "Plan Interview Dates")
+                        if FeatureFlags.couplesMatchEnabled {
+                            FeatureRow(icon: "heart.fill", text: "Couples Match with Your Partner")
+                        }
                     }
                     .padding(.top, 24)
                 }

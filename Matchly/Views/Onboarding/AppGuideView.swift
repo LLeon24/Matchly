@@ -16,44 +16,58 @@ struct AppGuidePage: Identifiable {
 }
 
 enum AppGuidePages {
-    static let all: [AppGuidePage] = [
-        AppGuidePage(
-            icon: "house.fill",
-            title: "Dashboard",
-            description: "Your home base: upcoming interviews, signals, programs needing review, and quick links to what matters most during match season.",
-            tint: AppColors.primaryBlue
-        ),
-        AppGuidePage(
-            icon: "list.bullet",
-            title: "My Programs",
-            description: "Add programs from search, rate each one with the questionnaire, and track signals, red flags, and interview details in one place.",
-            tint: AppColors.accentGreen
-        ),
-        AppGuidePage(
-            icon: "chart.bar.fill",
-            title: "Rank List",
-            description: "Build your personal NRMP rank list from scored programs. Export when you're ready and reorder anytime as you learn more.",
-            tint: AppColors.accentPink
-        ),
-        AppGuidePage(
-            icon: "map.fill",
-            title: "Map",
-            description: "See programs geographically, compare distances, and visualize where you and your partner might end up.",
-            tint: AppColors.accentTeal
-        ),
-        AppGuidePage(
-            icon: "heart.fill",
-            title: "Couple Match",
-            description: "Link with your partner to chat, share rank lists, and generate a suggested couples rank list using NRMP-style pairing rules.",
-            tint: .pink
-        ),
-        AppGuidePage(
-            icon: "gearshape.fill",
-            title: "Settings",
-            description: "Adjust specialties, questionnaire weights, calendar sync, dashboard layout, and couples preferences anytime.",
-            tint: AppColors.accentPurple
+    static var all: [AppGuidePage] {
+        var pages: [AppGuidePage] = [
+            AppGuidePage(
+                icon: "house.fill",
+                title: "Dashboard",
+                description: "Your home base: upcoming interviews, signals, programs needing review, and quick links to what matters most during match season.",
+                tint: AppColors.primaryBlue
+            ),
+            AppGuidePage(
+                icon: "list.bullet",
+                title: "My Programs",
+                description: "Add programs from search, rate each one with the questionnaire, and track signals, red flags, and interview details in one place.",
+                tint: AppColors.accentGreen
+            ),
+            AppGuidePage(
+                icon: "chart.bar.fill",
+                title: "Rank List",
+                description: "Build your personal NRMP rank list from scored programs. Export when you're ready and reorder anytime as you learn more.",
+                tint: AppColors.accentPink
+            ),
+            AppGuidePage(
+                icon: "map.fill",
+                title: "Map",
+                description: "See programs geographically and compare distances to plan where you want to train.",
+                tint: AppColors.accentTeal
+            )
+        ]
+
+        if FeatureFlags.couplesMatchEnabled {
+            pages.append(
+                AppGuidePage(
+                    icon: "heart.fill",
+                    title: "Couple Match",
+                    description: "Link with your partner to chat, share rank lists, and generate a suggested couples rank list using NRMP-style pairing rules.",
+                    tint: .pink
+                )
+            )
+        }
+
+        pages.append(
+            AppGuidePage(
+                icon: "gearshape.fill",
+                title: "Settings",
+                description: FeatureFlags.couplesMatchEnabled
+                    ? "Adjust specialties, questionnaire weights, calendar sync, dashboard layout, and couples preferences anytime."
+                    : "Adjust specialties, questionnaire weights, calendar sync, and dashboard layout anytime.",
+                tint: AppColors.accentPurple
+            )
         )
-    ]
+
+        return pages
+    }
 }
 
 struct AppGuideView: View {

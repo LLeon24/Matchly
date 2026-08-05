@@ -32,6 +32,10 @@ final class CoupleSyncCoordinator: ObservableObject {
     private init() {}
 
     func startMonitoringIfNeeded(dataManager: DataManager) async {
+        guard FeatureFlags.couplesMatchEnabled else {
+            stopMonitoring()
+            return
+        }
         guard let couple = dataManager.preferences.couple, couple.isLinked else {
             stopMonitoring()
             return

@@ -613,6 +613,7 @@ class DataManager: ObservableObject {
     }
 
     func scheduleCoupleCloudPublish() {
+        guard FeatureFlags.couplesMatchEnabled else { return }
         guard preferences.couple?.isLinked == true else { return }
         Task { @MainActor in
             try? await CoupleSyncCoordinator.shared.publishOwnData(dataManager: self)
@@ -620,6 +621,12 @@ class DataManager: ObservableObject {
     }
 
     func startCoupleSyncIfNeeded() {
+        guard FeatureFlags.couplesMatchEnabled else {
+            Task { @MainActor in
+                CoupleSyncCoordinator.shared.stopMonitoring()
+            }
+            return
+        }
         Task { @MainActor in
             await CoupleSyncCoordinator.shared.startMonitoringIfNeeded(dataManager: self)
         }

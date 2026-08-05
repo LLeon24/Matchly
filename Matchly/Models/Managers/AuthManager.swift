@@ -141,15 +141,21 @@ class AuthManager: ObservableObject {
         case .available:
             return nil
         case .noAccount:
-            return "iCloud is required for Couples Match. Sign in to iCloud in Settings, then reopen Matchly."
+            return FeatureFlags.couplesMatchEnabled
+                ? "iCloud is required for Couples Match. Sign in to iCloud in Settings, then reopen Matchly."
+                : "Sign in to iCloud in Settings, then reopen Matchly."
         case .restricted:
-            return "iCloud access is restricted on this device, so Couples Match is unavailable."
+            return FeatureFlags.couplesMatchEnabled
+                ? "iCloud access is restricted on this device, so Couples Match is unavailable."
+                : "iCloud access is restricted on this device."
         case .temporarilyUnavailable:
             return "iCloud is temporarily unavailable. Please try again in a moment."
         case .couldNotDetermine:
             return "Couldn't determine iCloud status. Make sure you're signed in to iCloud and the iCloud capability is enabled."
         @unknown default:
-            return "iCloud is currently unavailable for Couples Match."
+            return FeatureFlags.couplesMatchEnabled
+                ? "iCloud is currently unavailable for Couples Match."
+                : "iCloud is currently unavailable."
         }
     }
 

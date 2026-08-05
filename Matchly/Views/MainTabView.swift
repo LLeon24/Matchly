@@ -24,7 +24,7 @@ struct MainTabView: View {
     @State private var tourAnchorRects: [String: CGRect] = [:]
 
     private var isCoupleLinked: Bool {
-        dataManager.preferences.couple?.isLinked == true
+        FeatureFlags.couplesMatchEnabled && dataManager.preferences.couple?.isLinked == true
     }
 
     private var featureTourSteps: [FeatureTourStep] {
@@ -93,7 +93,9 @@ struct MainTabView: View {
         .matchlyAdaptiveLayout()
         .environmentObject(dataManager)
         .onAppear {
-            dataManager.startCoupleSyncIfNeeded()
+            if FeatureFlags.couplesMatchEnabled {
+                dataManager.startCoupleSyncIfNeeded()
+            }
             if !dataManager.preferences.hasCompletedFeatureTour {
                 featureTourMode = .full
                 showFeatureTour = true
@@ -144,6 +146,8 @@ struct MainTabView: View {
     }
 
     private func handleCoupleMatchActivated() {
+        guard FeatureFlags.couplesMatchEnabled else { return }
+
         if showFeatureTour && featureTourMode == .full {
             if let coupleIndex = AppFeatureTourSteps.steps(isCoupleLinked: true).firstIndex(where: { $0.id == "couple" }) {
                 featureTourStepIndex = coupleIndex

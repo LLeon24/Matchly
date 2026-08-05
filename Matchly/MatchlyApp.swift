@@ -15,7 +15,9 @@ struct MatchlyApp: App {
     @ObservedObject private var coupleSync = CoupleSyncCoordinator.shared
 
     init() {
-        DataManager.shared.startCoupleSyncIfNeeded()
+        if FeatureFlags.couplesMatchEnabled {
+            DataManager.shared.startCoupleSyncIfNeeded()
+        }
     }
 
     var body: some Scene {
@@ -25,6 +27,7 @@ struct MatchlyApp: App {
                 .environmentObject(deepLinkHandler)
                 .environmentObject(coupleSync)
                 .onOpenURL { url in
+                    guard FeatureFlags.couplesMatchEnabled else { return }
                     deepLinkHandler.handle(url: url)
                 }
         }
