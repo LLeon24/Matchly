@@ -52,7 +52,7 @@ struct MainTabView: View {
                 case 1:
                     ProgramsListView()
                 case 2:
-                    RankListView()
+                    RankListView(selectedTab: $selectedTab)
                 case 3 where isCoupleLinked:
                     CouplesHubView()
                 case 3 where FeatureFlags.programsMapEnabled:

@@ -70,6 +70,30 @@ else
   FAIL=1
 fi
 
+if grep -q "0.965, green: 0.969, blue: 0.976" Matchly/Models/AppColors.swift; then
+  echo "  OK  Dashboard canvas uses cool near-white background (not cream)"
+else
+  echo "  FAIL  Dashboard canvas color wrong — may be on old main-branch cream"
+  FAIL=1
+fi
+
+if grep -q "accentGreen" Matchly/Views/Components/LiquidGlassTabBar.swift && \
+   grep -q "accentPink" Matchly/Views/Components/LiquidGlassTabBar.swift; then
+  echo "  OK  Tab bar uses green (Programs) and pink (Rank List) accent colors"
+else
+  echo "  FAIL  Tab bar accent colors missing"
+  FAIL=1
+fi
+
+if grep -q "Get Started" Matchly/Views/DashboardView.swift && \
+   grep -q "No Programs Yet" Matchly/Views/ProgramsListView.swift && \
+   grep -q "No Programs to Rank" Matchly/Views/RankListView.swift; then
+  echo "  OK  Dashboard, Programs, and Rank List empty states present"
+else
+  echo "  FAIL  Tab empty-state copy missing"
+  FAIL=1
+fi
+
 if grep -q "programsMapEnabled = false" Matchly/Models/FeatureFlags.swift; then
   echo "  OK  Map tab disabled for V1"
 else
@@ -127,6 +151,7 @@ echo "  1. Quit Xcode"
 echo "  2. rm -rf ~/Library/Developer/Xcode/DerivedData/Matchly-*"
 echo "  3. Open Matchly.xcodeproj from THIS folder (not an old iCloud copy)"
 echo "  4. Product → Clean Build Folder (⇧⌘K), then Run (⌘R)"
-echo "  5. Settings → About should show Version 1.0 and Build 1.0 · recovery-3"
-echo "  6. Tab bar should have 4 tabs (no Map)"
-echo "  7. Rank List filter bar should show Export PDF; PDF header should include your name and AAMC ID"
+echo "  5. Settings → About should show Version 1.0 and Build 1.0 · recovery-4"
+echo "  6. Tab bar should have 4 tabs (no Map) with blue/green/pink/purple accents"
+echo "  7. Rank List shows Export PDF icon in toolbar even when empty; filter bar chip when programs exist"
+echo "  8. Background should be cool light gray (not yellow/cream); PDF header shows name + AAMC ID"

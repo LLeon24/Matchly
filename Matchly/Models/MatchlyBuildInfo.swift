@@ -12,7 +12,7 @@ enum MatchlyBuildInfo {
     static let version = "1.0"
 
     /// Short recovery tag — changes when we reset the branch to a known-good baseline.
-    static let recoveryTag = "recovery-3"
+    static let recoveryTag = "recovery-4"
 
     static var displayLabel: String { "\(version) · \(recoveryTag)" }
 }

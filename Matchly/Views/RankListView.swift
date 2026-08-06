@@ -10,6 +10,7 @@ import UIKit
 
 struct RankListView: View {
     @EnvironmentObject var dataManager: DataManager
+    @Binding var selectedTab: Int
     @State private var showExportSheet = false
     @State private var manualOrder: [String] = [] // Store program IDs in manual order
     @State private var isEditing = false
@@ -17,6 +18,10 @@ struct RankListView: View {
     @State private var filterInterviewed = false
     @State private var selectedSpecialties: Set<String> = []
     @State private var showAllSpecialties: Bool = true
+    
+    init(selectedTab: Binding<Int> = .constant(2)) {
+        _selectedTab = selectedTab
+    }
     
     enum SortOption: String, CaseIterable {
         case score = "Score"
@@ -161,7 +166,7 @@ struct RankListView: View {
         MatchlyNavigationView {
             Group {
                 if rankedPrograms.isEmpty {
-                    EmptyRankListView()
+                    EmptyRankListView(selectedTab: $selectedTab)
                         .matchlyRootContentFrame()
                 } else {
                     VStack(spacing: 0) {
@@ -409,20 +414,20 @@ struct RankListView: View {
             }
         }
         ToolbarItem(placement: .navigationBarTrailing) {
-            if !rankedPrograms.isEmpty {
-                HStack(spacing: 16) {
+            HStack(spacing: 16) {
+                if !rankedPrograms.isEmpty {
                     NavigationLink(destination: ProgramComparisonView()) {
                         Image(systemName: "square.grid.2x2")
                     }
                     .accessibilityLabel("Compare programs")
-                    
-                    Button(action: {
-                        showExportSheet = true
-                    }) {
-                        Image(systemName: "doc.richtext")
-                    }
-                    .accessibilityLabel("Export rank list as PDF")
                 }
+
+                Button(action: {
+                    showExportSheet = true
+                }) {
+                    Image(systemName: "doc.richtext")
+                }
+                .accessibilityLabel("Export rank list as PDF")
             }
         }
     }
@@ -609,8 +614,11 @@ struct RankListItemView: View {
 }
 
 struct EmptyRankListView: View {
+    @Binding var selectedTab: Int
+
     var body: some View {
         VStack(spacing: 24) {
+            Spacer(minLength: 0)
             ZStack {
                 Circle()
                     .fill(
@@ -623,7 +631,7 @@ struct EmptyRankListView: View {
                     .frame(width: 120, height: 120)
                 
                 Image(systemName: "chart.bar.xaxis")
-                .font(.arial(size: 60))
+                    .font(.arial(size: 60))
                     .foregroundStyle(
                         LinearGradient(
                             colors: [.blue, .purple],
@@ -634,16 +642,35 @@ struct EmptyRankListView: View {
             }
             
             VStack(spacing: 8) {
-            Text("No Programs to Rank")
+                Text("No Programs to Rank")
                     .font(.arial(size: 24, weight: .bold))
-            
-            Text("Add programs to see your rank list")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
+                
+                Text("Add programs to see your rank list and export a PDF")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
             }
+
+            Button(action: {
+                selectedTab = 1
+            }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.arial(size: 18))
+                    Text("Add Programs")
+                        .font(.arial(size: 17, weight: .semibold))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 32)
+                .padding(.vertical, 14)
+            }
+            .buttonStyle(.glassProminent)
+            .tint(AppColors.primaryBlue)
+
+            Spacer(minLength: 0)
         }
+        .padding(.horizontal, 24)
     }
 }
 
