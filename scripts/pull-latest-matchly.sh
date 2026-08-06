@@ -56,6 +56,27 @@ else
   FAIL=1
 fi
 
+if grep -q "Account Backup" Matchly/Views/DataBackupView.swift; then
+  echo "  OK  Backup & Sync includes Account Backup"
+else
+  echo "  FAIL  Account Backup section missing from DataBackupView"
+  FAIL=1
+fi
+
+if grep -q "iCloud Device Sync" Matchly/Views/DataBackupView.swift; then
+  echo "  OK  Backup & Sync includes iCloud Device Sync"
+else
+  echo "  FAIL  iCloud Device Sync section missing from DataBackupView"
+  FAIL=1
+fi
+
+if grep -q "Section(\"About\")" Matchly/Views/SettingsView.swift; then
+  echo "  OK  Settings uses native Form section headers"
+else
+  echo "  FAIL  Settings section headers may be on wrong format"
+  FAIL=1
+fi
+
 echo
 echo "Settings canary (optional UI verification):"
 grep -nE "1\.0\.0|Add Email & Password|Section\(\"About\"\)" Matchly/Views/SettingsView.swift || true

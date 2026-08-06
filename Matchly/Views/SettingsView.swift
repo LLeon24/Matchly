@@ -149,7 +149,9 @@ struct SettingsView: View {
                         NotificationCenter.default.post(name: NSNotification.Name("ShowFeatureTour"), object: nil)
                     } label: {
                         Label("Replay Guided Tour", systemImage: "hand.point.up.left.fill")
+                            .foregroundStyle(AppColors.primaryBlue)
                     }
+                    .buttonStyle(.plain)
 
                     NavigationLink(destination: AppGuideView(showsNavigationChrome: true)) {
                         Label("Feature Overview", systemImage: "book.fill")
@@ -392,9 +394,12 @@ struct SettingsView: View {
                             Button {
                                 showLinkEmailPassword = true
                             } label: {
-                                Label("Add Email & Password", systemImage: "envelope.badge.shield.half.filled")
+                                Text("Add Email & Password")
+                                    .frame(maxWidth: .infinity)
                             }
-                            .buttonStyle(.glass)
+                            .buttonStyle(.glassProminent)
+                            .tint(AppColors.primaryBlue)
+                            .listRowBackground(Color.clear)
                         }
                     }
                     

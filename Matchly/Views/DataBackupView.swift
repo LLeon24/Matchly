@@ -13,6 +13,7 @@ struct DataBackupView: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject private var cloudSync = CloudSyncManager.shared
     @ObservedObject private var accountCloudSync = AccountCloudSyncManager.shared
+    @ObservedObject private var authManager = AuthManager.shared
     @State private var showExportSheet = false
     @State private var showImportPicker = false
     @State private var showImportSuccess = false
@@ -23,54 +24,36 @@ struct DataBackupView: View {
     var body: some View {
         Form {
             Section {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 6) {
-                            Image(systemName: accountCloudSync.isSignedIn ? "person.crop.circle.badge.checkmark" : "person.crop.circle.badge.exclamationmark")
-                                .foregroundColor(accountCloudSync.isSignedIn ? .blue : .gray)
-                            Text("Account Backup")
-                                .font(.arial(size: 17, weight: .medium))
-                        }
-
-                        if accountCloudSync.isSignedIn {
-                            if let lastSync = accountCloudSync.lastSyncDate {
-                                Text("Last synced: \(lastSync, style: .relative)")
-                                    .font(.arial(size: 13))
-                                    .foregroundColor(.secondary)
-                            } else {
-                                Text("Not yet synced")
-                                    .font(.arial(size: 13))
-                                    .foregroundColor(.secondary)
-                            }
-
-                            if let error = accountCloudSync.syncError {
-                                Text(error)
-                                    .font(.arial(size: 12))
-                                    .foregroundColor(.red)
-                                    .lineLimit(3)
-                            }
-                        } else {
-                            Text("Sign in to back up your data to your Matchly account.")
-                                .font(.arial(size: 13))
-                                .foregroundColor(.secondary)
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        Image(systemName: accountCloudSync.isSignedIn ? "person.crop.circle.badge.checkmark" : "person.crop.circle.badge.exclamationmark")
+                            .foregroundColor(accountCloudSync.isSignedIn ? AppColors.primaryBlue : .secondary)
+                        Text("Account Backup")
+                            .font(.arial(size: 17, weight: .semibold))
+                        Spacer()
+                        if accountCloudSync.isSyncing {
+                            ProgressView()
+                                .scaleEffect(0.8)
                         }
                     }
 
-                    Spacer()
+                    Text(accountBackupStatusLine)
+                        .font(.arial(size: 13))
+                        .foregroundColor(.secondary)
+
+                    if let error = accountCloudSync.syncError {
+                        Text(error)
+                            .font(.arial(size: 12))
+                            .foregroundColor(.red)
+                            .lineLimit(3)
+                    }
 
                     if accountCloudSync.isSignedIn {
-                        Button(action: {
+                        Button("Sync Now") {
                             Task { await syncAccountCloud() }
-                        }) {
-                            if accountCloudSync.isSyncing {
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                            } else {
-                                Text("Sync Now")
-                                    .font(.arial(size: 15, weight: .medium))
-                                    .foregroundColor(.blue)
-                            }
                         }
+                        .buttonStyle(.glassProminent)
+                        .tint(AppColors.primaryBlue)
                         .disabled(accountCloudSync.isSyncing)
                     }
                 }
@@ -81,68 +64,40 @@ struct DataBackupView: View {
             } header: {
                 Text("Account Backup")
             } footer: {
-                if accountCloudSync.isSignedIn {
-                    Text("Your programs and preferences sync to your signed-in Matchly account so you can restore them on any device.")
-                } else {
-                    Text("Account backup requires Apple, Google, or email sign-in.")
-                }
+                Text("Backs up your programs and settings to your Matchly account. Works with Apple, Google, and email sign-in.")
             }
 
             Section {
-                // iCloud Sync Status
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 6) {
-                            Image(systemName: cloudSync.isCloudAvailable ? "icloud.fill" : "icloud.slash")
-                                .foregroundColor(cloudSync.isCloudAvailable ? .blue : .gray)
-                            Text("iCloud Device Sync")
-                                .font(.arial(size: 17, weight: .medium))
-                        }
-                        
-                        if cloudSync.isCloudAvailable {
-                            if let lastSync = cloudSync.lastSyncDate {
-                                Text("Last synced: \(lastSync, style: .relative)")
-                                    .font(.arial(size: 13))
-                                    .foregroundColor(.secondary)
-                            } else {
-                                Text("Not yet synced")
-                                    .font(.arial(size: 13))
-                                    .foregroundColor(.secondary)
-                            }
-                            
-                            if let error = cloudSync.syncError {
-                                Text(error)
-                                    .font(.arial(size: 12))
-                                    .foregroundColor(.red)
-                                    .lineLimit(3)
-                            }
-                        } else {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("iCloud not available")
-                                    .font(.arial(size: 13))
-                                    .foregroundColor(.secondary)
-                                Text("Sign in to iCloud in Settings")
-                                    .font(.arial(size: 12))
-                                    .foregroundColor(.secondary)
-                            }
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        Image(systemName: cloudSync.isCloudAvailable ? "icloud.fill" : "icloud.slash")
+                            .foregroundColor(cloudSync.isCloudAvailable ? AppColors.primaryBlue : .secondary)
+                        Text("iCloud Device Sync")
+                            .font(.arial(size: 17, weight: .semibold))
+                        Spacer()
+                        if cloudSync.isSyncing {
+                            ProgressView()
+                                .scaleEffect(0.8)
                         }
                     }
-                    
-                    Spacer()
-                    
+
+                    Text(iCloudDeviceSyncStatusLine)
+                        .font(.arial(size: 13))
+                        .foregroundColor(.secondary)
+
+                    if let error = cloudSync.syncError {
+                        Text(error)
+                            .font(.arial(size: 12))
+                            .foregroundColor(.red)
+                            .lineLimit(3)
+                    }
+
                     if cloudSync.isCloudAvailable {
-                        Button(action: {
+                        Button("Sync Now") {
                             syncToCloud()
-                        }) {
-                            if cloudSync.isSyncing {
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                            } else {
-                                Text("Sync Now")
-                                    .font(.arial(size: 15, weight: .medium))
-                                    .foregroundColor(.blue)
-                            }
                         }
+                        .buttonStyle(.glassProminent)
+                        .tint(AppColors.primaryBlue)
                         .disabled(cloudSync.isSyncing)
                     }
                 }
@@ -284,6 +239,27 @@ struct DataBackupView: View {
         } message: {
             Text(importErrorMessage.isEmpty ? (cloudSync.syncError ?? "Data synced successfully to iCloud") : importErrorMessage)
         }
+    }
+
+    private var accountBackupStatusLine: String {
+        if !accountCloudSync.isSignedIn {
+            return "Sign in to enable automatic backup to your Matchly account."
+        }
+        if let lastSync = accountCloudSync.lastSyncDate {
+            return "Last synced \(lastSync.formatted(.relative(presentation: .named)))"
+        }
+        let method = authManager.currentUser?.provider.rawValue.capitalized ?? "your account"
+        return "Signed in with \(method). Ready to sync."
+    }
+
+    private var iCloudDeviceSyncStatusLine: String {
+        if !cloudSync.isCloudAvailable {
+            return "iCloud not available. Sign in to iCloud in Settings."
+        }
+        if let lastSync = cloudSync.lastSyncDate {
+            return "Last synced \(lastSync.formatted(.relative(presentation: .named)))"
+        }
+        return "Ready to sync across devices on the same Apple ID."
     }
 
     private func syncAccountCloud() async {
