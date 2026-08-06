@@ -67,7 +67,14 @@ struct DashboardView: View {
                 )
                 .padding(.horizontal, 16)
                 .padding(.top, screenLayout == .compactVertical ? 4 : 6)
-                .padding(.bottom, screenLayout == .compactVertical ? 8 : 12)
+                .padding(.bottom, screenLayout == .compactVertical ? 4 : 6)
+
+                DashboardSectionPageIndicator(
+                    count: 3,
+                    selection: $selectedSection,
+                    tabAccents: [AppColors.primaryBlue, AppColors.primaryBlue, AppColors.accentGreen]
+                )
+                .padding(.bottom, screenLayout == .compactVertical ? 6 : 8)
 
                 TabView(selection: $selectedSection) {
                     overviewPage

@@ -73,13 +73,13 @@ struct DashboardSectionTabBar: View {
                 if let icons, index < icons.count {
                     Image(systemName: icons[index])
                         .font(.arial(size: layout.sectionTabIconFont, weight: isSelected ? .semibold : .medium))
-                        .foregroundColor(isSelected ? tabColor : Color.primary.opacity(0.45))
+                        .foregroundColor(isSelected ? tabColor : Color.primary.opacity(0.55))
                         .symbolRenderingMode(.hierarchical)
                 }
 
                 Text(titles[index])
                     .font(.arial(size: layout.sectionTabFont, weight: isSelected ? .bold : .semibold))
-                    .foregroundColor(isSelected ? tabColor : Color.primary.opacity(0.55))
+                    .foregroundColor(isSelected ? tabColor : Color.primary.opacity(0.68))
 
                 ZStack {
                     // Reserves height so the row doesn't jump between states.
@@ -108,6 +108,52 @@ struct DashboardSectionTabBar: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// iPhone-style page dots for the dashboard section pager. Sits below the
+/// Overview / Programs / Interviews tabs and above the scrolling page content.
+struct DashboardSectionPageIndicator: View {
+    let count: Int
+    @Binding var selection: Int
+    var tabAccents: [Color]? = nil
+    var accent: Color = AppColors.primaryBlue
+
+    var body: some View {
+        HStack(spacing: 7) {
+            ForEach(0..<count, id: \.self) { index in
+                Circle()
+                    .fill(fillColor(for: index))
+                    .frame(
+                        width: index == selection ? 8 : 6,
+                        height: index == selection ? 8 : 6
+                    )
+                    .animation(.spring(response: 0.32, dampingFraction: 0.82), value: selection)
+            }
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Section \(selection + 1) of \(count)")
+        .accessibilityValue(accessibilitySectionName)
+    }
+
+    private var accessibilitySectionName: String {
+        switch selection {
+        case 0: return "Overview"
+        case 1: return "Programs"
+        case 2: return "Interviews"
+        default: return ""
+        }
+    }
+
+    private func fillColor(for index: Int) -> Color {
+        if index == selection {
+            if let tabAccents, index < tabAccents.count {
+                return tabAccents[index]
+            }
+            return accent
+        }
+        return Color.primary.opacity(0.22)
     }
 }
 

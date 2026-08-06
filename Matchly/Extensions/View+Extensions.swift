@@ -145,8 +145,8 @@ enum MatchlyLayoutStyle: Equatable {
     var heroStatLabelFont: CGFloat { self == .compactVertical ? 10 : 11 }
     var numberHeroIconSize: CGFloat { self == .compactVertical ? 56 : 76 }
     var numberHeroIconFont: CGFloat { self == .compactVertical ? 24 : 34 }
-    var sectionTabFont: CGFloat { self == .compactVertical ? 14 : 17 }
-    var sectionTabIconFont: CGFloat { self == .compactVertical ? 15 : 18 }
+    var sectionTabFont: CGFloat { self == .compactVertical ? 15 : 18 }
+    var sectionTabIconFont: CGFloat { self == .compactVertical ? 16 : 19 }
     var sectionTabSpacing: CGFloat { self == .compactVertical ? 5 : 7 }
     var headerGreetingFont: CGFloat { self == .compactVertical ? 18 : 24 }
     var headerSubtitleFont: CGFloat { self == .compactVertical ? 12 : 14 }
