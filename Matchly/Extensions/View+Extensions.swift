@@ -81,11 +81,13 @@ struct MatchlyFormSectionHeader: View {
 
     var body: some View {
         Text(title)
-            .font(.arial(size: 15, weight: .bold))
+            .font(.arial(size: 17, weight: .bold))
             .foregroundStyle(Color.black)
             .textCase(nil)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.leading, 4)
+            // Form adds default header inset; pull flush with the section card below.
+            .padding(.leading, -20)
+            .padding(.trailing, -20)
     }
 }
 
