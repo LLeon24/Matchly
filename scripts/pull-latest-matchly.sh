@@ -112,6 +112,20 @@ else
   FAIL=1
 fi
 
+if grep -q "headerQuickStatsBar" Matchly/Views/DashboardView.swift; then
+  echo "  OK  Dashboard pinned header includes Signals KPI strip"
+else
+  echo "  FAIL  Dashboard header quick stats (Signals) missing"
+  FAIL=1
+fi
+
+if grep -q "showQuickStats: Bool = true" Matchly/Models/Data/UserPreferences.swift; then
+  echo "  OK  Dashboard quick stats enabled by default"
+else
+  echo "  FAIL  showQuickStats default not true"
+  FAIL=1
+fi
+
 if grep -q "MatchlyFormSectionHeader" Matchly/Views/DataBackupView.swift && \
    grep -q "MatchlyFormSectionHeader" Matchly/Views/SettingsView.swift; then
   echo "  OK  Settings and Backup use aligned black 17pt section headers"
@@ -182,7 +196,8 @@ echo "  1. Quit Xcode"
 echo "  2. rm -rf ~/Library/Developer/Xcode/DerivedData/Matchly-*"
 echo "  3. Open Matchly.xcodeproj from THIS folder (not an old iCloud copy)"
 echo "  4. Product → Clean Build Folder (⇧⌘K), then Run (⌘R)"
-echo "  5. Settings → About should show Version 1.0 and Build 1.0 · recovery-5"
+echo "  5. Settings → About should show Version 1.0 and Build 1.0 · recovery-7"
+echo "  6. Dashboard header shows colored KPI strip: Programs, Interviews, Avg Score, Signals"
 echo "  6. Tab bar should have 4 tabs (no Map) with blue/green/pink/purple accents"
 echo "  7. Rank List shows full-width blue Export PDF bar + Export PDF text in nav bar"
 echo "  8. Dashboard empty icon uses blue-purple gradient (not flat gray)"

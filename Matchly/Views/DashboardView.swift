@@ -48,6 +48,10 @@ struct DashboardView: View {
             headerBar
                 .id(dashboardCustomizationToken)
 
+            if dashboardPreferences.showQuickStats {
+                headerQuickStatsBar
+            }
+
             if dataManager.programs.isEmpty {
                 ScrollView {
                     emptyStateSection
@@ -178,6 +182,16 @@ struct DashboardView: View {
         .padding(.bottom, screenLayout.headerVerticalPadding)
     }
 
+    /// Pinned KPI strip — Programs, Interviews, Avg Score, Signals — always visible under the greeting.
+    private var headerQuickStatsBar: some View {
+        quickStatsRow
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .dashboardCardStyle()
+            .padding(.horizontal, 16)
+            .padding(.bottom, screenLayout == .compactVertical ? 6 : 10)
+    }
+
     /// Profile photo if set, otherwise the user's initials in a clean tinted
     /// circle, with a single SF Symbol as a last resort when there's no name.
     @ViewBuilder
@@ -204,11 +218,11 @@ struct DashboardView: View {
         } else {
             ZStack {
                 Circle()
-                    .glassEffect(.clear.interactive(), in: .circle)
+                    .fill(AppColors.primaryGradient)
                     .frame(width: size, height: size)
                 Image(systemName: "person.fill")
                     .font(.arial(size: 20, weight: .medium))
-                    .foregroundStyle(AppColors.primaryBlue)
+                    .foregroundColor(.white)
             }
             .frame(width: size, height: size)
         }
@@ -1078,14 +1092,14 @@ struct DashboardView: View {
     
     // MARK: - Quick Stats Row (reusable component)
     private var quickStatsRow: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Button(action: {
                 selectedTab = 1 // My Programs tab
             }) {
                 QuickStatMini(
                     value: "\(dataManager.programs.count)",
                     label: "Programs",
-                    color: .blue
+                    color: AppColors.primaryBlue
                 )
             }
             .buttonStyle(.plain)
@@ -1094,7 +1108,7 @@ struct DashboardView: View {
                 QuickStatMini(
                     value: "\(interviewCount)",
                     label: "Interviews",
-                    color: .green
+                    color: AppColors.accentGreen
                 )
             }
             .buttonStyle(.plain)
@@ -1102,14 +1116,14 @@ struct DashboardView: View {
             QuickStatMini(
                 value: String(format: "%.1f", averageScore),
                 label: "Avg Score",
-                color: .orange
+                color: AppColors.accentOrange
             )
             
             NavigationLink(destination: AllSignaledProgramsView()) {
                 QuickStatMini(
                     value: "\(totalSignalCount)",
                     label: "Signals",
-                    color: .purple
+                    color: AppColors.accentPurple
                 )
             }
             .buttonStyle(.plain)
@@ -2276,16 +2290,18 @@ struct QuickStatMini: View {
     let color: Color
     
     var body: some View {
-        VStack(spacing: 2) {
+        VStack(spacing: 3) {
             Text(value)
                 .font(.arial(size: 16, weight: .bold))
                 .foregroundColor(color)
             
             Text(label)
-                .font(.arial(size: 10))
+                .font(.arial(size: 10, weight: .medium))
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
 
