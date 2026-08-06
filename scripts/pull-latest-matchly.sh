@@ -63,6 +63,13 @@ else
   FAIL=1
 fi
 
+if grep -q 'static let version = "1.0"' Matchly/Models/MatchlyBuildInfo.swift; then
+  echo "  OK  V1.0 build marker present"
+else
+  echo "  FAIL  MatchlyBuildInfo.swift missing 1.0 version marker"
+  FAIL=1
+fi
+
 if grep -q "programsMapEnabled = false" Matchly/Models/FeatureFlags.swift; then
   echo "  OK  Map tab disabled for V1"
 else
@@ -83,7 +90,7 @@ fi
 
 echo
 echo "Settings canary (optional UI verification):"
-grep -nE "1\.0\.0|Add Email & Password|MatchlyFormSectionHeader" Matchly/Views/SettingsView.swift || true
+grep -nE "MatchlyBuildInfo|settingsSectionHeader" Matchly/Views/SettingsView.swift || true
 
 echo
 if [[ "$FAIL" -ne 0 ]]; then
@@ -99,4 +106,5 @@ echo "  1. Quit Xcode"
 echo "  2. rm -rf ~/Library/Developer/Xcode/DerivedData/Matchly-*"
 echo "  3. Open Matchly.xcodeproj from THIS folder (not an old iCloud copy)"
 echo "  4. Product → Clean Build Folder (⇧⌘K), then Run (⌘R)"
-echo "  5. Settings → About should show Version 1.0.0"
+echo "  5. Settings → About should show Version 1.0 and Build 1.0 · recovery-1"
+echo "  6. Tab bar should have 4 tabs (no Map)"

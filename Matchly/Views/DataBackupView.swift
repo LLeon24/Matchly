@@ -162,7 +162,7 @@ struct DataBackupView: View {
             programs: dataManager.programs,
             preferences: dataManager.preferences,
             exportDate: Date(),
-            version: "1.0.0"
+            version: MatchlyBuildInfo.version
         )
         return (try? JSONEncoder().encode(exportData)) ?? Data()
     }

@@ -9,7 +9,7 @@ import Foundation
 
 enum MatchlyBuildInfo {
     /// User-facing app version (Settings → About).
-    static let version = "1.0.1"
+    static let version = "1.0"
 
     /// Short recovery tag — changes when we reset the branch to a known-good baseline.
     static let recoveryTag = "recovery-1"
