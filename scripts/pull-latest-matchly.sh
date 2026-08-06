@@ -49,11 +49,18 @@ else
   echo "  OK  AccountCloudSyncManager has no Blob reference"
 fi
 
-if grep -q 'recoveryTag = "auth-baseline"' Matchly/Models/MatchlyBuildInfo.swift; then
+if grep -q 'recoveryTag = "auth-baseline' Matchly/Models/MatchlyBuildInfo.swift; then
   echo "  OK  Build marker is auth-baseline (post-login rewind)"
 else
   echo "  FAIL  MatchlyBuildInfo.swift missing auth-baseline marker"
   FAIL=1
+fi
+
+if grep -q "switch outcome" Matchly/Views/DataBackupView.swift; then
+  echo "  FAIL  DataBackupView still switches on merge outcome enum (API returns Bool)"
+  FAIL=1
+else
+  echo "  OK  DataBackupView matches Bool merge API"
 fi
 
 if grep -q "headerQuickStatsBar" Matchly/Views/DashboardView.swift; then
@@ -109,7 +116,7 @@ echo "  1. Quit Xcode"
 echo "  2. rm -rf ~/Library/Developer/Xcode/DerivedData/Matchly-*"
 echo "  3. Open Matchly.xcodeproj from THIS folder (not an old iCloud copy)"
 echo "  4. Product → Clean Build Folder (⇧⌘K), then Run (⌘R)"
-echo "  5. Settings → About should show Version 1.0.0 and Build 1.0.0 · auth-baseline"
+echo "  5. Settings → About should show Version 1.0.0 and Build 1.0.0 · auth-baseline-2"
 echo "  6. Dashboard: greeting + customize button only — NO KPI strip under greeting"
 echo "  7. With programs added: Overview / Programs / Interviews tabs appear below header"
 echo "  8. Tab bar: 5 tabs including Map (auth-era layout)"

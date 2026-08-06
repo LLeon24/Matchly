@@ -144,20 +144,15 @@ struct DataBackupView: View {
     }
 
     private func syncAccountCloud() async {
-        let outcome = await dataManager.mergeWithAccountCloudIfNeeded(trigger: "manual")
+        let changed = await dataManager.mergeWithAccountCloudIfNeeded(trigger: "manual")
         if let error = accountCloudSync.syncError {
             syncAlertMessage = error
+        } else if changed {
+            syncAlertMessage = "Synced with your Matchly account."
+        } else if !accountCloudSync.isSignedIn {
+            syncAlertMessage = "Sign in to enable cloud backup."
         } else {
-            switch outcome {
-            case .noChange:
-                syncAlertMessage = "Already up to date."
-            case .pulledPrograms, .pulledPreferences, .pulledBoth:
-                syncAlertMessage = "Downloaded the latest backup from your account."
-            case .pushedLocal:
-                syncAlertMessage = "Uploaded your data to your account."
-            case .notSignedIn:
-                syncAlertMessage = "Sign in to enable cloud backup."
-            }
+            syncAlertMessage = "Already up to date."
         }
         showSyncAlert = true
     }
