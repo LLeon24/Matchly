@@ -13,6 +13,10 @@ import CloudKit
 import CryptoKit
 import Security
 import OSLog
+import FirebaseAuth
+import FirebaseCore
+import GoogleSignIn
+import UIKit
 
 // MARK: - Authentication State
 enum AuthState: Equatable {
@@ -23,8 +27,9 @@ enum AuthState: Equatable {
 
 // MARK: - User Model
 struct User: Codable, Identifiable, Equatable {
-    /// For the Apple provider this is the stable `ASAuthorizationAppleIDCredential.user`
-    /// string (never a random UUID). It is the login identity.
+    /// Firebase Auth UID for the signed-in account (Apple / Google / email).
+    /// The Apple provider's stable `ASAuthorizationAppleIDCredential.user` string is stored
+    /// separately in the Keychain (`storedAppleUserID`) for credential revalidation.
     let id: String
     var email: String?
     var phoneNumber: String?
@@ -78,11 +83,9 @@ struct User: Codable, Identifiable, Equatable {
 class AuthManager: ObservableObject {
     static let shared = AuthManager()
 
-    /// v1 ships **Apple Sign In only**. Email/phone/social entry points stay in the codebase
-    /// (the methods below are intact) but are hidden in the UI while this is `false`.
-    /// Flip to `true` to restore the email/phone sign-in UI (note: those paths still mint a
-    /// local UUID identity and are NOT compatible with CloudKit couples).
-    static let allowsNonAppleProviders = false
+    /// Email / Google entry points are enabled alongside Apple Sign In.
+    /// Couples Match still requires iCloud (CloudKit), independent of auth provider.
+    static let allowsNonAppleProviders = true
 
     /// The CloudKit container backing the couples feature. Must match the container selected
     /// in Xcode's Signing & Capabilities ▸ iCloud (see COUPLES_MATCH_SETUP_STEPS.md).
@@ -125,10 +128,13 @@ class AuthManager: ObservableObject {
 
     /// Whether Face ID / Touch ID can restore a previous session on the login screen.
     var canUseBiometricLogin: Bool {
-        isBiometricLoginEnabled
-            && BiometricAuthManager.shared.canAuthenticate
-            && storedAppleUserID != nil
-            && cachedUserForBiometricLogin() != nil
+        guard isBiometricLoginEnabled,
+              BiometricAuthManager.shared.canAuthenticate,
+              let cached = cachedUserForBiometricLogin() else { return false }
+        if cached.provider == .apple {
+            return storedAppleUserID != nil
+        }
+        return true
     }
 
     var biometricDisplayName: String {
@@ -171,6 +177,21 @@ class AuthManager: ObservableObject {
         Task { [weak self] in
             await self?.revalidateAppleCredentialState()
             await self?.refreshCloudKitIdentity()
+        }
+    }
+
+    /// Align local session with Firebase Auth after `FirebaseApp.configure()`.
+    func syncWithFirebaseSession() {
+        if let firebaseUser = Auth.auth().currentUser {
+            let user = makeUser(from: firebaseUser, existing: currentUser)
+            signIn(user: user)
+        } else if case .signedIn = authState {
+            // Local cache without a Firebase session — keep signed-out until they re-auth.
+            // Do not wipe biometric keychain; only clear the active session.
+            currentUser = nil
+            authState = .signedOut
+            isAppLocked = false
+            UserDefaults.standard.removeObject(forKey: authKey)
         }
     }
     
@@ -223,6 +244,10 @@ class AuthManager: ObservableObject {
         } else if BiometricAuthManager.shared.canAuthenticate,
                   !UserDefaults.standard.bool(forKey: Self.biometricOfferDeclinedKey) {
             shouldOfferBiometricSetup = true
+        }
+
+        Task {
+            await DataManager.shared.mergeWithAccountCloudIfNeeded(trigger: "signIn")
         }
     }
 
@@ -302,33 +327,46 @@ class AuthManager: ObservableObject {
         )
         guard success else { throw BiometricAuthError.failed }
 
-        let provider = ASAuthorizationAppleIDProvider()
-        let state: ASAuthorizationAppleIDProvider.CredentialState = await withCheckedContinuation { continuation in
-            provider.getCredentialState(forUserID: cachedUser.id) { state, _ in
-                continuation.resume(returning: state)
+        // Only Apple-provider sessions need Apple credential revalidation.
+        if cachedUser.provider == .apple {
+            guard let appleUserID = storedAppleUserID else { throw AuthError.invalidCredentials }
+            let provider = ASAuthorizationAppleIDProvider()
+            let state: ASAuthorizationAppleIDProvider.CredentialState = await withCheckedContinuation { continuation in
+                provider.getCredentialState(forUserID: appleUserID) { state, _ in
+                    continuation.resume(returning: state)
+                }
+            }
+
+            switch state {
+            case .authorized:
+                break
+            case .revoked, .notFound:
+                await MainActor.run {
+                    disableBiometricLogin()
+                    Self.keychainDelete(account: Self.keychainAppleUserAccount)
+                }
+                throw AuthError.invalidCredentials
+            case .transferred:
+                throw AuthError.invalidCredentials
+            @unknown default:
+                throw AuthError.invalidCredentials
             }
         }
 
-        switch state {
-        case .authorized:
-            await MainActor.run {
-                signIn(user: cachedUser)
-            }
-            await refreshCloudKitIdentity()
-        case .revoked, .notFound:
-            await MainActor.run {
-                disableBiometricLogin()
-                Self.keychainDelete(account: Self.keychainAppleUserAccount)
-            }
-            throw AuthError.invalidCredentials
-        case .transferred:
-            throw AuthError.invalidCredentials
-        @unknown default:
-            throw AuthError.invalidCredentials
+        await MainActor.run {
+            signIn(user: cachedUser)
         }
+        await refreshCloudKitIdentity()
     }
     
     func signOut() {
+        do {
+            try Auth.auth().signOut()
+        } catch {
+            Self.logger.error("Firebase signOut failed: \(error.localizedDescription, privacy: .public)")
+        }
+        GIDSignIn.sharedInstance.signOut()
+
         self.currentUser = nil
         self.resolvedCloudKitRecordName = nil
         self.authState = .signedOut
@@ -388,91 +426,80 @@ class AuthManager: ObservableObject {
     }
     
     // MARK: - Email/Password Authentication
-    /// Sign up with email and password
-    /// NOTE: Currently uses local storage. To enable Firebase Auth:
-    /// 1. Add Firebase SDK to project
-    /// 2. Initialize Firebase in MatchlyApp.swift
-    /// 3. Replace this implementation with Firebase Auth calls
-    /// See Documentation/AUTHENTICATION_SETUP.md for details
     func signUpWithEmail(email: String, password: String, displayName: String?) async throws {
-        // v1 is Apple Sign In only. This path is kept intact but gated off so it can't mint a
-        // local UUID identity. Flip `allowsNonAppleProviders` to re-enable.
         guard Self.allowsNonAppleProviders else { throw AuthError.notImplemented }
-        // Local implementation - replace with Firebase Auth when ready
-        let user = User(
-            id: UUID().uuidString,
-            email: email,
-            displayName: displayName,
-            provider: .email
-        )
-        
-        await MainActor.run {
-            signIn(user: user)
+        do {
+            let result = try await Auth.auth().createUser(withEmail: email, password: password)
+            if let displayName, !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                let changeRequest = result.user.createProfileChangeRequest()
+                changeRequest.displayName = displayName
+                try await changeRequest.commitChanges()
+            }
+            let user = makeUser(from: result.user, provider: .email, displayName: displayName, existing: currentUser)
+            await MainActor.run { signIn(user: user) }
+            await refreshCloudKitIdentity()
+        } catch {
+            throw mapFirebaseAuthError(error)
         }
     }
-    
-    /// Sign in with email and password
-    /// NOTE: Currently uses local storage. See signUpWithEmail for Firebase integration notes.
+
     func signInWithEmail(email: String, password: String) async throws {
-        // v1 is Apple Sign In only. Gated off so it can't mint a local UUID identity.
         guard Self.allowsNonAppleProviders else { throw AuthError.notImplemented }
-        // Local implementation - replace with Firebase Auth when ready
-        if let userData = UserDefaults.standard.data(forKey: authKey),
-           let user = try? JSONDecoder().decode(User.self, from: userData),
-           user.email == email {
-            await MainActor.run {
-                signIn(user: user)
-            }
-        } else {
-            // In test mode: if no user exists, create one automatically for easier testing
-            // This allows testing without needing to sign up first
-            let user = User(
-                id: UUID().uuidString,
-                email: email,
-                displayName: email.components(separatedBy: "@").first?.capitalized,
-                provider: .email
-            )
-            await MainActor.run {
-                signIn(user: user)
-            }
+        do {
+            let result = try await Auth.auth().signIn(withEmail: email, password: password)
+            let user = makeUser(from: result.user, provider: .email, existing: currentUser)
+            await MainActor.run { signIn(user: user) }
+            await refreshCloudKitIdentity()
+        } catch {
+            throw mapFirebaseAuthError(error)
         }
     }
-    
+
     // MARK: - Phone Number Authentication
-    /// Sign in with phone number
-    /// NOTE: Requires Firebase Auth phone authentication setup
-    /// See Documentation/AUTHENTICATION_SETUP.md for configuration
     func signInWithPhone(phoneNumber: String) async throws {
-        // v1 is Apple Sign In only. Gated off so it can't mint a local UUID identity.
         guard Self.allowsNonAppleProviders else { throw AuthError.notImplemented }
-        // TODO: Integrate with Firebase Auth phone authentication
-        let user = User(
-            id: UUID().uuidString,
-            phoneNumber: phoneNumber,
-            provider: .phone
-        )
-        
-        await MainActor.run {
-            signIn(user: user)
-        }
-    }
-    
-    /// Verify phone authentication code
-    /// NOTE: Requires Firebase Auth phone authentication setup
-    func verifyPhoneCode(code: String) async throws {
-        // TODO: Verify phone code with Firebase
-        // For now, just proceed
-    }
-    
-    // MARK: - Social Authentication
-    /// Sign in with Google
-    /// NOTE: Requires Google Sign-In SDK and Firebase configuration
-    /// See Documentation/AUTHENTICATION_SETUP.md
-    func signInWithGoogle() async throws {
-        // TODO: Integrate with Google Sign-In SDK
         throw AuthError.notImplemented
     }
-    
+
+    func verifyPhoneCode(code: String) async throws {
+        throw AuthError.notImplemented
+    }
+
+    // MARK: - Social Authentication
+    func signInWithGoogle() async throws {
+        guard Self.allowsNonAppleProviders else { throw AuthError.notImplemented }
+
+        guard let clientID = FirebaseApp.app()?.options.clientID else {
+            throw AuthError.networkError
+        }
+        GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
+
+        guard let presenting = await Self.topViewController() else {
+            throw AuthError.networkError
+        }
+
+        do {
+            let gidResult = try await GIDSignIn.sharedInstance.signIn(withPresenting: presenting)
+            guard let idToken = gidResult.user.idToken?.tokenString else {
+                throw AuthError.invalidCredentials
+            }
+            let accessToken = gidResult.user.accessToken.tokenString
+            let credential = GoogleAuthProvider.credential(withIDToken: idToken, accessToken: accessToken)
+            let authResult = try await Auth.auth().signIn(with: credential)
+            let user = makeUser(from: authResult.user, provider: .google, existing: currentUser)
+            await MainActor.run { signIn(user: user) }
+            await refreshCloudKitIdentity()
+        } catch let error as AuthError {
+            throw error
+        } catch {
+            let nsError = error as NSError
+            if nsError.domain == "com.google.GIDSignIn", nsError.code == GIDSignInError.canceled.rawValue {
+                throw AuthError.canceled
+            }
+            throw mapFirebaseAuthError(error)
+        }
+    }
+
     func signInWithApple() async throws {
         let appleIDProvider = ASAuthorizationAppleIDProvider()
         let request = appleIDProvider.createRequest()
@@ -485,124 +512,186 @@ class AuthManager: ObservableObject {
         request.nonce = Self.sha256(rawNonce)
 
         let authorizationController = ASAuthorizationController(authorizationRequests: [request])
-        
-        // Handle authorization in a continuation
+
         let result = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<ASAuthorization, Error>) in
             let delegate = AppleSignInDelegate(continuation: continuation)
             authorizationController.delegate = delegate
             authorizationController.presentationContextProvider = delegate
-            
-            // Store delegate to prevent deallocation - both controller and delegate need to be retained
             delegate.retainController = authorizationController
-            delegate.retainSelf = delegate // Retain self to prevent deallocation
-            
+            delegate.retainSelf = delegate
             authorizationController.performRequests()
         }
-        
+
         guard let appleIDCredential = result.credential as? ASAuthorizationAppleIDCredential else {
             Self.logger.error("Apple Sign In: Failed to get Apple ID credential")
             throw AuthError.networkError
         }
 
-        // Verify the identity token is present. Without a backend we don't do full server-side
-        // JWT verification, but a missing token means the authorization is not usable.
         guard let identityTokenData = appleIDCredential.identityToken,
-              !identityTokenData.isEmpty,
-              String(data: identityTokenData, encoding: .utf8)?.isEmpty == false else {
+              let idTokenString = String(data: identityTokenData, encoding: .utf8),
+              !idTokenString.isEmpty else {
             Self.logger.error("Apple Sign In: Missing identity token")
             currentAppleNonce = nil
             throw AuthError.invalidCredentials
         }
-        // Confirm the nonce round-tripped (request had a nonce set).
-        if currentAppleNonce == nil {
-            Self.logger.warning("Apple Sign In: nonce was not set for this request")
-        }
-        currentAppleNonce = nil
-        
-        // Extract user information
-        let userID = appleIDCredential.user
 
-        // Persist the stable Apple login id to the Keychain (preferred secure storage).
-        Self.keychainSave(userID, account: Self.keychainAppleUserAccount)
-        
-        // Check if user already exists (Apple only provides email/name on first sign-in)
-        var existingUser: User? = nil
-        if let userData = UserDefaults.standard.data(forKey: authKey),
-           let user = try? JSONDecoder().decode(User.self, from: userData),
-           user.id == userID {
-            existingUser = user
-            Self.logger.info("Apple Sign In: Found existing user with ID: \(userID, privacy: .private)")
+        let nonce = currentAppleNonce
+        currentAppleNonce = nil
+        guard let nonce else {
+            Self.logger.error("Apple Sign In: nonce missing for Firebase exchange")
+            throw AuthError.invalidCredentials
         }
-        
-        // Get email and displayName from credential (only available on first sign-in)
-        // or use stored values if user already exists
-        let email = appleIDCredential.email ?? existingUser?.email
+
+        // Persist the stable Apple login id (not the Firebase UID) for biometric / credential checks.
+        Self.keychainSave(appleIDCredential.user, account: Self.keychainAppleUserAccount)
+
+        let existingUser: User? = {
+            if let userData = UserDefaults.standard.data(forKey: authKey),
+               let user = try? JSONDecoder().decode(User.self, from: userData) {
+                return user
+            }
+            return currentUser
+        }()
+
         var displayName: String? = existingUser?.displayName
-        
-        // Format name if available from credential (only on first sign-in)
         if let givenName = appleIDCredential.fullName?.givenName,
            let familyName = appleIDCredential.fullName?.familyName {
             displayName = "\(givenName) \(familyName)"
         } else if let givenName = appleIDCredential.fullName?.givenName {
             displayName = givenName
         }
-        
-        Self.logger.info("Apple Sign In: Successfully authenticated user: \(userID, privacy: .private)")
-        if let email = email {
-            Self.logger.debug("Email: \(email, privacy: .private)")
-        }
-        if let displayName = displayName {
-            Self.logger.debug("Display Name: \(displayName, privacy: .public)")
-        }
-        
-        // Create or update user - always preserve existing displayName if we have one and new one is nil
-        var finalDisplayName = displayName ?? existingUser?.displayName
-        
-        // Fallback: if no display name and we have an email, use the email's local part
-        if (finalDisplayName == nil || finalDisplayName?.isEmpty == true),
-           let email = email, !email.isEmpty {
-            let emailLocalPart = email.components(separatedBy: "@").first ?? ""
-            if !emailLocalPart.isEmpty {
-                finalDisplayName = emailLocalPart.capitalized
-                Self.logger.debug("Using email local part as display name: \(finalDisplayName ?? "", privacy: .public)")
-            }
-        }
-        
-        Self.logger.debug("Apple Sign In: Final user data - ID: \(userID, privacy: .private), Email: \(email ?? "nil", privacy: .private), Display Name: \(finalDisplayName ?? "nil", privacy: .public)")
-        
-        // Create or update user, preserving an already-resolved CloudKit record name if any.
-        let user = User(
-            id: userID,
-            email: email,
-            displayName: finalDisplayName,
-            provider: .apple,
-            cloudKitUserRecordName: existingUser?.cloudKitUserRecordName
-        )
-        
-        await MainActor.run {
-            signIn(user: user)
-        }
 
-        // Resolve (or refresh) the CloudKit identity now that we're signed in. This is
-        // best-effort: if CloudKit/iCloud isn't available the app still works, gated.
-        await refreshCloudKitIdentity()
+        do {
+            let credential = OAuthProvider.appleCredential(
+                withIDToken: idTokenString,
+                rawNonce: nonce,
+                fullName: appleIDCredential.fullName
+            )
+            let authResult = try await Auth.auth().signIn(with: credential)
+
+            var finalDisplayName = displayName ?? authResult.user.displayName ?? existingUser?.displayName
+            let email = appleIDCredential.email ?? authResult.user.email ?? existingUser?.email
+            if (finalDisplayName == nil || finalDisplayName?.isEmpty == true),
+               let email, !email.isEmpty {
+                let local = email.components(separatedBy: "@").first ?? ""
+                if !local.isEmpty { finalDisplayName = local.capitalized }
+            }
+
+            if let finalDisplayName,
+               authResult.user.displayName == nil || authResult.user.displayName?.isEmpty == true {
+                let changeRequest = authResult.user.createProfileChangeRequest()
+                changeRequest.displayName = finalDisplayName
+                try? await changeRequest.commitChanges()
+            }
+
+            let user = makeUser(
+                from: authResult.user,
+                provider: .apple,
+                displayName: finalDisplayName,
+                existing: existingUser
+            )
+
+            Self.logger.info("Apple Sign In: Firebase UID authenticated")
+            await MainActor.run { signIn(user: user) }
+            await refreshCloudKitIdentity()
+        } catch {
+            throw mapFirebaseAuthError(error)
+        }
     }
-    
+
     func signInWithFacebook() async throws {
-        // TODO: Integrate with Facebook Login SDK
         throw AuthError.notImplemented
     }
-    
+
     func signInWithReddit() async throws {
-        // TODO: Integrate with Reddit OAuth
-        // Reddit doesn't have official SDK, need custom OAuth flow
         throw AuthError.notImplemented
     }
-    
+
     // MARK: - Password Reset
     func resetPassword(email: String) async throws {
-        // TODO: Integrate with Firebase Auth password reset
-        throw AuthError.notImplemented
+        do {
+            try await Auth.auth().sendPasswordReset(withEmail: email)
+        } catch {
+            throw mapFirebaseAuthError(error)
+        }
+    }
+
+    // MARK: - Firebase Helpers
+
+    private func makeUser(
+        from firebaseUser: FirebaseAuth.User,
+        provider: User.AuthProvider? = nil,
+        displayName: String? = nil,
+        existing: User?
+    ) -> User {
+        let resolvedProvider = provider ?? Self.provider(for: firebaseUser) ?? existing?.provider ?? .email
+        var name = displayName ?? firebaseUser.displayName ?? existing?.displayName
+        if (name == nil || name?.isEmpty == true),
+           let email = firebaseUser.email ?? existing?.email {
+            let local = email.components(separatedBy: "@").first ?? ""
+            if !local.isEmpty { name = local.capitalized }
+        }
+        return User(
+            id: firebaseUser.uid,
+            email: firebaseUser.email ?? existing?.email,
+            phoneNumber: firebaseUser.phoneNumber ?? existing?.phoneNumber,
+            displayName: name,
+            photoURL: firebaseUser.photoURL?.absoluteString ?? existing?.photoURL,
+            provider: resolvedProvider,
+            cloudKitUserRecordName: existing?.cloudKitUserRecordName,
+            createdAt: existing?.createdAt ?? (firebaseUser.metadata.creationDate ?? Date()),
+            lastLoginAt: Date()
+        )
+    }
+
+    private static func provider(for firebaseUser: FirebaseAuth.User) -> User.AuthProvider? {
+        let ids = firebaseUser.providerData.map(\.providerID)
+        if ids.contains("apple.com") { return .apple }
+        if ids.contains("google.com") { return .google }
+        if ids.contains("password") { return .email }
+        if ids.contains("phone") { return .phone }
+        return nil
+    }
+
+    private func mapFirebaseAuthError(_ error: Error) -> AuthError {
+        let nsError = error as NSError
+        // Firebase Auth error codes (FIRAuthErrorCode).
+        switch nsError.code {
+        case 17011: // userNotFound
+            return .userNotFound
+        case 17009, 17004, 17008, 17094: // wrongPassword / invalidCredential / invalidEmail
+            return .invalidCredentials
+        case 17007: // emailAlreadyInUse
+            return .emailAlreadyInUse
+        case 17026: // weakPassword
+            return .weakPassword
+        case 17020: // networkError
+            return .networkError
+        default:
+            return .networkError
+        }
+    }
+
+    @MainActor
+    private static func topViewController(
+        base: UIViewController? = {
+            UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .flatMap(\.windows)
+                .first { $0.isKeyWindow }?
+                .rootViewController
+        }()
+    ) -> UIViewController? {
+        if let nav = base as? UINavigationController {
+            return topViewController(base: nav.visibleViewController)
+        }
+        if let tab = base as? UITabBarController {
+            return topViewController(base: tab.selectedViewController)
+        }
+        if let presented = base?.presentedViewController {
+            return topViewController(base: presented)
+        }
+        return base
     }
 
     // MARK: - CloudKit Identity
@@ -656,9 +745,15 @@ class AuthManager: ObservableObject {
         guard let user = await MainActor.run(body: { self.currentUser }),
               user.provider == .apple else { return }
 
+        guard let appleUserID = await MainActor.run(body: { self.storedAppleUserID }) else {
+            Self.logger.notice("Apple credential: missing stored Apple user id — signing out")
+            await MainActor.run { self.signOut() }
+            return
+        }
+
         let provider = ASAuthorizationAppleIDProvider()
         let state: ASAuthorizationAppleIDProvider.CredentialState = await withCheckedContinuation { continuation in
-            provider.getCredentialState(forUserID: user.id) { state, _ in
+            provider.getCredentialState(forUserID: appleUserID) { state, _ in
                 continuation.resume(returning: state)
             }
         }
@@ -799,7 +894,8 @@ enum AuthError: LocalizedError {
     case weakPassword
     case networkError
     case notImplemented
-    
+    case canceled
+
     var errorDescription: String? {
         switch self {
         case .userNotFound:
@@ -814,6 +910,8 @@ enum AuthError: LocalizedError {
             return "Network error. Please check your connection."
         case .notImplemented:
             return "This feature is not yet implemented."
+        case .canceled:
+            return nil
         }
     }
 }

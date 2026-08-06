@@ -7,6 +7,7 @@
 
 import SwiftUI
 import Combine
+import GoogleSignIn
 
 @main
 struct MatchlyApp: App {
@@ -27,6 +28,9 @@ struct MatchlyApp: App {
                 .environmentObject(deepLinkHandler)
                 .environmentObject(coupleSync)
                 .onOpenURL { url in
+                    if GIDSignIn.sharedInstance.handle(url) {
+                        return
+                    }
                     guard FeatureFlags.couplesMatchEnabled else { return }
                     deepLinkHandler.handle(url: url)
                 }

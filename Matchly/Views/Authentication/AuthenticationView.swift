@@ -90,10 +90,7 @@ struct AuthenticationView: View {
                             .padding(.vertical, 4)
                         }
 
-                        // v1 ships Apple Sign In ONLY. The email/phone entry points below are
-                        // hidden (not deleted) behind `AuthManager.allowsNonAppleProviders` so
-                        // they remain reversible. Couples Match requires iCloud, which Apple
-                        // Sign In + CloudKit provide.
+                        // Email + Google when `allowsNonAppleProviders` is true; Apple always shown.
                         if AuthManager.allowsNonAppleProviders {
                             // Email/Password Sign In
                             Button(action: {
@@ -114,16 +111,32 @@ struct AuthenticationView: View {
                             .buttonStyle(.glassProminent)
                             .tint(.blue)
 
-                            // Phone Number Sign In
+                            // Google Sign In
                             Button(action: {
-                                showPhoneLogin = true
+                                Task { @MainActor in
+                                    do {
+                                        authViewLogger.info("Starting Google Sign In")
+                                        try await authManager.signInWithGoogle()
+                                        authViewLogger.info("Google Sign In completed successfully")
+                                    } catch AuthError.canceled {
+                                        return
+                                    } catch {
+                                        authViewLogger.error("Google Sign In error: \(error.localizedDescription, privacy: .public)")
+                                        if let authError = error as? AuthError {
+                                            errorMessage = authError.errorDescription ?? "Sign in failed"
+                                        } else {
+                                            errorMessage = error.localizedDescription
+                                        }
+                                        showError = true
+                                    }
+                                }
                             }) {
                                 HStack {
                                     Spacer()
-                                    Image(systemName: "phone.fill")
+                                    Image(systemName: "g.circle.fill")
                                         .font(.arial(size: 16))
                                         .frame(width: 24)
-                                    Text("Continue with Phone")
+                                    Text("Continue with Google")
                                         .font(.arial(size: 16, weight: .medium))
                                     Spacer()
                                 }
@@ -131,7 +144,7 @@ struct AuthenticationView: View {
                                 .padding(.vertical, 16)
                             }
                             .buttonStyle(.glassProminent)
-                            .tint(.green)
+                            .tint(Color(red: 0.86, green: 0.28, blue: 0.22))
 
                             // Divider
                             HStack {
@@ -216,7 +229,7 @@ struct AuthenticationView: View {
                         }
                         .padding(.top, 8)
                     } else {
-                        Text("Sign in with your Apple ID to get started.")
+                        Text("Sign in with Apple, Google, or email to get started.")
                             .font(.arial(size: 13))
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)

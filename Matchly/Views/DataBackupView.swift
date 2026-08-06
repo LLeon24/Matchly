@@ -12,6 +12,7 @@ struct DataBackupView: View {
     @EnvironmentObject var dataManager: DataManager
     @Environment(\.dismiss) var dismiss
     @ObservedObject private var cloudSync = CloudSyncManager.shared
+    @ObservedObject private var accountCloudSync = AccountCloudSyncManager.shared
     @State private var showExportSheet = false
     @State private var showImportPicker = false
     @State private var showImportSuccess = false
@@ -22,13 +23,79 @@ struct DataBackupView: View {
     var body: some View {
         Form {
             Section {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 6) {
+                            Image(systemName: accountCloudSync.isSignedIn ? "person.crop.circle.badge.checkmark" : "person.crop.circle.badge.exclamationmark")
+                                .foregroundColor(accountCloudSync.isSignedIn ? .blue : .gray)
+                            Text("Account Backup")
+                                .font(.arial(size: 17, weight: .medium))
+                        }
+
+                        if accountCloudSync.isSignedIn {
+                            if let lastSync = accountCloudSync.lastSyncDate {
+                                Text("Last synced: \(lastSync, style: .relative)")
+                                    .font(.arial(size: 13))
+                                    .foregroundColor(.secondary)
+                            } else {
+                                Text("Not yet synced")
+                                    .font(.arial(size: 13))
+                                    .foregroundColor(.secondary)
+                            }
+
+                            if let error = accountCloudSync.syncError {
+                                Text(error)
+                                    .font(.arial(size: 12))
+                                    .foregroundColor(.red)
+                                    .lineLimit(3)
+                            }
+                        } else {
+                            Text("Sign in to back up your data to your Matchly account.")
+                                .font(.arial(size: 13))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+
+                    Spacer()
+
+                    if accountCloudSync.isSignedIn {
+                        Button(action: {
+                            Task { await syncAccountCloud() }
+                        }) {
+                            if accountCloudSync.isSyncing {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                            } else {
+                                Text("Sync Now")
+                                    .font(.arial(size: 15, weight: .medium))
+                                    .foregroundColor(.blue)
+                            }
+                        }
+                        .disabled(accountCloudSync.isSyncing)
+                    }
+                }
+                .padding(.vertical, 4)
+                .glassPanelStyle(cornerRadius: 14)
+                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                .listRowBackground(Color.clear)
+            } header: {
+                Text("Account Backup")
+            } footer: {
+                if accountCloudSync.isSignedIn {
+                    Text("Your programs and preferences sync to your signed-in Matchly account so you can restore them on any device.")
+                } else {
+                    Text("Account backup requires Apple, Google, or email sign-in.")
+                }
+            }
+
+            Section {
                 // iCloud Sync Status
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 6) {
                             Image(systemName: cloudSync.isCloudAvailable ? "icloud.fill" : "icloud.slash")
                                 .foregroundColor(cloudSync.isCloudAvailable ? .blue : .gray)
-                            Text("iCloud Sync")
+                            Text("iCloud Device Sync")
                                 .font(.arial(size: 17, weight: .medium))
                         }
                         
@@ -84,12 +151,12 @@ struct DataBackupView: View {
                 .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                 .listRowBackground(Color.clear)
             } header: {
-                Text("Cloud Backup")
+                Text("Optional Device Sync")
             } footer: {
                 if cloudSync.isCloudAvailable {
-                    Text("Matchly automatically syncs when you open the app and when another device updates iCloud. Use Sync Now to merge immediately.")
+                    Text("Optional. Syncs via iCloud Key-Value store on devices signed into the same Apple ID.")
                 } else {
-                    Text("Enable iCloud in Settings > [Your Name] > iCloud to sync your data across devices.")
+                    Text("Enable iCloud in Settings > [Your Name] > iCloud for optional same-Apple-ID device sync.")
                 }
             }
             
@@ -218,6 +285,18 @@ struct DataBackupView: View {
             Text(importErrorMessage.isEmpty ? (cloudSync.syncError ?? "Data synced successfully to iCloud") : importErrorMessage)
         }
     }
+
+    private func syncAccountCloud() async {
+        let changed = await dataManager.mergeWithAccountCloudIfNeeded(trigger: "manual")
+        if let error = accountCloudSync.syncError {
+            importErrorMessage = error
+        } else if changed {
+            importErrorMessage = "Account backup synced."
+        } else {
+            importErrorMessage = "Already up to date with account backup."
+        }
+        showCloudSyncAlert = true
+    }
     
     private func syncToCloud() {
         let outcome = dataManager.mergeWithCloudIfNeeded(trigger: "manual")
@@ -339,4 +418,3 @@ struct MatchlyDataDocument: FileDocument {
             .environmentObject(DataManager.shared)
     }
 }
-

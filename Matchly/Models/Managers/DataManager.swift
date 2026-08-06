@@ -29,9 +29,13 @@ class DataManager: ObservableObject {
     private let localProgramsUpdatedAtKey = "local_programs_updated_at"
     private let localPreferencesUpdatedAtKey = "local_preferences_updated_at"
     private let cloudSync = CloudSyncManager.shared
+    private let accountCloudSync = AccountCloudSyncManager.shared
     private static let logger = Logger(subsystem: "com.matchly", category: "DataManager")
     private var cancellables = Set<AnyCancellable>()
     private var isApplyingRemoteCloudSnapshot = false
+    private var isApplyingAccountCloudSnapshot = false
+    private var accountCloudPushWorkItem: DispatchWorkItem?
+    private let manualRankOrderKey = "manual_rank_order"
     
     // Performance optimization: Debounce save operations
     private var saveProgramsWorkItem: DispatchWorkItem?
@@ -98,6 +102,9 @@ class DataManager: ObservableObject {
         validateAndSanitizeSignals()
         DispatchQueue.main.async { [weak self] in
             self?.mergeWithCloudIfNeeded(trigger: "launch")
+            Task { [weak self] in
+                await self?.mergeWithAccountCloudIfNeeded(trigger: "launch")
+            }
         }
     }
 
@@ -113,6 +120,9 @@ class DataManager: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.mergeWithCloudIfNeeded(trigger: "foreground")
+                Task { [weak self] in
+                    await self?.mergeWithAccountCloudIfNeeded(trigger: "foreground")
+                }
             }
             .store(in: &cancellables)
     }
@@ -154,6 +164,9 @@ class DataManager: ObservableObject {
                         )
                     }
                 }
+                if !self.isApplyingAccountCloudSnapshot {
+                    self.scheduleAccountCloudPush()
+                }
                 self.scheduleCoupleCloudPublish()
             } catch {
                 Self.logger.error("Error saving programs: \(error.localizedDescription, privacy: .public)")
@@ -189,6 +202,9 @@ class DataManager: ObservableObject {
                         programsUpdatedAt: updatedAt
                     )
                 }
+            }
+            if !isApplyingAccountCloudSnapshot {
+                scheduleAccountCloudPush()
             }
             scheduleCoupleCloudPublish()
         } catch {
@@ -249,6 +265,9 @@ class DataManager: ObservableObject {
                             preferencesUpdatedAt: updatedAt
                         )
                     }
+                }
+                if !self.isApplyingAccountCloudSnapshot {
+                    self.scheduleAccountCloudPush()
                 }
                 self.scheduleCoupleCloudPublish()
             } catch {
@@ -430,6 +449,122 @@ class DataManager: ObservableObject {
         case (false, true): return .pulledPreferences
         case (false, false): return .noChange
         }
+    }
+
+    // MARK: - Account Cloud (Firestore) Sync
+
+    func scheduleAccountCloudPush() {
+        guard accountCloudSync.isSignedIn, !isApplyingAccountCloudSnapshot else { return }
+
+        accountCloudPushWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            Task { @MainActor in
+                await self.pushAccountCloudBackup()
+            }
+        }
+        accountCloudPushWorkItem = workItem
+        saveQueue.asyncAfter(deadline: .now() + 0.75, execute: workItem)
+    }
+
+    @MainActor
+    private func pushAccountCloudBackup() async {
+        guard accountCloudSync.isSignedIn, !isApplyingAccountCloudSnapshot else { return }
+
+        let programsJSON = try? JSONEncoder().encode(programs)
+        let preferencesJSON = try? JSONEncoder().encode(preferences)
+        let manualRankOrder = UserDefaults.standard.array(forKey: manualRankOrderKey) as? [String]
+
+        await accountCloudSync.push(
+            programsJSON: programsJSON,
+            preferencesJSON: preferencesJSON,
+            manualRankOrder: manualRankOrder,
+            programsUpdatedAt: localProgramsUpdatedAt,
+            preferencesUpdatedAt: localPreferencesUpdatedAt
+        )
+    }
+
+    @discardableResult
+    func mergeWithAccountCloudIfNeeded(trigger: String) async -> Bool {
+        guard accountCloudSync.isSignedIn, !isApplyingAccountCloudSnapshot else { return false }
+
+        guard let backup = await accountCloudSync.pull() else { return false }
+
+        let localProgramsAt = localProgramsUpdatedAt ?? .distantPast
+        let localPreferencesAt = localPreferencesUpdatedAt ?? .distantPast
+        let remoteProgramsAt = backup.programsUpdatedAt ?? .distantPast
+        let remotePreferencesAt = backup.preferencesUpdatedAt ?? .distantPast
+
+        var pulledSomething = false
+        var shouldPush = false
+
+        await MainActor.run {
+            self.isApplyingAccountCloudSnapshot = true
+        }
+
+        if let programsJSON = backup.programsJSON,
+           let remotePrograms = try? JSONDecoder().decode([Program].self, from: programsJSON) {
+            if await MainActor.run(body: { self.programs.isEmpty }) || remoteProgramsAt > localProgramsAt {
+                await MainActor.run {
+                    self.programs = remotePrograms
+                    self.persistProgramsToDisk()
+                    self.setLocalProgramsTimestamp(remoteProgramsAt == .distantPast ? Date() : remoteProgramsAt)
+                    self.deduplicateSavedPrograms()
+                }
+                pulledSomething = true
+            } else if localProgramsAt > remoteProgramsAt {
+                shouldPush = true
+            }
+        } else if !(await MainActor.run(body: { self.programs.isEmpty })) {
+            shouldPush = true
+        }
+
+        if let preferencesJSON = backup.preferencesJSON,
+           let remotePreferences = try? JSONDecoder().decode(UserPreferences.self, from: preferencesJSON) {
+            let meaningful = await MainActor.run(body: { self.hasMeaningfulLocalPreferences })
+            if !meaningful || remotePreferencesAt > localPreferencesAt {
+                await MainActor.run {
+                    self.preferences = remotePreferences
+                    self.persistPreferencesToDisk()
+                    self.setLocalPreferencesTimestamp(remotePreferencesAt == .distantPast ? Date() : remotePreferencesAt)
+                }
+                pulledSomething = true
+            } else if localPreferencesAt > remotePreferencesAt {
+                shouldPush = true
+            }
+        } else if await MainActor.run(body: { self.hasMeaningfulLocalPreferences }) {
+            shouldPush = true
+        }
+
+        if let remoteOrder = backup.manualRankOrder, !remoteOrder.isEmpty {
+            let localOrder = UserDefaults.standard.array(forKey: manualRankOrderKey) as? [String] ?? []
+            if localOrder.isEmpty || remoteProgramsAt >= localProgramsAt {
+                UserDefaults.standard.set(remoteOrder, forKey: manualRankOrderKey)
+            } else {
+                shouldPush = true
+            }
+        } else if UserDefaults.standard.array(forKey: manualRankOrderKey) != nil {
+            shouldPush = true
+        }
+
+        if pulledSomething {
+            await MainActor.run {
+                self.recalculateAllScores()
+                self.objectWillChange.send()
+            }
+            Self.logger.info("Applied account cloud merge (\(trigger, privacy: .public))")
+        }
+
+        await MainActor.run {
+            self.isApplyingAccountCloudSnapshot = false
+        }
+
+        let emptyRemote = backup.programsJSON == nil && backup.preferencesJSON == nil
+        if shouldPush || (!pulledSomething && emptyRemote) {
+            await pushAccountCloudBackup()
+        }
+
+        return pulledSomething || shouldPush
     }
 
     private func persistProgramsToDisk() {
