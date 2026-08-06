@@ -70,16 +70,16 @@ else
   FAIL=1
 fi
 
-if grep -q "Section(\"About\")" Matchly/Views/SettingsView.swift; then
-  echo "  OK  Settings uses native Form section headers"
+if grep -q "settingsSectionHeader" Matchly/Views/SettingsView.swift; then
+  echo "  OK  Settings uses black left-aligned section headers"
 else
-  echo "  FAIL  Settings section headers may be on wrong format"
+  echo "  FAIL  Settings section headers missing"
   FAIL=1
 fi
 
 echo
 echo "Settings canary (optional UI verification):"
-grep -nE "1\.0\.0|Add Email & Password|Section\(\"About\"\)" Matchly/Views/SettingsView.swift || true
+grep -nE "1\.0\.0|Add Email & Password|settingsSectionHeader" Matchly/Views/SettingsView.swift || true
 
 echo
 if [[ "$FAIL" -ne 0 ]]; then
