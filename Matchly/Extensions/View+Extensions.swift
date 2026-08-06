@@ -354,3 +354,47 @@ struct RoundedCorner: Shape {
     }
 }
 
+// MARK: - List page toolbar policy
+
+/// Shared rule for list-style tabs: hide Sort / Add / Edit toolbar chrome on empty
+/// states; show it once there is content. Use this for new list pages too.
+enum MatchlyListPageToolbar {
+    static func showsActions(hasContent: Bool) -> Bool { hasContent }
+}
+
+/// Capsule chip label for sort menus — matches Rank List filter styling.
+struct MatchlyToolbarSortChipLabel: View {
+    let valueLabel: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "arrow.up.arrow.down")
+                .font(.arial(size: 11, weight: .semibold))
+            Text("Sort: \(valueLabel)")
+                .font(.arial(size: 12, weight: .medium))
+            Image(systemName: "chevron.down")
+                .font(.arial(size: 9))
+                .foregroundColor(.secondary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .glassEffect(.regular.interactive(), in: .capsule)
+    }
+}
+
+/// Primary add action for list page toolbars.
+struct MatchlyToolbarAddButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "plus")
+                .font(.arial(size: 18, weight: .semibold))
+                .foregroundColor(.white)
+                .frame(width: 36, height: 36)
+                .glassEffect(.regular.tint(AppColors.primaryBlue.opacity(0.35)).interactive(), in: .circle)
+        }
+        .accessibilityLabel("Add")
+    }
+}
+

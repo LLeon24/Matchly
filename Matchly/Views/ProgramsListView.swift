@@ -89,85 +89,8 @@ struct ProgramsListView: View {
             .matchlyRootContentFrame()
             .navigationTitle("My Programs")
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Menu {
-                        ForEach(SortOption.allCases, id: \.self) { option in
-                            Button(action: {
-                                sortOption = option
-                            }) {
-                                HStack {
-                                    Text(option.rawValue)
-                                    if sortOption == option {
-                                        Spacer()
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "arrow.up.arrow.down")
-                                .font(.arial(size: 14))
-                            Text("Sort")
-                                .font(.arial(size: 15))
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .glassEffect(.regular.interactive(), in: .capsule)
-                    }
-                }
-                
-                ToolbarItemGroup(placement: .navigationBarTrailing) {
-                    if isEditMode {
-                        // Delete selected programs
-                        Button(action: {
-                            for programId in selectedPrograms {
-                                if let program = dataManager.programs.first(where: { $0.id == programId }) {
-                                    dataManager.deleteProgram(program)
-                                }
-                            }
-                            selectedPrograms.removeAll()
-                            isEditMode = false
-                        }) {
-                            Image(systemName: "trash.fill")
-                                .foregroundColor(selectedPrograms.isEmpty ? .gray : .red)
-                        }
-                        .disabled(selectedPrograms.isEmpty)
-                        
-                        // Done button
-                        Button("Done") {
-                            isEditMode = false
-                            selectedPrograms.removeAll()
-                        }
-                    } else {
-                        if dataManager.programs.count >= 2 {
-                            NavigationLink(destination: ProgramComparisonView()) {
-                                Image(systemName: "square.grid.2x2")
-                                    .font(.arial(size: 18))
-                                    .foregroundColor(.blue)
-                                    .frame(width: 36, height: 36)
-                                    .glassCircleButtonStyle()
-                            }
-                            .accessibilityLabel("Compare programs")
-                        }
-
-                        Button(action: {
-                            showAddProgram = true
-                        }) {
-                            Image(systemName: "plus")
-                                .font(.arial(size: 18, weight: .semibold))
-                                .foregroundColor(.white)
-                                .frame(width: 36, height: 36)
-                                .glassEffect(.regular.tint(AppColors.primaryBlue.opacity(0.35)).interactive(), in: .circle)
-                        }
-                        
-                        // Edit button
-                        Button(action: {
-                            isEditMode = true
-                        }) {
-                            Text("Edit")
-                        }
-                    }
+                if MatchlyListPageToolbar.showsActions(hasContent: !dataManager.programs.isEmpty) {
+                    programsListToolbar
                 }
             }
             .sheet(isPresented: $showAddProgram) {
@@ -186,6 +109,74 @@ struct ProgramsListView: View {
                 lastProgramsCount = 0
             }
             .appCanvasBackground()
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var programsListToolbar: some ToolbarContent {
+        ToolbarItem(placement: .navigationBarLeading) {
+            Menu {
+                ForEach(SortOption.allCases, id: \.self) { option in
+                    Button(action: {
+                        sortOption = option
+                    }) {
+                        HStack {
+                            Text(option.rawValue)
+                            if sortOption == option {
+                                Spacer()
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                MatchlyToolbarSortChipLabel(valueLabel: sortOption.rawValue)
+            }
+        }
+
+        ToolbarItemGroup(placement: .navigationBarTrailing) {
+            if isEditMode {
+                Button(action: {
+                    for programId in selectedPrograms {
+                        if let program = dataManager.programs.first(where: { $0.id == programId }) {
+                            dataManager.deleteProgram(program)
+                        }
+                    }
+                    selectedPrograms.removeAll()
+                    isEditMode = false
+                }) {
+                    Image(systemName: "trash.fill")
+                        .foregroundColor(selectedPrograms.isEmpty ? .gray : .red)
+                }
+                .disabled(selectedPrograms.isEmpty)
+
+                Button("Done") {
+                    isEditMode = false
+                    selectedPrograms.removeAll()
+                }
+            } else {
+                if dataManager.programs.count >= 2 {
+                    NavigationLink(destination: ProgramComparisonView()) {
+                        Image(systemName: "square.grid.2x2")
+                            .font(.arial(size: 18))
+                            .foregroundColor(.blue)
+                            .frame(width: 36, height: 36)
+                            .glassCircleButtonStyle()
+                    }
+                    .accessibilityLabel("Compare programs")
+                }
+
+                MatchlyToolbarAddButton {
+                    showAddProgram = true
+                }
+
+                Button(action: {
+                    isEditMode = true
+                }) {
+                    Text("Edit")
+                        .font(.arial(size: 15, weight: .medium))
+                }
+            }
         }
     }
     

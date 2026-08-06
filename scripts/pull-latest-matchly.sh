@@ -107,6 +107,20 @@ elif grep -q "if FeatureFlags.programsMapEnabled" Matchly/Views/Components/Liqui
   echo "  OK  Map tab gated behind feature flag (hidden for V1)"
 fi
 
+if grep -q "MatchlyListPageToolbar" Matchly/Extensions/View+Extensions.swift; then
+  echo "  OK  List pages use shared empty-state toolbar rule"
+else
+  echo "  FAIL  MatchlyListPageToolbar missing"
+  FAIL=1
+fi
+
+if grep -q "MatchlyListPageToolbar.showsActions" Matchly/Views/ProgramsListView.swift; then
+  echo "  OK  My Programs hides toolbar when empty"
+else
+  echo "  FAIL  My Programs empty-state toolbar rule missing"
+  FAIL=1
+fi
+
 if grep -q "MatchlyFormSectionHeader" Matchly/Views/SettingsView.swift; then
   echo "  WARN  Settings still uses MatchlyFormSectionHeader (post-auth polish)"
 fi
@@ -125,8 +139,7 @@ echo "  1. Quit Xcode"
 echo "  2. rm -rf ~/Library/Developer/Xcode/DerivedData/Matchly-*"
 echo "  3. Open Matchly.xcodeproj from THIS folder (not an old iCloud copy)"
 echo "  4. Product → Clean Build Folder (⇧⌘K), then Run (⌘R)"
-echo "  5. Settings → About should show Version 1.0.0 and Build 1.0.0 · auth-baseline-3"
-echo "  6. Dashboard: greeting + customize button only — NO KPI strip under greeting"
-echo "  7. With programs added: Overview / Programs / Interviews tabs appear below header"
-echo "  8. Tab bar: 4 tabs (Dashboard, Programs, Rank List, Settings) — no Map"
+echo "  5. Settings → About should show Version 1.0.0 and Build 1.0.0 · auth-baseline-6"
+echo "  6. My Programs empty: no Sort / + / Edit in nav bar; they appear once you add programs"
+echo "  7. Tab bar: 4 tabs (Dashboard, Programs, Rank List, Settings) — no Map"
 echo "  9. Auth intact: Apple / Google / email sign-in + Add Email & Password in Settings"

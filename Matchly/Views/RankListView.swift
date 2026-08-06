@@ -369,15 +369,15 @@ struct RankListView: View {
     
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .navigationBarLeading) {
-            if !rankedPrograms.isEmpty {
+        if MatchlyListPageToolbar.showsActions(hasContent: !rankedPrograms.isEmpty) {
+            ToolbarItem(placement: .navigationBarLeading) {
                 HStack {
                     Button(action: {
                         isEditing.toggle()
                     }) {
                         Text(isEditing ? "Done" : "Edit")
                     }
-                    
+
                     if !manualOrder.isEmpty {
                         Button(action: {
                             manualOrder = []
@@ -389,15 +389,13 @@ struct RankListView: View {
                     }
                 }
             }
-        }
-        ToolbarItem(placement: .navigationBarTrailing) {
-            if !rankedPrograms.isEmpty {
+            ToolbarItem(placement: .navigationBarTrailing) {
                 HStack(spacing: 16) {
                     NavigationLink(destination: ProgramComparisonView()) {
                         Image(systemName: "square.grid.2x2")
                     }
                     .accessibilityLabel("Compare programs")
-                    
+
                     Button(action: {
                         showExportSheet = true
                     }) {
