@@ -16,6 +16,8 @@ struct EmailLoginView: View {
     @State private var errorMessage: String?
     @State private var showSignUp = false
     @State private var showForgotPassword = false
+    @State private var showResetSentAlert = false
+    @State private var isResettingPassword = false
     
     var body: some View {
         MatchlyNavigationView {
@@ -26,6 +28,7 @@ struct EmailLoginView: View {
                             .textContentType(.emailAddress)
                             .autocapitalization(.none)
                             .keyboardType(.emailAddress)
+                            .textInputAutocapitalization(.never)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 12)
                             .glassEffect(.regular, in: .capsule)
@@ -74,9 +77,17 @@ struct EmailLoginView: View {
                     Button(action: {
                         showForgotPassword = true
                     }) {
-                        Text("Forgot Password?")
-                            .foregroundColor(.blue)
+                        HStack {
+                            Text("Forgot Password?")
+                                .foregroundColor(.blue)
+                            if isResettingPassword {
+                                Spacer()
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                            }
+                        }
                     }
+                    .disabled(isResettingPassword)
                 }
                 
                 Section {
@@ -121,6 +132,11 @@ struct EmailLoginView: View {
             } message: {
                 Text("Enter your email address and we'll send you a password reset link.")
             }
+            .alert("Check your email", isPresented: $showResetSentAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("If an account exists for \(email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()), a reset link was sent. Check Inbox and Spam — Firebase mail often lands in Spam.")
+            }
         }
     }
     
@@ -141,9 +157,13 @@ struct EmailLoginView: View {
     }
     
     private func resetPassword() async {
+        isResettingPassword = true
+        errorMessage = nil
+        defer { isResettingPassword = false }
+
         do {
             try await authManager.resetPassword(email: email)
-            errorMessage = "Password reset email sent. Please check your inbox."
+            showResetSentAlert = true
         } catch {
             errorMessage = error.localizedDescription
         }

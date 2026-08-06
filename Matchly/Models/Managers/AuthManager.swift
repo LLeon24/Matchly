@@ -428,8 +428,9 @@ class AuthManager: ObservableObject {
     // MARK: - Email/Password Authentication
     func signUpWithEmail(email: String, password: String, displayName: String?) async throws {
         guard Self.allowsNonAppleProviders else { throw AuthError.notImplemented }
+        let normalizedEmail = Self.normalizedEmail(email)
         do {
-            let result = try await Auth.auth().createUser(withEmail: email, password: password)
+            let result = try await Auth.auth().createUser(withEmail: normalizedEmail, password: password)
             if let displayName, !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 let changeRequest = result.user.createProfileChangeRequest()
                 changeRequest.displayName = displayName
@@ -445,8 +446,9 @@ class AuthManager: ObservableObject {
 
     func signInWithEmail(email: String, password: String) async throws {
         guard Self.allowsNonAppleProviders else { throw AuthError.notImplemented }
+        let normalizedEmail = Self.normalizedEmail(email)
         do {
-            let result = try await Auth.auth().signIn(withEmail: email, password: password)
+            let result = try await Auth.auth().signIn(withEmail: normalizedEmail, password: password)
             let user = makeUser(from: result.user, provider: .email, existing: currentUser)
             await MainActor.run { signIn(user: user) }
             await refreshCloudKitIdentity()
@@ -609,11 +611,17 @@ class AuthManager: ObservableObject {
 
     // MARK: - Password Reset
     func resetPassword(email: String) async throws {
+        let normalizedEmail = Self.normalizedEmail(email)
+        guard !normalizedEmail.isEmpty else { throw AuthError.invalidCredentials }
         do {
-            try await Auth.auth().sendPasswordReset(withEmail: email)
+            try await Auth.auth().sendPasswordReset(withEmail: normalizedEmail)
         } catch {
             throw mapFirebaseAuthError(error)
         }
+    }
+
+    private static func normalizedEmail(_ email: String) -> String {
+        email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
     // MARK: - Firebase Helpers
@@ -903,7 +911,7 @@ enum AuthError: LocalizedError {
         case .invalidCredentials:
             return "Invalid email or password."
         case .emailAlreadyInUse:
-            return "An account with this email already exists."
+            return "An account with this email already exists. Sign in, use Forgot Password, or try Google/Apple if you used those before."
         case .weakPassword:
             return "Password must be at least 6 characters."
         case .networkError:
