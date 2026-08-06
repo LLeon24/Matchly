@@ -17,8 +17,53 @@ echo
 echo "Latest commit:"
 git log -1 --oneline
 echo
-echo "Verify these exist:"
-rg -n "1\\.0\\.1|Add Email & Password|settingsSectionHeader" Matchly/Views/SettingsView.swift || true
+echo "Build-fix checks (must all pass before opening Xcode):"
+FAIL=0
+
+if rg -q "static func arial" Matchly/Extensions/View+Extensions.swift; then
+  echo "  OK  Font.arial defined in View+Extensions.swift"
+else
+  echo "  FAIL  Font.arial missing from View+Extensions.swift"
+  FAIL=1
+fi
+
+if test ! -f Matchly/Extensions/Font+Arial.swift; then
+  echo "  OK  Font+Arial.swift removed (helpers consolidated)"
+else
+  echo "  FAIL  Font+Arial.swift still present — pull did not apply"
+  FAIL=1
+fi
+
+if rg -q "Blob" Matchly/Models/Managers/AccountCloudSyncManager.swift; then
+  echo "  FAIL  AccountCloudSyncManager still references Blob"
+  FAIL=1
+else
+  echo "  OK  AccountCloudSyncManager has no Blob reference"
+fi
+
+if rg -q "func arialFont" Matchly/Extensions/View+Extensions.swift; then
+  echo "  OK  View.arialFont() defined"
+else
+  echo "  FAIL  View.arialFont() missing"
+  FAIL=1
+fi
+
 echo
-echo "Next: open this folder in Xcode → Product → Clean Build Folder → Run"
-echo "Settings → About should show Version 1.0.1"
+echo "Settings canary (optional UI verification):"
+rg -n "1\\.0\\.1|Add Email & Password|settingsSectionHeader" Matchly/Views/SettingsView.swift || true
+
+echo
+if [[ "$FAIL" -ne 0 ]]; then
+  echo "One or more build-fix checks failed. Do NOT build in Xcode yet."
+  echo "Try: git fetch origin && git reset --hard origin/cursor/dashboard-overview-polish"
+  exit 1
+fi
+
+echo "All build-fix checks passed."
+echo
+echo "Next on Mac:"
+echo "  1. Quit Xcode"
+echo "  2. rm -rf ~/Library/Developer/Xcode/DerivedData/Matchly-*"
+echo "  3. Open Matchly.xcodeproj from THIS folder (not an old iCloud copy)"
+echo "  4. Product → Clean Build Folder (⇧⌘K), then Run (⌘R)"
+echo "  5. Settings → About should show Version 1.0.1"
