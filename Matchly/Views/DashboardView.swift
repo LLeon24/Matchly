@@ -204,11 +204,11 @@ struct DashboardView: View {
         } else {
             ZStack {
                 Circle()
-                    .glassEffect(.clear.interactive(), in: .circle)
+                    .fill(AppColors.primaryGradient)
                     .frame(width: size, height: size)
                 Image(systemName: "person.fill")
                     .font(.arial(size: 20, weight: .medium))
-                    .foregroundStyle(AppColors.primaryBlue)
+                    .foregroundColor(.white)
             }
             .frame(width: size, height: size)
         }

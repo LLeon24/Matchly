@@ -18,6 +18,7 @@ private struct DashboardSectionInfo: Identifiable {
     let id: String
     let title: String
     let icon: String
+    let tint: Color
     let description: String
     let tab: DashboardCustomizationTab
 }
@@ -37,6 +38,7 @@ DashboardSectionInfo(
             id: "overviewHero",
             title: "Interview Season",
             icon: "sparkles",
+            tint: AppColors.accentOrange,
             description: "Snapshot hero with progress and key stats",
             tab: .overview
         ),
@@ -44,6 +46,7 @@ DashboardSectionInfo(
             id: "needsAttention",
             title: "Needs Attention",
             icon: "bell.badge.fill",
+            tint: AppColors.accentPink,
             description: "Actionable to-dos and reminders",
             tab: .overview
         ),
@@ -51,6 +54,7 @@ DashboardSectionInfo(
             id: "interviewPipeline",
             title: "Interview Pipeline",
             icon: "line.3.horizontal.decrease",
+            tint: AppColors.accentTeal,
             description: "Funnel from invites through ranking",
             tab: .overview
         ),
@@ -58,6 +62,7 @@ DashboardSectionInfo(
             id: "quickStats",
             title: "Key Metrics",
             icon: "chart.bar.fill",
+            tint: AppColors.primaryBlue,
             description: "Programs, reviews, interviews, top program",
             tab: .overview
         ),
@@ -65,6 +70,7 @@ DashboardSectionInfo(
             id: "quickActions",
             title: "Quick Actions",
             icon: "bolt.fill",
+            tint: AppColors.accentYellow,
             description: "Add Program, My Programs, Rank List",
             tab: .overview
         ),
@@ -72,6 +78,7 @@ DashboardSectionInfo(
             id: "recentActivity",
             title: "Recent Activity",
             icon: "clock.fill",
+            tint: AppColors.accentPurple,
             description: "Recently added or updated programs",
             tab: .overview
         ),
@@ -79,6 +86,7 @@ DashboardSectionInfo(
             id: "programsScoreDist",
             title: "Score Distribution",
             icon: "chart.bar.fill",
+            tint: AppColors.accentGreen,
             description: "How your program scores are spread",
             tab: .programs
         ),
@@ -86,6 +94,7 @@ DashboardSectionInfo(
             id: "topPrograms",
             title: "Top Programs",
             icon: "trophy.fill",
+            tint: AppColors.accentYellow,
             description: "Preview of your highest-ranked programs",
             tab: .programs
         ),
@@ -93,6 +102,7 @@ DashboardSectionInfo(
             id: "analytics",
             title: "Signals & Status",
             icon: "star.circle.fill",
+            tint: AppColors.accentPink,
             description: "ERAS signal usage plus programs needing review or red-flag follow-up",
             tab: .programs
         ),
@@ -100,6 +110,7 @@ DashboardSectionInfo(
             id: "upcomingInterviews",
             title: "Interview Timeline",
             icon: "calendar.badge.clock",
+            tint: AppColors.accentTeal,
             description: "Chronological list of upcoming interviews",
             tab: .interviews
         )
@@ -269,10 +280,15 @@ private struct DashboardSectionRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: section.icon)
-                .font(.arial(size: 18))
-                .foregroundColor(isEnabled ? AppColors.primaryBlue : .gray)
-                .frame(width: 24)
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(section.tint.opacity(isEnabled ? 0.16 : 0.08))
+                    .frame(width: 34, height: 34)
+                Image(systemName: section.icon)
+                    .font(.arial(size: 16, weight: .semibold))
+                    .foregroundStyle(isEnabled ? section.tint : Color.gray)
+            }
+            .frame(width: 34, height: 34)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(section.title)
