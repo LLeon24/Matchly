@@ -120,24 +120,6 @@ DashboardSectionInfo(
                     Text("Dashboard Layout")
                 }
 
-                Section {
-                    Picker("Greeting Style", selection: $draftPreferences.greetingStyle) {
-                        ForEach(DashboardPreferences.GreetingStyle.allCases, id: \.self) { style in
-                            Text(style.rawValue).tag(style)
-                        }
-                    }
-
-                    Picker("Header Subtitle", selection: $draftPreferences.headerSubtitleMode) {
-                        ForEach(DashboardPreferences.HeaderSubtitleMode.allCases, id: \.self) { mode in
-                            Text(mode.rawValue).tag(mode)
-                        }
-                    }
-                } header: {
-                    Text("Header Bar")
-                } footer: {
-                    Text("Controls the greeting line and the subtitle under your name on the dashboard.")
-                }
-
                 sectionGroup(
                     title: "Overview Tab",
                     footer: "Sections on the Overview page. On smaller phones, Needs Attention and Interview Pipeline may appear side by side when adjacent.",
@@ -270,8 +252,11 @@ DashboardSectionInfo(
         updatedLayout.disabledSections = normalizedDisabled
 
         var prefs = draftPreferences
-        prefs.showMotivationalMessage = prefs.headerSubtitleMode == .motivational
-        prefs.showSpecialtyCount = prefs.headerSubtitleMode == .specialtyCount
+        // Header bar is fixed for V1: time-based greeting + motivational subtitle.
+        prefs.greetingStyle = .timeBased
+        prefs.headerSubtitleMode = .motivational
+        prefs.showMotivationalMessage = true
+        prefs.showSpecialtyCount = false
 
         dataManager.updateDashboardCustomization(layout: updatedLayout, dashboardPreferences: prefs)
     }

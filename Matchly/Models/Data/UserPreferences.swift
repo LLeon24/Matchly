@@ -257,17 +257,11 @@ extension DashboardPreferences {
         self.showProfilePicture = try container.decodeIfPresent(Bool.self, forKey: .showProfilePicture) ?? true
         self.showSpecialtyCount = try container.decodeIfPresent(Bool.self, forKey: .showSpecialtyCount) ?? true
         self.showQuickStats = try container.decodeIfPresent(Bool.self, forKey: .showQuickStats) ?? false
-        self.showMotivationalMessage = try container.decodeIfPresent(Bool.self, forKey: .showMotivationalMessage) ?? true
-        self.greetingStyle = try container.decodeIfPresent(GreetingStyle.self, forKey: .greetingStyle) ?? .timeBased
-        if let mode = try container.decodeIfPresent(DashboardPreferences.HeaderSubtitleMode.self, forKey: .headerSubtitleMode) {
-            self.headerSubtitleMode = mode
-        } else if self.showMotivationalMessage {
-            self.headerSubtitleMode = .motivational
-        } else if self.showSpecialtyCount {
-            self.headerSubtitleMode = .specialtyCount
-        } else {
-            self.headerSubtitleMode = .date
-        }
+        // Locked for V1 — always time-based greeting with motivational subtitle.
+        self.greetingStyle = .timeBased
+        self.headerSubtitleMode = .motivational
+        self.showMotivationalMessage = true
+        self.showSpecialtyCount = false
     }
 }
 
