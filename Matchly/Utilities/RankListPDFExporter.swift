@@ -11,17 +11,20 @@ enum RankListPDFExporter {
         let programs: [Program]
         let redFlaggedPrograms: [Program]
         let applicantName: String?
+        let aamcID: String?
         let generatedAt: Date
 
         init(
             programs: [Program],
             redFlaggedPrograms: [Program] = [],
             applicantName: String? = nil,
+            aamcID: String? = nil,
             generatedAt: Date = Date()
         ) {
             self.programs = programs
             self.redFlaggedPrograms = redFlaggedPrograms
             self.applicantName = applicantName
+            self.aamcID = aamcID
             self.generatedAt = generatedAt
         }
     }
@@ -111,7 +114,10 @@ private struct DrawState {
     }
 
     mutating func drawHeader() {
-        let headerHeight: CGFloat = 88
+        let trimmedName = configuration.applicantName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let trimmedAAMC = configuration.aamcID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let applicantLineCount = (!trimmedName.isEmpty ? 1 : 0) + (!trimmedAAMC.isEmpty ? 1 : 0)
+        let headerHeight: CGFloat = 88 + CGFloat(applicantLineCount) * 16
         let headerRect = CGRect(x: margin, y: y, width: contentWidth, height: headerHeight)
 
         guard let cgContext = UIGraphicsGetCurrentContext() else { return }
@@ -128,6 +134,7 @@ private struct DrawState {
         drawMatchlyLogo(in: logoRect)
 
         let textX = logoRect.maxX + 14
+        let textWidth = headerRect.maxX - textX - 12
         let titleAttributes: [NSAttributedString.Key: Any] = [
             .font: Fonts.bold(20),
             .foregroundColor: UIColor.white
@@ -136,27 +143,44 @@ private struct DrawState {
             .font: Fonts.regular(12),
             .foregroundColor: UIColor.white.withAlphaComponent(0.92)
         ]
-        "Matchly".draw(at: CGPoint(x: textX, y: headerRect.minY + 18), withAttributes: titleAttributes)
-        "Residency Rank List".draw(at: CGPoint(x: textX, y: headerRect.minY + 42), withAttributes: subtitleAttributes)
+        let applicantAttributes: [NSAttributedString.Key: Any] = [
+            .font: Fonts.semibold(11),
+            .foregroundColor: UIColor.white
+        ]
+        let aamcAttributes: [NSAttributedString.Key: Any] = [
+            .font: Fonts.regular(10),
+            .foregroundColor: UIColor.white.withAlphaComponent(0.92)
+        ]
 
-        var metaLines: [String] = []
-        let trimmedName = configuration.applicantName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        "Matchly".draw(at: CGPoint(x: textX, y: headerRect.minY + 16), withAttributes: titleAttributes)
+        "Residency Rank List".draw(at: CGPoint(x: textX, y: headerRect.minY + 40), withAttributes: subtitleAttributes)
+
+        var detailY = headerRect.minY + 58
         if !trimmedName.isEmpty {
-            metaLines.append(trimmedName)
+            trimmedName.draw(
+                in: CGRect(x: textX, y: detailY, width: textWidth, height: 14),
+                withAttributes: applicantAttributes
+            )
+            detailY += 16
         }
+        if !trimmedAAMC.isEmpty {
+            "AAMC ID: \(trimmedAAMC)".draw(
+                in: CGRect(x: textX, y: detailY, width: textWidth, height: 14),
+                withAttributes: aamcAttributes
+            )
+            detailY += 16
+        }
+
         let dateFormatter = DateFormatter()
         dateFormatter.dateStyle = .long
         dateFormatter.timeStyle = .none
-        metaLines.append("Generated \(dateFormatter.string(from: configuration.generatedAt))")
         let totalCount = configuration.programs.count + configuration.redFlaggedPrograms.count
-        metaLines.append("\(totalCount) program\(totalCount == 1 ? "" : "s")")
-
-        let meta = metaLines.joined(separator: "  •  ")
+        let meta = "Generated \(dateFormatter.string(from: configuration.generatedAt))  •  \(totalCount) program\(totalCount == 1 ? "" : "s")"
         let metaAttributes: [NSAttributedString.Key: Any] = [
             .font: Fonts.regular(9),
             .foregroundColor: UIColor.white.withAlphaComponent(0.88)
         ]
-        let metaRect = CGRect(x: textX, y: headerRect.maxY - 22, width: headerRect.maxX - textX - 12, height: 14)
+        let metaRect = CGRect(x: textX, y: headerRect.maxY - 20, width: textWidth, height: 16)
         meta.draw(in: metaRect, withAttributes: metaAttributes)
 
         cgContext.restoreGState()
