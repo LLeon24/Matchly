@@ -257,6 +257,10 @@ extension DashboardPreferences {
         self.showProfilePicture = try container.decodeIfPresent(Bool.self, forKey: .showProfilePicture) ?? true
         self.showSpecialtyCount = try container.decodeIfPresent(Bool.self, forKey: .showSpecialtyCount) ?? true
         self.showQuickStats = try container.decodeIfPresent(Bool.self, forKey: .showQuickStats) ?? true
+        // V1 dashboard always shows the pinned KPI strip; keep preference aligned.
+        if !self.showQuickStats {
+            self.showQuickStats = true
+        }
         self.showMotivationalMessage = try container.decodeIfPresent(Bool.self, forKey: .showMotivationalMessage) ?? true
         self.greetingStyle = try container.decodeIfPresent(GreetingStyle.self, forKey: .greetingStyle) ?? .timeBased
         if let mode = try container.decodeIfPresent(DashboardPreferences.HeaderSubtitleMode.self, forKey: .headerSubtitleMode) {

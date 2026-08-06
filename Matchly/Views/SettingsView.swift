@@ -161,7 +161,9 @@ struct SettingsView: View {
                         NotificationCenter.default.post(name: NSNotification.Name("ShowFeatureTour"), object: nil)
                     } label: {
                         Label("Replay Guided Tour", systemImage: "hand.point.up.left.fill")
+                            .foregroundStyle(AppColors.primaryBlue)
                     }
+                    .buttonStyle(.plain)
 
                     NavigationLink(destination: AppGuideView(showsNavigationChrome: true)) {
                         Label("Feature Overview", systemImage: "book.fill")
@@ -411,17 +413,12 @@ struct SettingsView: View {
                             Button {
                                 showLinkEmailPassword = true
                             } label: {
-                                HStack {
-                                    Image(systemName: "envelope.fill")
-                                        .foregroundColor(.blue)
-                                    Text("Add Email & Password")
-                                        .foregroundColor(.primary)
-                                    Spacer()
-                                    Image(systemName: "chevron.right")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
+                                Text("Add Email & Password")
+                                    .frame(maxWidth: .infinity)
                             }
+                            .buttonStyle(.glassProminent)
+                            .tint(AppColors.primaryBlue)
+                            .listRowBackground(Color.clear)
                         }
                     }
                     

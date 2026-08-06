@@ -48,9 +48,7 @@ struct DashboardView: View {
             headerBar
                 .id(dashboardCustomizationToken)
 
-            if dashboardPreferences.showQuickStats {
-                headerQuickStatsBar
-            }
+            headerQuickStatsBar
 
             if dataManager.programs.isEmpty {
                 ScrollView {
@@ -1146,28 +1144,15 @@ struct DashboardView: View {
                 )
                 .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 3)
         } else {
-            Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(.systemGray5),
-                            Color(.systemGray6)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: size, height: size)
-                .overlay(
-                    Circle()
-                        .stroke(Color(.separator).opacity(0.3), lineWidth: 1.5)
-                )
-                .overlay(
-                    Image(systemName: "person.fill")
-                        .font(.arial(size: size * 0.45, weight: .medium))
-                        .foregroundColor(Color(.systemGray))
-                )
-                .shadow(color: Color.black.opacity(0.08), radius: 6, x: 0, y: 2)
+            ZStack {
+                Circle()
+                    .fill(AppColors.primaryGradient)
+                    .frame(width: size, height: size)
+                Image(systemName: "person.fill")
+                    .font(.arial(size: size * 0.45, weight: .medium))
+                    .foregroundColor(.white)
+            }
+            .frame(width: size, height: size)
         }
     }
     

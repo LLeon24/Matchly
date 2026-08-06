@@ -25,6 +25,7 @@ struct BiometricLockView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 72, height: 72)
+                    .cornerRadius(16)
                     .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
 
                 Text("Matchly is Locked")

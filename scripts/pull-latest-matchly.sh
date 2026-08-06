@@ -178,9 +178,23 @@ else
   FAIL=1
 fi
 
+if grep -q 'foregroundStyle(AppColors.primaryBlue)' Matchly/Views/SettingsView.swift; then
+  echo "  OK  Settings Replay Guided Tour uses brand blue"
+else
+  echo "  FAIL  Replay Guided Tour blue styling missing"
+  FAIL=1
+fi
+
+if grep -A6 'Add Email & Password' Matchly/Views/SettingsView.swift | grep -q 'glassProminent'; then
+  echo "  OK  Add Email & Password is a prominent action button"
+else
+  echo "  FAIL  Add Email & Password prominent button missing"
+  FAIL=1
+fi
+
 echo
 echo "Settings canary (optional UI verification):"
-grep -nE "MatchlyBuildInfo|settingsSectionHeader" Matchly/Views/SettingsView.swift || true
+grep -nE "MatchlyBuildInfo|MatchlyFormSectionHeader" Matchly/Views/SettingsView.swift || true
 
 echo
 if [[ "$FAIL" -ne 0 ]]; then
@@ -196,8 +210,8 @@ echo "  1. Quit Xcode"
 echo "  2. rm -rf ~/Library/Developer/Xcode/DerivedData/Matchly-*"
 echo "  3. Open Matchly.xcodeproj from THIS folder (not an old iCloud copy)"
 echo "  4. Product → Clean Build Folder (⇧⌘K), then Run (⌘R)"
-echo "  5. Settings → About should show Version 1.0 and Build 1.0 · recovery-7"
-echo "  6. Dashboard header shows colored KPI strip: Programs, Interviews, Avg Score, Signals"
-echo "  6. Tab bar should have 4 tabs (no Map) with blue/green/pink/purple accents"
-echo "  7. Rank List shows full-width blue Export PDF bar + Export PDF text in nav bar"
-echo "  8. Dashboard empty icon uses blue-purple gradient (not flat gray)"
+echo "  5. Settings → About should show Version 1.0 and Build 1.0 · recovery-8"
+echo "  6. Dashboard: KPI strip (Programs/Interviews/Avg/Signals) under greeting"
+echo "  7. Settings: blue Replay Guided Tour + prominent Add Email & Password button"
+echo "  8. Rank List: full-width Export PDF; PDF includes name + AAMC ID"
+echo "  9. Tab bar: 4 tabs (no Map); colored specialty headers on program lists"
