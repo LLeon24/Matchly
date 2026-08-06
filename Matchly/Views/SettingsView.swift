@@ -16,6 +16,7 @@ struct SettingsView: View {
     @State private var showSignOutAlert = false
     @State private var showSpecialtyChange = false
     @State private var showWeights = false
+    @State private var showLinkEmailPassword = false
     
     var body: some View {
         MatchlyNavigationView {
@@ -70,6 +71,9 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showSpecialtyChange) {
                 SpecialtySelectionView()
+            }
+            .sheet(isPresented: $showLinkEmailPassword) {
+                LinkEmailPasswordView()
             }
         }
     }
@@ -376,8 +380,23 @@ struct SettingsView: View {
                             Text("via \(user.provider.rawValue.capitalized)")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
+
+                            if authManager.hasPasswordProvider {
+                                Text("Email login enabled")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
                         }
                         .padding(.vertical, 4)
+                    }
+
+                    if authManager.canLinkEmailPassword {
+                        Button {
+                            showLinkEmailPassword = true
+                        } label: {
+                            Label("Add Email & Password", systemImage: "envelope.badge.shield.half.filled")
+                        }
+                        .buttonStyle(.glass)
                     }
                     
                     Button(role: .destructive, action: {

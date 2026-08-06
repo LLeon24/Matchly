@@ -620,6 +620,40 @@ class AuthManager: ObservableObject {
         }
     }
 
+    /// Whether the signed-in Firebase user already has Email/Password linked.
+    var hasPasswordProvider: Bool {
+        Auth.auth().currentUser?.providerData.contains(where: { $0.providerID == "password" }) == true
+    }
+
+    /// Apple/Google (etc.) users can add email+password so they can also sign in that way.
+    var canLinkEmailPassword: Bool {
+        Auth.auth().currentUser != nil && !hasPasswordProvider
+    }
+
+    /// Link Email/Password to the currently signed-in account (same Firebase UID).
+    func linkEmailPassword(email: String, password: String) async throws {
+        guard let firebaseUser = Auth.auth().currentUser else {
+            throw AuthError.notImplemented
+        }
+        let normalizedEmail = Self.normalizedEmail(email)
+        guard !normalizedEmail.isEmpty else { throw AuthError.invalidCredentials }
+        guard password.count >= 6 else { throw AuthError.weakPassword }
+
+        do {
+            let credential = EmailAuthProvider.credential(withEmail: normalizedEmail, password: password)
+            let result = try await firebaseUser.link(with: credential)
+            let linked = makeUser(
+                from: result.user,
+                provider: currentUser?.provider,
+                displayName: currentUser?.displayName,
+                existing: currentUser
+            )
+            await MainActor.run { signIn(user: linked) }
+        } catch {
+            throw mapFirebaseAuthError(error)
+        }
+    }
+
     private static func normalizedEmail(_ email: String) -> String {
         email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
@@ -669,10 +703,12 @@ class AuthManager: ObservableObject {
             return .userNotFound
         case 17009, 17004, 17008, 17094: // wrongPassword / invalidCredential / invalidEmail
             return .invalidCredentials
-        case 17007: // emailAlreadyInUse
+        case 17007, 17025, 17015: // emailAlreadyInUse / credentialAlreadyInUse
             return .emailAlreadyInUse
         case 17026: // weakPassword
             return .weakPassword
+        case 17014: // requiresRecentLogin
+            return .requiresRecentLogin
         case 17020: // networkError
             return .networkError
         default:
@@ -903,6 +939,7 @@ enum AuthError: LocalizedError {
     case networkError
     case notImplemented
     case canceled
+    case requiresRecentLogin
 
     var errorDescription: String? {
         switch self {
@@ -920,6 +957,8 @@ enum AuthError: LocalizedError {
             return "This feature is not yet implemented."
         case .canceled:
             return nil
+        case .requiresRecentLogin:
+            return "For security, sign out and sign back in, then try adding email login again."
         }
     }
 }
