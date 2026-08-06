@@ -11,7 +11,8 @@ import UIKit
 // MARK: - Arial font
 
 extension Font {
-    /// Matchly brand typeface (Arial), with system fallback when Arial is unavailable.
+    /// App-wide Arial helper used by Matchly views.
+    /// Falls back to the system font when Arial is unavailable.
     static func arial(
         size: CGFloat,
         weight: Font.Weight = .regular,
@@ -21,36 +22,46 @@ extension Font {
             return .system(size: size, weight: weight, design: design)
         }
 
-        let uiWeight = UIFont.Weight(arialWeight: weight)
-        if let descriptor = UIFont(name: "Arial", size: size)?.fontDescriptor
-            .addingAttributes([
-                .traits: [UIFontDescriptor.TraitKey.weight: uiWeight]
-            ]),
-           UIFont(descriptor: descriptor, size: size).fontName.lowercased().contains("arial") {
-            return Font(UIFont(descriptor: descriptor, size: size))
+        let uiWeight = uiFontWeight(for: weight)
+        if let fontName = arialPostScriptName(for: uiWeight),
+           UIFont(name: fontName, size: size) != nil {
+            return .custom(fontName, size: size)
         }
 
-        if let base = UIFont(name: "Arial", size: size) {
-            return Font(base)
+        if let arialBase = UIFont(name: "ArialMT", size: size)
+            ?? UIFont(name: "Arial", size: size) {
+            let descriptor = arialBase.fontDescriptor.addingAttributes([
+                .traits: [UIFontDescriptor.TraitKey.weight: uiWeight]
+            ])
+            return Font(UIFont(descriptor: descriptor, size: size))
         }
 
         return .system(size: size, weight: weight, design: .default)
     }
-}
 
-private extension UIFont.Weight {
-    init(arialWeight: Font.Weight) {
-        switch arialWeight {
-        case .ultraLight: self = .ultraLight
-        case .thin: self = .thin
-        case .light: self = .light
-        case .regular: self = .regular
-        case .medium: self = .medium
-        case .semibold: self = .semibold
-        case .bold: self = .bold
-        case .heavy: self = .heavy
-        case .black: self = .black
-        default: self = .regular
+    private static func uiFontWeight(for weight: Font.Weight) -> UIFont.Weight {
+        switch weight {
+        case .ultraLight: return .ultraLight
+        case .thin: return .thin
+        case .light: return .light
+        case .regular: return .regular
+        case .medium: return .medium
+        case .semibold: return .semibold
+        case .bold: return .bold
+        case .heavy: return .heavy
+        case .black: return .black
+        default: return .regular
+        }
+    }
+
+    private static func arialPostScriptName(for weight: UIFont.Weight) -> String? {
+        switch weight {
+        case .bold, .heavy, .black, .semibold:
+            return "Arial-BoldMT"
+        case .regular, .medium, .light, .thin, .ultraLight:
+            return "ArialMT"
+        default:
+            return "ArialMT"
         }
     }
 }

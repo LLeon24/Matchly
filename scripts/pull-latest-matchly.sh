@@ -58,7 +58,7 @@ fi
 
 echo
 echo "Settings canary (optional UI verification):"
-grep -nE "1\.0\.1|Add Email & Password|settingsSectionHeader" Matchly/Views/SettingsView.swift || true
+grep -nE "1\.0\.0|Add Email & Password|Section\(\"About\"\)" Matchly/Views/SettingsView.swift || true
 
 echo
 if [[ "$FAIL" -ne 0 ]]; then
@@ -74,4 +74,4 @@ echo "  1. Quit Xcode"
 echo "  2. rm -rf ~/Library/Developer/Xcode/DerivedData/Matchly-*"
 echo "  3. Open Matchly.xcodeproj from THIS folder (not an old iCloud copy)"
 echo "  4. Product → Clean Build Folder (⇧⌘K), then Run (⌘R)"
-echo "  5. Settings → About should show Version 1.0.1"
+echo "  5. Settings → About should show Version 1.0.0"

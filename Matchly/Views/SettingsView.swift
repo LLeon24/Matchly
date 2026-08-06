@@ -31,19 +31,17 @@ struct SettingsView: View {
                 dataManagementSection
                 accountSection
                 
-                Section {
+                Section("About") {
                     HStack {
                         Text("Version")
                         Spacer()
-                        Text("1.0.1")
+                        Text("1.0.0")
                             .foregroundColor(.secondary)
                     }
                     
                     Text("Matchly helps medical students organize residency interview information and generate personalized rank lists.")
                         .font(.caption)
                         .foregroundColor(.secondary)
-                } header: {
-                    settingsSectionHeader("About")
                 }
             }
             .scrollContentBackground(.hidden)
@@ -80,18 +78,8 @@ struct SettingsView: View {
         }
     }
     
-    private func settingsSectionHeader(_ title: String) -> some View {
-        Text(title)
-            .font(.arial(size: 15, weight: .bold))
-            .foregroundStyle(Color.black)
-            .textCase(nil)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.leading, 4)
-    }
-
     private var profileSection: some View {
-        Section {
-
+        Section("Profile") {
                     NavigationLink(destination: ProfileEditView()) {
                         HStack(spacing: 12) {
                             // Profile photo or icon
@@ -152,13 +140,11 @@ struct SettingsView: View {
                             .glassEffect(.regular, in: .rect(cornerRadius: 16))
                             .padding(.vertical, 4)
                     )
-        } header: {
-            settingsSectionHeader("Profile")
-        }
+                }
     }
     
     private var appInformationSection: some View {
-        Section {
+        Section("App Information") {
                     Button {
                         NotificationCenter.default.post(name: NSNotification.Name("ShowFeatureTour"), object: nil)
                     } label: {
@@ -214,13 +200,11 @@ struct SettingsView: View {
                     .buttonStyle(.glassProminent)
                     .tint(AppColors.primaryBlue)
                     .listRowBackground(Color.clear)
-        } header: {
-            settingsSectionHeader("App Information")
-        }
+                }
     }
     
     private var couplesMatchingSection: some View {
-        Section {
+        Section("Couples Matching") {
                     if let couple = dataManager.preferences.couple {
                         if couple.isLinked {
                             NavigationLink(destination: CouplesMatchingView()) {
@@ -260,13 +244,11 @@ struct SettingsView: View {
                             }
                         }
                     }
-        } header: {
-            settingsSectionHeader("Couples Matching")
-        }
+                }
     }
     
     private var questionnaireSection: some View {
-        Section {
+        Section("Questionnaire") {
                     NavigationLink(destination: QuestionnaireCustomizationView()) {
                         Text("Customize Questionnaire")
                     }
@@ -306,9 +288,7 @@ struct SettingsView: View {
                                 .foregroundColor(.secondary)
                         }
                     }
-        } header: {
-            settingsSectionHeader("Questionnaire")
-        }
+                }
     }
     
     private var calendarSection: some View {
@@ -332,15 +312,15 @@ struct SettingsView: View {
                                 .foregroundColor(.secondary)
                         }
                     }
-        } header: {
-            settingsSectionHeader("Calendar")
-        } footer: {
-            Text("When enabled, your interview dates will be synced to a \"Matchly Interviews\" calendar in your device calendar app. You can sync interviews from the Interviews page.")
-        }
+                } header: {
+                    Text("Calendar")
+                } footer: {
+                    Text("When enabled, your interview dates will be synced to a \"Matchly Interviews\" calendar in your device calendar app. You can sync interviews from the Interviews page.")
+                }
     }
     
     private var dataManagementSection: some View {
-        Section {
+        Section("Data Management") {
                     NavigationLink(destination: DataBackupView()) {
                         HStack {
                             Image(systemName: "icloud.fill")
@@ -356,13 +336,11 @@ struct SettingsView: View {
                         Text("Reset All Data")
                     }
                     .buttonStyle(.glass)
-        } header: {
-            settingsSectionHeader("Data Management")
-        }
+                }
     }
     
     private var accountSection: some View {
-        Section {
+        Section("Account") {
                     if BiometricAuthManager.shared.canAuthenticate {
                         Toggle(isOn: biometricLoginBinding) {
                             Label {
@@ -404,26 +382,19 @@ struct SettingsView: View {
                                 .foregroundColor(.secondary)
                         }
                         .padding(.vertical, 4)
+                    }
 
+                    if authManager.currentUser != nil {
                         if authManager.hasPasswordProvider {
                             Label("Email login enabled", systemImage: "checkmark.seal.fill")
-                                .font(.arial(size: 15))
                                 .foregroundColor(.secondary)
                         } else {
                             Button {
                                 showLinkEmailPassword = true
                             } label: {
-                                HStack {
-                                    Image(systemName: "envelope.fill")
-                                        .foregroundColor(.blue)
-                                    Text("Add Email & Password")
-                                        .foregroundColor(.primary)
-                                    Spacer()
-                                    Image(systemName: "chevron.right")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
+                                Label("Add Email & Password", systemImage: "envelope.badge.shield.half.filled")
                             }
+                            .buttonStyle(.glass)
                         }
                     }
                     
@@ -436,9 +407,7 @@ struct SettingsView: View {
                         }
                     }
                     .buttonStyle(.glass)
-        } header: {
-            settingsSectionHeader("Account")
-        }
+                }
     }
     
     private var biometricLoginBinding: Binding<Bool> {
