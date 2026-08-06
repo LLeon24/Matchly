@@ -95,6 +95,28 @@ struct MatchlyFormSectionHeader: View {
     }
 }
 
+/// Colored specialty label for grouped program lists (My Programs, Rank List).
+struct MatchlySpecialtySectionHeader: View {
+    let specialty: String
+    var showFullName: Bool = true
+
+    var body: some View {
+        let color = SpecialtyFormatter.color(for: specialty)
+        HStack(spacing: 6) {
+            Image(systemName: "stethoscope")
+                .font(.arial(size: 12))
+                .foregroundColor(color)
+            Text(
+                showFullName
+                    ? SpecialtyFormatter.displayNameWithAbbreviation(specialty)
+                    : SpecialtyFormatter.abbreviation(for: specialty)
+            )
+            .font(.arial(size: 13, weight: .semibold))
+            .foregroundColor(color)
+        }
+    }
+}
+
 // MARK: - Device layout
 
 enum MatchlyDeviceLayout {

@@ -112,6 +112,37 @@ else
   FAIL=1
 fi
 
+if grep -q "MatchlyFormSectionHeader" Matchly/Views/DataBackupView.swift && \
+   grep -q "MatchlyFormSectionHeader" Matchly/Views/SettingsView.swift; then
+  echo "  OK  Settings and Backup use aligned black 17pt section headers"
+else
+  echo "  FAIL  MatchlyFormSectionHeader missing from Settings or Backup"
+  FAIL=1
+fi
+
+if grep -q "MatchlySpecialtySectionHeader" Matchly/Views/ProgramsListView.swift && \
+   grep -q "MatchlySpecialtySectionHeader" Matchly/Views/RankListView.swift; then
+  echo "  OK  Program lists use colored specialty section headers"
+else
+  echo "  FAIL  Colored specialty headers missing from program lists"
+  FAIL=1
+fi
+
+if grep -q "buttonStyle(.glassProminent)" Matchly/Views/RankListView.swift && \
+   grep -q 'Text("Export PDF")' Matchly/Views/RankListView.swift; then
+  echo "  OK  Rank list has prominent Export PDF button"
+else
+  echo "  FAIL  Prominent Export PDF button missing from Rank List"
+  FAIL=1
+fi
+
+if grep -q "AppColors.primaryBlue, AppColors.accentPurple" Matchly/Views/DashboardView.swift; then
+  echo "  OK  Dashboard empty state uses gradient icon colors"
+else
+  echo "  FAIL  Dashboard empty-state color polish missing"
+  FAIL=1
+fi
+
 if grep -q "aamcID" Matchly/Utilities/RankListPDFExporter.swift; then
   echo "  OK  Rank list PDF includes AAMC ID in header"
 else

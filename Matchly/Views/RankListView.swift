@@ -378,15 +378,7 @@ struct RankListView: View {
     }
     
     private func specialtyHeader(_ specialty: String) -> some View {
-        let specialtyColor = SpecialtyFormatter.color(for: specialty)
-        return HStack(spacing: 6) {
-            Image(systemName: "stethoscope")
-                .font(.arial(size: 12))
-                .foregroundColor(specialtyColor)
-            Text("\(specialty) (\(SpecialtyFormatter.abbreviation(for: specialty)))")
-                .font(.arial(size: 13, weight: .semibold))
-                .foregroundColor(specialtyColor)
-        }
+        MatchlySpecialtySectionHeader(specialty: specialty)
     }
     
     private var redFlaggedHeader: some View {

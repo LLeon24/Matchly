@@ -37,16 +37,7 @@ struct ProgramsListView: View {
                     
                     List {
                         ForEach(sortedSpecialties, id: \.self) { specialty in
-                            Section(header: 
-                                HStack(spacing: 6) {
-                                    Image(systemName: "stethoscope")
-                                        .font(.arial(size: 12))
-                                        .foregroundColor(SpecialtyFormatter.color(for: specialty))
-                                    Text(SpecialtyFormatter.abbreviation(for: specialty))
-                                        .font(.arial(size: 13, weight: .semibold))
-                                }
-                                .foregroundColor(.secondary)
-                            ) {
+                            Section(header: MatchlySpecialtySectionHeader(specialty: specialty, showFullName: false)) {
                                 ForEach(groupedPrograms[specialty] ?? []) { program in
                                     if isEditMode {
                                         HStack {

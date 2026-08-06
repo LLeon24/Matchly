@@ -58,6 +58,8 @@ struct DataBackupView: View {
                 }
                 .padding(.vertical, 6)
                 .listRowBackground(Color.clear)
+            } header: {
+                MatchlyFormSectionHeader(title: "Cloud Backup")
             } footer: {
                 Text("Backs up your programs and settings to your Matchly account. Works the same for Apple, Google, and email sign-in.")
             }
@@ -75,7 +77,7 @@ struct DataBackupView: View {
                     Label("Import Backup File", systemImage: "square.and.arrow.down")
                 }
             } header: {
-                Text("File Backup")
+                MatchlyFormSectionHeader(title: "File Backup")
             } footer: {
                 Text("Optional. Save a JSON file on this device or share it elsewhere.")
             }
@@ -85,10 +87,11 @@ struct DataBackupView: View {
                 labeledRow("Profile", dataManager.preferences.profile.name.isEmpty ? "Not set" : "Set")
                 labeledRow("Specialties", "\(dataManager.preferences.specialties.count)")
             } header: {
-                Text("On This Device")
+                MatchlyFormSectionHeader(title: "On This Device")
             }
         }
         .scrollContentBackground(.hidden)
+        .matchlyReadableWidth()
         .appCanvasBackground()
         .navigationTitle("Backup & Sync")
         .navigationBarTitleDisplayMode(.inline)
