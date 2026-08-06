@@ -82,10 +82,11 @@ struct SettingsView: View {
     
     private func settingsSectionHeader(_ title: String) -> some View {
         Text(title)
-            .font(.arial(size: 13, weight: .semibold))
-            .foregroundColor(.primary)
+            .font(.arial(size: 15, weight: .bold))
+            .foregroundStyle(Color.black)
             .textCase(nil)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, 4)
     }
 
     private var profileSection: some View {
