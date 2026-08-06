@@ -35,7 +35,14 @@ struct SettingsView: View {
                     HStack {
                         Text("Version")
                         Spacer()
-                        Text("1.0.0")
+                        Text(MatchlyBuildInfo.version)
+                            .foregroundColor(.secondary)
+                    }
+
+                    HStack {
+                        Text("Build")
+                        Spacer()
+                        Text(MatchlyBuildInfo.displayLabel)
                             .foregroundColor(.secondary)
                     }
                     
@@ -43,7 +50,7 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                 } header: {
-                    MatchlyFormSectionHeader(title: "About")
+                    settingsSectionHeader("About")
                 }
             }
             .scrollContentBackground(.hidden)
@@ -80,8 +87,18 @@ struct SettingsView: View {
         }
     }
     
+    private func settingsSectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.arial(size: 15, weight: .bold))
+            .foregroundStyle(Color.black)
+            .textCase(nil)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, 4)
+    }
+
     private var profileSection: some View {
         Section {
+
                     NavigationLink(destination: ProfileEditView()) {
                         HStack(spacing: 12) {
                             // Profile photo or icon
@@ -143,7 +160,7 @@ struct SettingsView: View {
                             .padding(.vertical, 4)
                     )
         } header: {
-            MatchlyFormSectionHeader(title: "Profile")
+            settingsSectionHeader("Profile")
         }
     }
     
@@ -153,9 +170,7 @@ struct SettingsView: View {
                         NotificationCenter.default.post(name: NSNotification.Name("ShowFeatureTour"), object: nil)
                     } label: {
                         Label("Replay Guided Tour", systemImage: "hand.point.up.left.fill")
-                            .foregroundStyle(AppColors.primaryBlue)
                     }
-                    .buttonStyle(.plain)
 
                     NavigationLink(destination: AppGuideView(showsNavigationChrome: true)) {
                         Label("Feature Overview", systemImage: "book.fill")
@@ -207,7 +222,7 @@ struct SettingsView: View {
                     .tint(AppColors.primaryBlue)
                     .listRowBackground(Color.clear)
         } header: {
-            MatchlyFormSectionHeader(title: "App Information")
+            settingsSectionHeader("App Information")
         }
     }
     
@@ -253,7 +268,7 @@ struct SettingsView: View {
                         }
                     }
         } header: {
-            MatchlyFormSectionHeader(title: "Couples Matching")
+            settingsSectionHeader("Couples Matching")
         }
     }
     
@@ -299,7 +314,7 @@ struct SettingsView: View {
                         }
                     }
         } header: {
-            MatchlyFormSectionHeader(title: "Questionnaire")
+            settingsSectionHeader("Questionnaire")
         }
     }
     
@@ -324,11 +339,11 @@ struct SettingsView: View {
                                 .foregroundColor(.secondary)
                         }
                     }
-                } header: {
-                    MatchlyFormSectionHeader(title: "Calendar")
-                } footer: {
-                    Text("When enabled, your interview dates will be synced to a \"Matchly Interviews\" calendar in your device calendar app. You can sync interviews from the Interviews page.")
-                }
+        } header: {
+            settingsSectionHeader("Calendar")
+        } footer: {
+            Text("When enabled, your interview dates will be synced to a \"Matchly Interviews\" calendar in your device calendar app. You can sync interviews from the Interviews page.")
+        }
     }
     
     private var dataManagementSection: some View {
@@ -349,7 +364,7 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.glass)
         } header: {
-            MatchlyFormSectionHeader(title: "Data Management")
+            settingsSectionHeader("Data Management")
         }
     }
     
@@ -396,22 +411,26 @@ struct SettingsView: View {
                                 .foregroundColor(.secondary)
                         }
                         .padding(.vertical, 4)
-                    }
 
-                    if authManager.currentUser != nil {
                         if authManager.hasPasswordProvider {
                             Label("Email login enabled", systemImage: "checkmark.seal.fill")
+                                .font(.arial(size: 15))
                                 .foregroundColor(.secondary)
                         } else {
                             Button {
                                 showLinkEmailPassword = true
                             } label: {
-                                Text("Add Email & Password")
-                                    .frame(maxWidth: .infinity)
+                                HStack {
+                                    Image(systemName: "envelope.fill")
+                                        .foregroundColor(.blue)
+                                    Text("Add Email & Password")
+                                        .foregroundColor(.primary)
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
                             }
-                            .buttonStyle(.glassProminent)
-                            .tint(AppColors.primaryBlue)
-                            .listRowBackground(Color.clear)
                         }
                     }
                     
@@ -425,7 +444,7 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.glass)
         } header: {
-            MatchlyFormSectionHeader(title: "Account")
+            settingsSectionHeader("Account")
         }
     }
     
