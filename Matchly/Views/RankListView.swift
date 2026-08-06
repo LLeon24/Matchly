@@ -199,17 +199,21 @@ struct RankListView: View {
     // MARK: - View Components
     
     private var filterToolbar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
-                specialtyFilterMenu
-                sortMenu
-                exportPDFButton
-                Spacer()
-                Text("\(rankedPrograms.count) programs")
-                    .font(.arial(size: 12, weight: .medium))
-                    .foregroundColor(.secondary)
+        VStack(spacing: 10) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    specialtyFilterMenu
+                    sortMenu
+                    Spacer(minLength: 0)
+                    Text("\(rankedPrograms.count) programs")
+                        .font(.arial(size: 12, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+                .padding(.horizontal, 4)
             }
-            .padding(.horizontal, 4)
+
+            exportPDFButton
         }
         .padding()
     }
@@ -218,16 +222,21 @@ struct RankListView: View {
         Button(action: {
             showExportSheet = true
         }) {
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 Image(systemName: "doc.richtext")
-                    .font(.arial(size: 11))
+                    .font(.arial(size: 16, weight: .semibold))
                 Text("Export PDF")
-                    .font(.arial(size: 12, weight: .semibold))
+                    .font(.arial(size: 16, weight: .semibold))
+                Spacer(minLength: 0)
+                Image(systemName: "square.and.arrow.up")
+                    .font(.arial(size: 14, weight: .semibold))
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .glassEffect(.regular.interactive(), in: .capsule)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
         }
+        .buttonStyle(.glassProminent)
+        .tint(AppColors.primaryBlue)
         .accessibilityLabel("Export rank list as PDF")
     }
     
@@ -369,14 +378,15 @@ struct RankListView: View {
     }
     
     private func specialtyHeader(_ specialty: String) -> some View {
-        HStack(spacing: 6) {
+        let specialtyColor = SpecialtyFormatter.color(for: specialty)
+        return HStack(spacing: 6) {
             Image(systemName: "stethoscope")
                 .font(.arial(size: 12))
-                .foregroundColor(SpecialtyFormatter.color(for: specialty))
+                .foregroundColor(specialtyColor)
             Text("\(specialty) (\(SpecialtyFormatter.abbreviation(for: specialty)))")
                 .font(.arial(size: 13, weight: .semibold))
+                .foregroundColor(specialtyColor)
         }
-        .foregroundColor(.secondary)
     }
     
     private var redFlaggedHeader: some View {
@@ -414,7 +424,7 @@ struct RankListView: View {
             }
         }
         ToolbarItem(placement: .navigationBarTrailing) {
-            HStack(spacing: 16) {
+            HStack(spacing: 12) {
                 if !rankedPrograms.isEmpty {
                     NavigationLink(destination: ProgramComparisonView()) {
                         Image(systemName: "square.grid.2x2")
@@ -425,8 +435,10 @@ struct RankListView: View {
                 Button(action: {
                     showExportSheet = true
                 }) {
-                    Image(systemName: "doc.richtext")
+                    Text("Export PDF")
+                        .font(.arial(size: 15, weight: .semibold))
                 }
+                .tint(AppColors.primaryBlue)
                 .accessibilityLabel("Export rank list as PDF")
             }
         }

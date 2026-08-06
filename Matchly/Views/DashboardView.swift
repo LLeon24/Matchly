@@ -1436,12 +1436,27 @@ struct DashboardView: View {
     private var emptyStateIcon: some View {
         ZStack {
             Circle()
-                .fill(Color(.systemGray6))
-                .frame(width: MatchlyDeviceLayout.isPad ? 120 : 100, height: MatchlyDeviceLayout.isPad ? 120 : 100)
+                .fill(
+                    LinearGradient(
+                        colors: [Color.blue.opacity(0.12), Color.purple.opacity(0.12)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(
+                    width: MatchlyDeviceLayout.isPad ? 120 : 100,
+                    height: MatchlyDeviceLayout.isPad ? 120 : 100
+                )
 
             Image(systemName: "cross.case.fill")
-                .font(.arial(size: MatchlyDeviceLayout.isPad ? 54 : 48, weight: .light))
-                .foregroundColor(Color(white: 0.3))
+                .font(.arial(size: MatchlyDeviceLayout.isPad ? 54 : 48, weight: .medium))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [AppColors.primaryBlue, AppColors.accentPurple],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
         }
     }
 
