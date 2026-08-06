@@ -380,23 +380,22 @@ struct SettingsView: View {
                             Text("via \(user.provider.rawValue.capitalized)")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
-
-                            if authManager.hasPasswordProvider {
-                                Text("Email login enabled")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
                         }
                         .padding(.vertical, 4)
                     }
 
-                    if authManager.canLinkEmailPassword {
-                        Button {
-                            showLinkEmailPassword = true
-                        } label: {
-                            Label("Add Email & Password", systemImage: "envelope.badge.shield.half.filled")
+                    if authManager.currentUser != nil {
+                        if authManager.hasPasswordProvider {
+                            Label("Email login enabled", systemImage: "checkmark.seal.fill")
+                                .foregroundColor(.secondary)
+                        } else {
+                            Button {
+                                showLinkEmailPassword = true
+                            } label: {
+                                Label("Add Email & Password", systemImage: "envelope.badge.shield.half.filled")
+                            }
+                            .buttonStyle(.glass)
                         }
-                        .buttonStyle(.glass)
                     }
                     
                     Button(role: .destructive, action: {

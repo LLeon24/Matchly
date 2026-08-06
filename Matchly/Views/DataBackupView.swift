@@ -11,241 +11,81 @@ import UniformTypeIdentifiers
 struct DataBackupView: View {
     @EnvironmentObject var dataManager: DataManager
     @Environment(\.dismiss) var dismiss
-    @ObservedObject private var cloudSync = CloudSyncManager.shared
     @ObservedObject private var accountCloudSync = AccountCloudSyncManager.shared
+    @ObservedObject private var authManager = AuthManager.shared
     @State private var showExportSheet = false
     @State private var showImportPicker = false
     @State private var showImportSuccess = false
     @State private var showImportError = false
     @State private var importErrorMessage = ""
-    @State private var showCloudSyncAlert = false
-    
+    @State private var showSyncAlert = false
+    @State private var syncAlertMessage = ""
+
     var body: some View {
         Form {
             Section {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 6) {
-                            Image(systemName: accountCloudSync.isSignedIn ? "person.crop.circle.badge.checkmark" : "person.crop.circle.badge.exclamationmark")
-                                .foregroundColor(accountCloudSync.isSignedIn ? .blue : .gray)
-                            Text("Account Backup")
-                                .font(.arial(size: 17, weight: .medium))
-                        }
-
-                        if accountCloudSync.isSignedIn {
-                            if let lastSync = accountCloudSync.lastSyncDate {
-                                Text("Last synced: \(lastSync, style: .relative)")
-                                    .font(.arial(size: 13))
-                                    .foregroundColor(.secondary)
-                            } else {
-                                Text("Not yet synced")
-                                    .font(.arial(size: 13))
-                                    .foregroundColor(.secondary)
-                            }
-
-                            if let error = accountCloudSync.syncError {
-                                Text(error)
-                                    .font(.arial(size: 12))
-                                    .foregroundColor(.red)
-                                    .lineLimit(3)
-                            }
-                        } else {
-                            Text("Sign in to back up your data to your Matchly account.")
-                                .font(.arial(size: 13))
-                                .foregroundColor(.secondary)
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        Image(systemName: accountCloudSync.isSignedIn ? "checkmark.icloud.fill" : "icloud.slash")
+                            .foregroundColor(accountCloudSync.isSignedIn ? AppColors.primaryBlue : .secondary)
+                        Text("Cloud Backup")
+                            .font(.arial(size: 17, weight: .semibold))
+                        Spacer()
+                        if accountCloudSync.isSyncing {
+                            ProgressView()
+                                .scaleEffect(0.8)
                         }
                     }
 
-                    Spacer()
+                    Text(statusLine)
+                        .font(.arial(size: 13))
+                        .foregroundColor(.secondary)
+
+                    if let error = accountCloudSync.syncError {
+                        Text(error)
+                            .font(.arial(size: 12))
+                            .foregroundColor(.red)
+                    }
 
                     if accountCloudSync.isSignedIn {
-                        Button(action: {
+                        Button("Sync Now") {
                             Task { await syncAccountCloud() }
-                        }) {
-                            if accountCloudSync.isSyncing {
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                            } else {
-                                Text("Sync Now")
-                                    .font(.arial(size: 15, weight: .medium))
-                                    .foregroundColor(.blue)
-                            }
                         }
+                        .buttonStyle(.glassProminent)
+                        .tint(AppColors.primaryBlue)
                         .disabled(accountCloudSync.isSyncing)
                     }
                 }
-                .padding(.vertical, 4)
-                .glassPanelStyle(cornerRadius: 14)
-                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                .padding(.vertical, 6)
                 .listRowBackground(Color.clear)
-            } header: {
-                Text("Account Backup")
             } footer: {
-                if accountCloudSync.isSignedIn {
-                    Text("Your programs and preferences sync to your signed-in Matchly account so you can restore them on any device.")
-                } else {
-                    Text("Account backup requires Apple, Google, or email sign-in.")
-                }
+                Text("Backs up your programs and settings to your Matchly account. Works the same for Apple, Google, and email sign-in.")
             }
 
             Section {
-                // iCloud Sync Status
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 6) {
-                            Image(systemName: cloudSync.isCloudAvailable ? "icloud.fill" : "icloud.slash")
-                                .foregroundColor(cloudSync.isCloudAvailable ? .blue : .gray)
-                            Text("iCloud Device Sync")
-                                .font(.arial(size: 17, weight: .medium))
-                        }
-                        
-                        if cloudSync.isCloudAvailable {
-                            if let lastSync = cloudSync.lastSyncDate {
-                                Text("Last synced: \(lastSync, style: .relative)")
-                                    .font(.arial(size: 13))
-                                    .foregroundColor(.secondary)
-                            } else {
-                                Text("Not yet synced")
-                                    .font(.arial(size: 13))
-                                    .foregroundColor(.secondary)
-                            }
-                            
-                            if let error = cloudSync.syncError {
-                                Text(error)
-                                    .font(.arial(size: 12))
-                                    .foregroundColor(.red)
-                                    .lineLimit(3)
-                            }
-                        } else {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("iCloud not available")
-                                    .font(.arial(size: 13))
-                                    .foregroundColor(.secondary)
-                                Text("Sign in to iCloud in Settings")
-                                    .font(.arial(size: 12))
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                    }
-                    
-                    Spacer()
-                    
-                    if cloudSync.isCloudAvailable {
-                        Button(action: {
-                            syncToCloud()
-                        }) {
-                            if cloudSync.isSyncing {
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                            } else {
-                                Text("Sync Now")
-                                    .font(.arial(size: 15, weight: .medium))
-                                    .foregroundColor(.blue)
-                            }
-                        }
-                        .disabled(cloudSync.isSyncing)
-                    }
+                Button {
+                    showExportSheet = true
+                } label: {
+                    Label("Export Backup File", systemImage: "square.and.arrow.up")
                 }
-                .padding(.vertical, 4)
-                .glassPanelStyle(cornerRadius: 14)
-                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                .listRowBackground(Color.clear)
-            } header: {
-                Text("Optional Device Sync")
-            } footer: {
-                if cloudSync.isCloudAvailable {
-                    Text("Optional. Syncs via iCloud Key-Value store on devices signed into the same Apple ID.")
-                } else {
-                    Text("Enable iCloud in Settings > [Your Name] > iCloud for optional same-Apple-ID device sync.")
-                }
-            }
-            
-            Section {
-                Button(action: {
-                    exportData()
-                }) {
-                    HStack {
-                        Image(systemName: "square.and.arrow.up")
-                            .foregroundColor(.blue)
-                        Text("Export All Data")
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }
-                
-                Button(action: {
+
+                Button {
                     showImportPicker = true
-                }) {
-                    HStack {
-                        Image(systemName: "square.and.arrow.down")
-                            .foregroundColor(.blue)
-                        Text("Import Data")
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
+                } label: {
+                    Label("Import Backup File", systemImage: "square.and.arrow.down")
                 }
             } header: {
-                Text("Local Backup")
+                Text("File Backup")
             } footer: {
-                Text("Export your data as a JSON file to save a backup or transfer to another device.")
+                Text("Optional. Save a JSON file on this device or share it elsewhere.")
             }
-            
+
             Section {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Programs")
-                        Spacer()
-                        Text("\(dataManager.programs.count)")
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    HStack {
-                        Text("Profile")
-                        Spacer()
-                        Text(dataManager.preferences.profile.name.isEmpty ? "Not set" : "Set")
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    HStack {
-                        Text("Specialties")
-                        Spacer()
-                        Text("\(dataManager.preferences.specialties.count)")
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .font(.arial(size: 15))
-                .glassPanelStyle(cornerRadius: 14)
-                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                .listRowBackground(Color.clear)
+                labeledRow("Programs", "\(dataManager.programs.count)")
+                labeledRow("Profile", dataManager.preferences.profile.name.isEmpty ? "Not set" : "Set")
+                labeledRow("Specialties", "\(dataManager.preferences.specialties.count)")
             } header: {
-                Text("Data Summary")
-            }
-            
-            Section {
-                Button(action: {
-                    // Show diagnostic info
-                    let status = cloudSync.checkCloudStatus()
-                    showCloudSyncAlert = true
-                    importErrorMessage = status
-                }) {
-                    HStack {
-                        Image(systemName: "info.circle")
-                            .foregroundColor(.blue)
-                        Text("iCloud Status & Diagnostics")
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }
-            } header: {
-                Text("Troubleshooting")
-            } footer: {
-                Text("If sync isn't working, check the diagnostics above. Common issues: not signed into iCloud, data too large (>1MB), or iCloud Drive disabled.")
+                Text("On This Device")
             }
         }
         .scrollContentBackground(.hidden)
@@ -257,9 +97,7 @@ struct DataBackupView: View {
             document: MatchlyDataDocument(data: exportDataJSON()),
             contentType: .json,
             defaultFilename: "Matchly_Backup_\(dateFormatter.string(from: Date())).json"
-        ) { result in
-            handleExportResult(result)
-        }
+        ) { _ in }
         .fileImporter(
             isPresented: $showImportPicker,
             allowedContentTypes: [.json],
@@ -268,57 +106,62 @@ struct DataBackupView: View {
             handleImportResult(result)
         }
         .alert("Import Successful", isPresented: $showImportSuccess) {
-            Button("OK") {
-                dismiss()
-            }
+            Button("OK") { dismiss() }
         } message: {
-            Text("Your data has been imported successfully. The app will reload.")
+            Text("Your data has been imported successfully.")
         }
         .alert("Import Error", isPresented: $showImportError) {
             Button("OK") { }
         } message: {
             Text(importErrorMessage)
         }
-        .alert("Cloud Sync", isPresented: $showCloudSyncAlert) {
+        .alert("Cloud Backup", isPresented: $showSyncAlert) {
             Button("OK") { }
         } message: {
-            Text(importErrorMessage.isEmpty ? (cloudSync.syncError ?? "Data synced successfully to iCloud") : importErrorMessage)
+            Text(syncAlertMessage)
         }
     }
 
+    private var statusLine: String {
+        if !accountCloudSync.isSignedIn {
+            return "Sign in to enable automatic backup."
+        }
+        if let lastSync = accountCloudSync.lastSyncDate {
+            return "Last synced \(lastSync.formatted(.relative(presentation: .named)))"
+        }
+        let method = authManager.currentUser?.provider.rawValue.capitalized ?? "your account"
+        return "Signed in with \(method). Ready to sync."
+    }
+
+    private func labeledRow(_ title: String, _ value: String) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Text(value)
+                .foregroundColor(.secondary)
+        }
+        .font(.arial(size: 15))
+    }
+
     private func syncAccountCloud() async {
-        let changed = await dataManager.mergeWithAccountCloudIfNeeded(trigger: "manual")
+        let outcome = await dataManager.mergeWithAccountCloudIfNeeded(trigger: "manual")
         if let error = accountCloudSync.syncError {
-            importErrorMessage = error
-        } else if changed {
-            importErrorMessage = "Account backup synced."
+            syncAlertMessage = error
         } else {
-            importErrorMessage = "Already up to date with account backup."
+            switch outcome {
+            case .noChange:
+                syncAlertMessage = "Already up to date."
+            case .pulledPrograms, .pulledPreferences, .pulledBoth:
+                syncAlertMessage = "Downloaded the latest backup from your account."
+            case .pushedLocal:
+                syncAlertMessage = "Uploaded your data to your account."
+            case .notSignedIn:
+                syncAlertMessage = "Sign in to enable cloud backup."
+            }
         }
-        showCloudSyncAlert = true
+        showSyncAlert = true
     }
-    
-    private func syncToCloud() {
-        let outcome = dataManager.mergeWithCloudIfNeeded(trigger: "manual")
-        switch outcome {
-        case .noChange:
-            importErrorMessage = cloudSync.syncError ?? "Already up to date with iCloud."
-        case .pulledPrograms:
-            importErrorMessage = "Downloaded newer programs from iCloud."
-        case .pulledPreferences:
-            importErrorMessage = "Downloaded newer preferences from iCloud."
-        case .pulledBoth:
-            importErrorMessage = "Downloaded newer data from iCloud."
-        case .pushedLocal:
-            importErrorMessage = cloudSync.syncError ?? "Uploaded newer local data to iCloud."
-        }
-        showCloudSyncAlert = true
-    }
-    
-    private func exportData() {
-        showExportSheet = true
-    }
-    
+
     private func exportDataJSON() -> Data {
         let exportData = MatchlyExportData(
             programs: dataManager.programs,
@@ -326,55 +169,41 @@ struct DataBackupView: View {
             exportDate: Date(),
             version: "1.0.0"
         )
-        
-        if let jsonData = try? JSONEncoder().encode(exportData) {
-            return jsonData
-        }
-        return Data()
+        return (try? JSONEncoder().encode(exportData)) ?? Data()
     }
-    
-    private func handleExportResult(_ result: Result<URL, Error>) {
-        // Export completed (success or failure handled by system)
-    }
-    
+
     private func handleImportResult(_ result: Result<[URL], Error>) {
         switch result {
         case .success(let urls):
             guard let url = urls.first else { return }
-            
             _ = url.startAccessingSecurityScopedResource()
             defer { url.stopAccessingSecurityScopedResource() }
-            
+
             do {
                 let data = try Data(contentsOf: url)
                 let importData = try JSONDecoder().decode(MatchlyExportData.self, from: data)
-                
-                // Validate data
                 guard !importData.programs.isEmpty || !importData.preferences.specialties.isEmpty else {
                     importErrorMessage = "The imported file appears to be empty or invalid."
                     showImportError = true
                     return
                 }
-                
-                // Import data
                 dataManager.programs = importData.programs
                 dataManager.preferences = importData.preferences
                 dataManager.savePrograms()
                 dataManager.savePreferences()
                 dataManager.recalculateAllScores()
-                
                 showImportSuccess = true
             } catch {
                 importErrorMessage = "Failed to import data: \(error.localizedDescription)"
                 showImportError = true
             }
-            
+
         case .failure(let error):
             importErrorMessage = "Failed to access file: \(error.localizedDescription)"
             showImportError = true
         }
     }
-    
+
     private var dateFormatter: DateFormatter {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd_HHmmss"
@@ -393,22 +222,22 @@ struct MatchlyExportData: Codable {
 // MARK: - Document for File Export
 struct MatchlyDataDocument: FileDocument {
     static var readableContentTypes: [UTType] { [.json] }
-    
+
     var data: Data
-    
+
     init(data: Data) {
         self.data = data
     }
-    
+
     init(configuration: ReadConfiguration) throws {
         guard let data = configuration.file.regularFileContents else {
             throw CocoaError(.fileReadCorruptFile)
         }
         self.data = data
     }
-    
+
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
-        return FileWrapper(regularFileWithContents: data)
+        FileWrapper(regularFileWithContents: data)
     }
 }
 

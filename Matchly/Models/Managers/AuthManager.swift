@@ -625,9 +625,11 @@ class AuthManager: ObservableObject {
         Auth.auth().currentUser?.providerData.contains(where: { $0.providerID == "password" }) == true
     }
 
-    /// Apple/Google (etc.) users can add email+password so they can also sign in that way.
+    /// Show Add Email & Password for any signed-in account that doesn't already have a password.
+    /// (Apple / Google users; also covers Email users who somehow lack a password provider.)
     var canLinkEmailPassword: Bool {
-        Auth.auth().currentUser != nil && !hasPasswordProvider
+        guard currentUser != nil else { return false }
+        return !hasPasswordProvider
     }
 
     /// Link Email/Password to the currently signed-in account (same Firebase UID).
