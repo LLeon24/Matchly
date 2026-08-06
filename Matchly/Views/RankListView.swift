@@ -178,9 +178,9 @@ struct RankListView: View {
             .sheet(isPresented: $showExportSheet) {
                 ExportView(
                     programs: regularPrograms,
-                    redFlaggedPrograms: redFlagged,
-                    applicantName: dataManager.preferences.profile.name
+                    redFlaggedPrograms: redFlagged
                 )
+                .environmentObject(dataManager)
             }
             .onAppear {
                 loadManualOrder()
@@ -198,6 +198,7 @@ struct RankListView: View {
             HStack(spacing: 12) {
                 specialtyFilterMenu
                 sortMenu
+                exportPDFButton
                 Spacer()
                 Text("\(rankedPrograms.count) programs")
                     .font(.arial(size: 12, weight: .medium))
@@ -206,6 +207,23 @@ struct RankListView: View {
             .padding(.horizontal, 4)
         }
         .padding()
+    }
+
+    private var exportPDFButton: some View {
+        Button(action: {
+            showExportSheet = true
+        }) {
+            HStack(spacing: 6) {
+                Image(systemName: "doc.richtext")
+                    .font(.arial(size: 11))
+                Text("Export PDF")
+                    .font(.arial(size: 12, weight: .semibold))
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .glassEffect(.regular.interactive(), in: .capsule)
+        }
+        .accessibilityLabel("Export rank list as PDF")
     }
     
     private var specialtyFilterMenu: some View {
@@ -401,9 +419,9 @@ struct RankListView: View {
                     Button(action: {
                         showExportSheet = true
                     }) {
-                        Image(systemName: "square.and.arrow.up")
+                        Image(systemName: "doc.richtext")
                     }
-                    .accessibilityLabel("Export rank list")
+                    .accessibilityLabel("Export rank list as PDF")
                 }
             }
         }
@@ -631,21 +649,32 @@ struct EmptyRankListView: View {
 
 struct ExportView: View {
     @Environment(\.dismiss) var dismiss
+    @EnvironmentObject var dataManager: DataManager
     let programs: [Program]
     let redFlaggedPrograms: [Program]
-    let applicantName: String?
-    @State private var showShareSheet = false
-    @State private var shareItems: [Any] = []
+    @State private var sharePayload: SharePayload?
     @State private var exportError: String?
 
     init(
         programs: [Program],
-        redFlaggedPrograms: [Program] = [],
-        applicantName: String? = nil
+        redFlaggedPrograms: [Program] = []
     ) {
         self.programs = programs
         self.redFlaggedPrograms = redFlaggedPrograms
-        self.applicantName = applicantName
+    }
+
+    private var applicantName: String {
+        dataManager.preferences.profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var applicantAAMCID: String? {
+        let trimmed = dataManager.preferences.profile.aamcID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private struct SharePayload: Identifiable {
+        let id = UUID()
+        let items: [Any]
     }
 
     private var allPrograms: [Program] {
@@ -653,7 +682,14 @@ struct ExportView: View {
     }
     
     var rankListText: String {
-        var text = "My Residency Rank List\n\n"
+        var text = "My Residency Rank List"
+        if !applicantName.isEmpty {
+            text += "\n\(applicantName)"
+        }
+        if let aamcID = applicantAAMCID {
+            text += "\nAAMC ID: \(aamcID)"
+        }
+        text += "\n\n"
         for (index, program) in allPrograms.enumerated() {
             let hospitalName = HospitalNameFormatter.format(program.hospital.isEmpty ? program.name : program.hospital)
             text += "\(index + 1). \(hospitalName)"
@@ -675,7 +711,8 @@ struct ExportView: View {
         RankListPDFExporter.Configuration(
             programs: programs,
             redFlaggedPrograms: redFlaggedPrograms,
-            applicantName: applicantName
+            applicantName: applicantName.isEmpty ? nil : applicantName,
+            aamcID: applicantAAMCID
         )
     }
     
@@ -757,8 +794,8 @@ struct ExportView: View {
                     .buttonStyle(.glass)
                 }
                 .padding(.horizontal)
-                .sheet(isPresented: $showShareSheet) {
-                    ShareSheet(activityItems: shareItems)
+                .sheet(item: $sharePayload) { payload in
+                    ShareSheet(activityItems: payload.items)
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
@@ -792,6 +829,16 @@ struct ExportView: View {
                 Text("Residency Rank List")
                     .font(.arial(size: 12))
                     .foregroundColor(.white.opacity(0.9))
+                if !applicantName.isEmpty {
+                    Text(applicantName)
+                        .font(.arial(size: 13, weight: .semibold))
+                        .foregroundColor(.white)
+                }
+                if let aamcID = applicantAAMCID {
+                    Text("AAMC ID: \(aamcID)")
+                        .font(.arial(size: 11))
+                        .foregroundColor(.white.opacity(0.92))
+                }
             }
 
             Spacer()
@@ -848,14 +895,12 @@ struct ExportView: View {
             exportError = "Couldn't create the PDF. Try again or use Share as Text."
             return
         }
-        shareItems = [url]
-        showShareSheet = true
+        sharePayload = SharePayload(items: [url])
     }
 
     private func sharePlainText() {
         exportError = nil
-        shareItems = [rankListText]
-        showShareSheet = true
+        sharePayload = SharePayload(items: [rankListText])
     }
 }
 

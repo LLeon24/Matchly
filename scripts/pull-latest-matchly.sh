@@ -88,6 +88,27 @@ else
   FAIL=1
 fi
 
+if grep -q "aamcID" Matchly/Utilities/RankListPDFExporter.swift; then
+  echo "  OK  Rank list PDF includes AAMC ID in header"
+else
+  echo "  FAIL  Rank list PDF missing AAMC ID support"
+  FAIL=1
+fi
+
+if grep -q "Export PDF" Matchly/Views/RankListView.swift; then
+  echo "  OK  Rank list has visible Export PDF control"
+else
+  echo "  FAIL  Export PDF button missing from Rank List"
+  FAIL=1
+fi
+
+if grep -q "RankListPDFExporter" Matchly/Views/RankListView.swift; then
+  echo "  OK  Rank list PDF exporter wired in RankListView"
+else
+  echo "  FAIL  RankListPDFExporter not referenced in RankListView"
+  FAIL=1
+fi
+
 echo
 echo "Settings canary (optional UI verification):"
 grep -nE "MatchlyBuildInfo|settingsSectionHeader" Matchly/Views/SettingsView.swift || true
@@ -106,5 +127,6 @@ echo "  1. Quit Xcode"
 echo "  2. rm -rf ~/Library/Developer/Xcode/DerivedData/Matchly-*"
 echo "  3. Open Matchly.xcodeproj from THIS folder (not an old iCloud copy)"
 echo "  4. Product → Clean Build Folder (⇧⌘K), then Run (⌘R)"
-echo "  5. Settings → About should show Version 1.0 and Build 1.0 · recovery-1"
+echo "  5. Settings → About should show Version 1.0 and Build 1.0 · recovery-3"
 echo "  6. Tab bar should have 4 tabs (no Map)"
+echo "  7. Rank List filter bar should show Export PDF; PDF header should include your name and AAMC ID"
