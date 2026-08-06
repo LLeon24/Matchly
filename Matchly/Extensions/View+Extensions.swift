@@ -76,18 +76,22 @@ extension View {
 // MARK: - Form section headers
 
 /// Black, left-aligned section title for Settings and Backup & Sync forms.
+/// Uses 17pt bold so titles match (not shrink below) primary form row text.
 struct MatchlyFormSectionHeader: View {
     let title: String
 
     var body: some View {
-        Text(title)
-            .font(.arial(size: 17, weight: .bold))
-            .foregroundStyle(Color.black)
-            .textCase(nil)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            // Form adds default header inset; pull flush with the section card below.
-            .padding(.leading, -20)
-            .padding(.trailing, -20)
+        HStack(spacing: 0) {
+            Text(title)
+                .font(.arial(size: 17, weight: .bold))
+                .foregroundStyle(Color.black)
+                .textCase(nil)
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // Counteract Form's default section-header inset so titles sit flush
+        // with the leading edge of the grouped card below.
+        .padding(.leading, -16)
     }
 }
 
