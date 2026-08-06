@@ -87,20 +87,26 @@ enum AppFeatureTourSteps {
             )
         }
 
+        if FeatureFlags.programsMapEnabled, let mapIndex = MainTabLayout.mapIndex(isCoupleLinked: showCouple) {
+            steps.append(
+                FeatureTourStep(
+                    id: "map",
+                    tabIndex: mapIndex,
+                    anchorID: FeatureTourAnchorID.mapTab,
+                    title: "Map",
+                    message: showCouple
+                        ? "See programs geographically and compare distances — helpful for geography and couples planning."
+                        : "See programs geographically and compare distances as you plan where you want to train.",
+                    placesBubbleAboveSpotlight: true
+                )
+            )
+        }
+
+        let settingsIndex = MainTabLayout.settingsIndex(isCoupleLinked: showCouple)
         steps.append(contentsOf: [
             FeatureTourStep(
-                id: "map",
-                tabIndex: showCouple ? 4 : 3,
-                anchorID: FeatureTourAnchorID.mapTab,
-                title: "Map",
-                message: showCouple
-                    ? "See programs geographically and compare distances — helpful for geography and couples planning."
-                    : "See programs geographically and compare distances as you plan where you want to train.",
-                placesBubbleAboveSpotlight: true
-            ),
-            FeatureTourStep(
                 id: "settings",
-                tabIndex: showCouple ? 5 : 4,
+                tabIndex: settingsIndex,
                 anchorID: FeatureTourAnchorID.settingsTab,
                 title: "Settings",
                 message: showCouple

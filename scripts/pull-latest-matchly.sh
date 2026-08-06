@@ -56,18 +56,22 @@ else
   FAIL=1
 fi
 
-if grep -q "Account Backup" Matchly/Views/DataBackupView.swift; then
-  echo "  OK  Backup & Sync includes Account Backup"
+if grep -q "Cloud Backup" Matchly/Views/DataBackupView.swift; then
+  echo "  OK  Backup & Sync uses simplified Cloud Backup UI"
 else
-  echo "  FAIL  Account Backup section missing from DataBackupView"
+  echo "  FAIL  Simplified Cloud Backup section missing"
+  FAIL=1
+fi
+
+if grep -q "programsMapEnabled = false" Matchly/Models/FeatureFlags.swift; then
+  echo "  OK  Map tab disabled for V1"
+else
+  echo "  FAIL  Map tab flag missing or enabled"
   FAIL=1
 fi
 
 if grep -q "iCloud Device Sync" Matchly/Views/DataBackupView.swift; then
-  echo "  OK  Backup & Sync includes iCloud Device Sync"
-else
-  echo "  FAIL  iCloud Device Sync section missing from DataBackupView"
-  FAIL=1
+  echo "  WARN  Legacy iCloud Device Sync section present in Backup view"
 fi
 
 if grep -q "MatchlyFormSectionHeader" Matchly/Views/SettingsView.swift; then

@@ -55,10 +55,14 @@ struct MainTabView: View {
                     RankListView()
                 case 3 where isCoupleLinked:
                     CouplesHubView()
+                case 3 where FeatureFlags.programsMapEnabled:
+                    ProgramsMapView()
                 case 3:
+                    SettingsView()
+                case 4 where isCoupleLinked && FeatureFlags.programsMapEnabled:
                     ProgramsMapView()
                 case 4 where isCoupleLinked:
-                    ProgramsMapView()
+                    SettingsView()
                 case 4:
                     SettingsView()
                 case 5:
@@ -118,13 +122,14 @@ struct MainTabView: View {
                 handleCoupleMatchActivated()
             }
             guard !linked else { return }
+            let settingsIndex = MainTabLayout.settingsIndex(isCoupleLinked: false)
             switch selectedTab {
             case 3:
                 selectedTab = 0
             case 4:
-                selectedTab = 3
+                selectedTab = FeatureFlags.programsMapEnabled ? 3 : settingsIndex
             case 5:
-                selectedTab = 4
+                selectedTab = settingsIndex
             default:
                 break
             }
