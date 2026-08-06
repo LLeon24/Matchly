@@ -23,33 +23,46 @@ import Charts
 /// animate the page).
 struct DashboardSectionTabBar: View {
     let titles: [String]
+    var icons: [String]? = nil
     @Binding var selection: Int
     var accent: Color = AppColors.primaryBlue
+    var tabAccents: [Color]? = nil
     @Environment(\.matchlyLayout) private var layout
 
     @Namespace private var underlineNamespace
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 0) {
+        HStack(alignment: .bottom, spacing: 4) {
             ForEach(titles.indices, id: \.self) { index in
                 tab(index)
             }
         }
-        .padding(.top, layout == .compactVertical ? 2 : 6)
-        .padding(.bottom, layout == .compactVertical ? 2 : 4)
-        // No full-width glass pill — `.regular` glass on a flat canvas reads as a
-        // heavy gray slab. Keep this control airy: hairline + sliding underline only.
-        .background(alignment: .bottom) {
-            Rectangle()
-                .fill(Color(.separator).opacity(0.25))
-                .frame(height: 1)
+        .padding(.horizontal, layout == .compactVertical ? 6 : 10)
+        .padding(.top, layout == .compactVertical ? 6 : 8)
+        .padding(.bottom, layout == .compactVertical ? 6 : 8)
+        .background {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(.systemBackground).opacity(0.92))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color(.separator).opacity(0.35), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.05), radius: 6, y: 2)
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: selection)
+    }
+
+    private func tabAccent(for index: Int) -> Color {
+        if let tabAccents, index < tabAccents.count {
+            return tabAccents[index]
+        }
+        return accent
     }
 
     @ViewBuilder
     private func tab(_ index: Int) -> some View {
         let isSelected = selection == index
+        let tabColor = tabAccent(for: index)
 
         Button {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
@@ -57,25 +70,41 @@ struct DashboardSectionTabBar: View {
             }
         } label: {
             VStack(spacing: layout.sectionTabSpacing) {
+                if let icons, index < icons.count {
+                    Image(systemName: icons[index])
+                        .font(.arial(size: layout.sectionTabIconFont, weight: isSelected ? .semibold : .medium))
+                        .foregroundColor(isSelected ? tabColor : Color.primary.opacity(0.45))
+                        .symbolRenderingMode(.hierarchical)
+                }
+
                 Text(titles[index])
-                    .font(.arial(size: layout.sectionTabFont, weight: isSelected ? .bold : .medium))
-                    .foregroundColor(isSelected ? accent : .secondary)
+                    .font(.arial(size: layout.sectionTabFont, weight: isSelected ? .bold : .semibold))
+                    .foregroundColor(isSelected ? tabColor : Color.primary.opacity(0.55))
 
                 ZStack {
                     // Reserves height so the row doesn't jump between states.
                     Capsule()
                         .fill(Color.clear)
-                        .frame(width: 28, height: 3)
+                        .frame(width: 36, height: 4)
 
                     if isSelected {
                         Capsule()
-                            .fill(accent)
-                            .frame(width: 28, height: 3)
+                            .fill(tabColor)
+                            .frame(width: 36, height: 4)
                             .matchedGeometryEffect(id: "sectionUnderline", in: underlineNamespace)
                     }
                 }
             }
+            .padding(.vertical, layout == .compactVertical ? 4 : 6)
+            .padding(.horizontal, 4)
             .frame(maxWidth: .infinity)
+            .background {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(tabColor.opacity(0.12))
+                        .matchedGeometryEffect(id: "sectionTabFill", in: underlineNamespace)
+                }
+            }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

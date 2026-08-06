@@ -145,8 +145,9 @@ enum MatchlyLayoutStyle: Equatable {
     var heroStatLabelFont: CGFloat { self == .compactVertical ? 10 : 11 }
     var numberHeroIconSize: CGFloat { self == .compactVertical ? 56 : 76 }
     var numberHeroIconFont: CGFloat { self == .compactVertical ? 24 : 34 }
-    var sectionTabFont: CGFloat { self == .compactVertical ? 13 : 16 }
-    var sectionTabSpacing: CGFloat { self == .compactVertical ? 6 : 9 }
+    var sectionTabFont: CGFloat { self == .compactVertical ? 14 : 17 }
+    var sectionTabIconFont: CGFloat { self == .compactVertical ? 15 : 18 }
+    var sectionTabSpacing: CGFloat { self == .compactVertical ? 5 : 7 }
     var headerGreetingFont: CGFloat { self == .compactVertical ? 18 : 24 }
     var headerSubtitleFont: CGFloat { self == .compactVertical ? 12 : 14 }
     var headerAvatarSize: CGFloat { self == .compactVertical ? 36 : 48 }
@@ -157,7 +158,7 @@ enum MatchlyLayoutStyle: Equatable {
     var pageBottomInset: CGFloat { self == .compactVertical ? 12 : 16 }
     /// Space to keep scroll content above the floating tab bar.
     var tabBarScrollClearance: CGFloat { self == .compactVertical ? 84 : 110 }
-    var dashboardSectionSpacing: CGFloat { self == .compactVertical ? 10 : 14 }
+    var dashboardSectionSpacing: CGFloat { self == .compactVertical ? 12 : 16 }
     var tabBarIconFont: CGFloat { self == .compactVertical ? 18 : 22 }
     var tabBarTitleFont: CGFloat { self == .compactVertical ? 9 : 10 }
     var tabBarVerticalPadding: CGFloat { self == .compactVertical ? 6 : 10 }

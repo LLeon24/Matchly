@@ -61,11 +61,13 @@ struct DashboardView: View {
                 // the paged TabView below.
                 DashboardSectionTabBar(
                     titles: ["Overview", "Programs", "Interviews"],
-                    selection: $selectedSection
+                    icons: ["square.grid.2x2.fill", "building.2.fill", "calendar.badge.clock"],
+                    selection: $selectedSection,
+                    tabAccents: [AppColors.primaryBlue, AppColors.primaryBlue, AppColors.accentGreen]
                 )
-                .padding(.horizontal, 20)
-                .padding(.top, screenLayout == .compactVertical ? 0 : 4)
-                .padding(.bottom, screenLayout == .compactVertical ? 6 : 14)
+                .padding(.horizontal, 16)
+                .padding(.top, screenLayout == .compactVertical ? 4 : 6)
+                .padding(.bottom, screenLayout == .compactVertical ? 8 : 12)
 
                 TabView(selection: $selectedSection) {
                     overviewPage
@@ -355,7 +357,7 @@ struct DashboardView: View {
     /// 2) Programs — count hero + compare + score distribution + top programs.
     private var programsPage: some View {
         ScrollView {
-            VStack(spacing: 10) {
+            VStack(spacing: screenLayout.dashboardSectionSpacing) {
                 DashboardNumberHero(
                     bigNumber: "\(dataManager.programs.count)",
                     unit: "",
@@ -364,8 +366,7 @@ struct DashboardView: View {
                         ? "Top score \(String(format: "%.1f", topProgramMaxScore))"
                         : "Score programs to build your rank list",
                     icon: "building.2.fill",
-                    tint: AppColors.primaryBlue,
-                    condensed: true
+                    tint: AppColors.primaryBlue
                 )
                 .dashboardCardStyle()
 
@@ -460,7 +461,7 @@ struct DashboardView: View {
     /// 3) Interviews — upcoming count hero + chronological timeline.
     private var interviewsPage: some View {
         ScrollView {
-            VStack(spacing: 10) {
+            VStack(spacing: screenLayout.dashboardSectionSpacing) {
                 DashboardNumberHero(
                     bigNumber: "\(upcomingInterviews.count)",
                     unit: "",
@@ -469,8 +470,7 @@ struct DashboardView: View {
                         ? "\(interviewCount) scheduled in total"
                         : "Add interview dates to plan ahead",
                     icon: "calendar.badge.clock",
-                    tint: AppColors.accentGreen,
-                    condensed: true
+                    tint: AppColors.accentGreen
                 )
                 .dashboardCardStyle()
 
@@ -1994,7 +1994,7 @@ struct DashboardSectionHeader<Trailing: View>: View {
             }
             
             Text(title)
-                .font(.arial(size: 20, weight: .bold))
+                .font(.arial(size: 21, weight: .bold))
                 .foregroundColor(.primary)
             
             Spacer(minLength: 8)

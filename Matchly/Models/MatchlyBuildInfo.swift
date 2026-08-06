@@ -12,7 +12,7 @@ enum MatchlyBuildInfo {
     static let version = "1.0.0"
 
     /// Short baseline tag — visible in Settings → About to confirm Mac sync.
-    static let recoveryTag = "auth-baseline-7"
+    static let recoveryTag = "auth-baseline-8"
 
     static var displayLabel: String { "\(version) · \(recoveryTag)" }
 }
