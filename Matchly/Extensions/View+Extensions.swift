@@ -73,6 +73,22 @@ extension View {
     }
 }
 
+// MARK: - Form section headers
+
+/// Black, left-aligned section title for Settings and Backup & Sync forms.
+struct MatchlyFormSectionHeader: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .font(.arial(size: 15, weight: .bold))
+            .foregroundStyle(Color.black)
+            .textCase(nil)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, 4)
+    }
+}
+
 // MARK: - Device layout
 
 enum MatchlyDeviceLayout {

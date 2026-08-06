@@ -62,7 +62,7 @@ struct DataBackupView: View {
                 .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                 .listRowBackground(Color.clear)
             } header: {
-                Text("Account Backup")
+                MatchlyFormSectionHeader(title: "Account Backup")
             } footer: {
                 Text("Backs up your programs and settings to your Matchly account. Works with Apple, Google, and email sign-in.")
             }
@@ -106,7 +106,7 @@ struct DataBackupView: View {
                 .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                 .listRowBackground(Color.clear)
             } header: {
-                Text("Optional Device Sync")
+                MatchlyFormSectionHeader(title: "Optional Device Sync")
             } footer: {
                 if cloudSync.isCloudAvailable {
                     Text("Optional. Syncs via iCloud Key-Value store on devices signed into the same Apple ID.")
@@ -144,7 +144,7 @@ struct DataBackupView: View {
                     }
                 }
             } header: {
-                Text("Local Backup")
+                MatchlyFormSectionHeader(title: "Local Backup")
             } footer: {
                 Text("Export your data as a JSON file to save a backup or transfer to another device.")
             }
@@ -177,7 +177,7 @@ struct DataBackupView: View {
                 .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                 .listRowBackground(Color.clear)
             } header: {
-                Text("Data Summary")
+                MatchlyFormSectionHeader(title: "Data Summary")
             }
             
             Section {
@@ -198,7 +198,7 @@ struct DataBackupView: View {
                     }
                 }
             } header: {
-                Text("Troubleshooting")
+                MatchlyFormSectionHeader(title: "Troubleshooting")
             } footer: {
                 Text("If sync isn't working, check the diagnostics above. Common issues: not signed into iCloud, data too large (>1MB), or iCloud Drive disabled.")
             }

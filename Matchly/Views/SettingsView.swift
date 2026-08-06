@@ -43,7 +43,7 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                 } header: {
-                    settingsSectionHeader("About")
+                    MatchlyFormSectionHeader(title: "About")
                 }
             }
             .scrollContentBackground(.hidden)
@@ -80,15 +80,6 @@ struct SettingsView: View {
         }
     }
     
-    private func settingsSectionHeader(_ title: String) -> some View {
-        Text(title)
-            .font(.arial(size: 15, weight: .bold))
-            .foregroundStyle(Color.black)
-            .textCase(nil)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.leading, 4)
-    }
-
     private var profileSection: some View {
         Section {
                     NavigationLink(destination: ProfileEditView()) {
@@ -152,7 +143,7 @@ struct SettingsView: View {
                             .padding(.vertical, 4)
                     )
         } header: {
-            settingsSectionHeader("Profile")
+            MatchlyFormSectionHeader(title: "Profile")
         }
     }
     
@@ -216,7 +207,7 @@ struct SettingsView: View {
                     .tint(AppColors.primaryBlue)
                     .listRowBackground(Color.clear)
         } header: {
-            settingsSectionHeader("App Information")
+            MatchlyFormSectionHeader(title: "App Information")
         }
     }
     
@@ -262,7 +253,7 @@ struct SettingsView: View {
                         }
                     }
         } header: {
-            settingsSectionHeader("Couples Matching")
+            MatchlyFormSectionHeader(title: "Couples Matching")
         }
     }
     
@@ -308,7 +299,7 @@ struct SettingsView: View {
                         }
                     }
         } header: {
-            settingsSectionHeader("Questionnaire")
+            MatchlyFormSectionHeader(title: "Questionnaire")
         }
     }
     
@@ -334,7 +325,7 @@ struct SettingsView: View {
                         }
                     }
                 } header: {
-                    settingsSectionHeader("Calendar")
+                    MatchlyFormSectionHeader(title: "Calendar")
                 } footer: {
                     Text("When enabled, your interview dates will be synced to a \"Matchly Interviews\" calendar in your device calendar app. You can sync interviews from the Interviews page.")
                 }
@@ -358,7 +349,7 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.glass)
         } header: {
-            settingsSectionHeader("Data Management")
+            MatchlyFormSectionHeader(title: "Data Management")
         }
     }
     
@@ -434,7 +425,7 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.glass)
         } header: {
-            settingsSectionHeader("Account")
+            MatchlyFormSectionHeader(title: "Account")
         }
     }
     
