@@ -68,7 +68,7 @@ struct DashboardPreferences: Codable, Hashable {
     // Welcome header options
     var showProfilePicture: Bool = true
     var showSpecialtyCount: Bool = true
-    var showQuickStats: Bool = true
+    var showQuickStats: Bool = false
     var showMotivationalMessage: Bool = true
     
     // Greeting style
@@ -256,11 +256,7 @@ extension DashboardPreferences {
         self.welcomeHeaderStyle = try container.decodeIfPresent(WelcomeHeaderStyle.self, forKey: .welcomeHeaderStyle) ?? .default
         self.showProfilePicture = try container.decodeIfPresent(Bool.self, forKey: .showProfilePicture) ?? true
         self.showSpecialtyCount = try container.decodeIfPresent(Bool.self, forKey: .showSpecialtyCount) ?? true
-        self.showQuickStats = try container.decodeIfPresent(Bool.self, forKey: .showQuickStats) ?? true
-        // V1 dashboard always shows the pinned KPI strip; keep preference aligned.
-        if !self.showQuickStats {
-            self.showQuickStats = true
-        }
+        self.showQuickStats = try container.decodeIfPresent(Bool.self, forKey: .showQuickStats) ?? false
         self.showMotivationalMessage = try container.decodeIfPresent(Bool.self, forKey: .showMotivationalMessage) ?? true
         self.greetingStyle = try container.decodeIfPresent(GreetingStyle.self, forKey: .greetingStyle) ?? .timeBased
         if let mode = try container.decodeIfPresent(DashboardPreferences.HeaderSubtitleMode.self, forKey: .headerSubtitleMode) {

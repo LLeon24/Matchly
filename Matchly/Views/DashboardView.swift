@@ -48,8 +48,6 @@ struct DashboardView: View {
             headerBar
                 .id(dashboardCustomizationToken)
 
-            headerQuickStatsBar
-
             if dataManager.programs.isEmpty {
                 ScrollView {
                     emptyStateSection
@@ -180,16 +178,6 @@ struct DashboardView: View {
         .padding(.bottom, screenLayout.headerVerticalPadding)
     }
 
-    /// Pinned KPI strip — Programs, Interviews, Avg Score, Signals — always visible under the greeting.
-    private var headerQuickStatsBar: some View {
-        quickStatsRow
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .dashboardCardStyle()
-            .padding(.horizontal, 16)
-            .padding(.bottom, screenLayout == .compactVertical ? 6 : 10)
-    }
-
     /// Profile photo if set, otherwise the user's initials in a clean tinted
     /// circle, with a single SF Symbol as a last resort when there's no name.
     @ViewBuilder
@@ -216,11 +204,11 @@ struct DashboardView: View {
         } else {
             ZStack {
                 Circle()
-                    .fill(AppColors.primaryGradient)
+                    .glassEffect(.clear.interactive(), in: .circle)
                     .frame(width: size, height: size)
                 Image(systemName: "person.fill")
                     .font(.arial(size: 20, weight: .medium))
-                    .foregroundColor(.white)
+                    .foregroundStyle(AppColors.primaryBlue)
             }
             .frame(width: size, height: size)
         }
@@ -1090,14 +1078,14 @@ struct DashboardView: View {
     
     // MARK: - Quick Stats Row (reusable component)
     private var quickStatsRow: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             Button(action: {
                 selectedTab = 1 // My Programs tab
             }) {
                 QuickStatMini(
                     value: "\(dataManager.programs.count)",
                     label: "Programs",
-                    color: AppColors.primaryBlue
+                    color: .blue
                 )
             }
             .buttonStyle(.plain)
@@ -1106,7 +1094,7 @@ struct DashboardView: View {
                 QuickStatMini(
                     value: "\(interviewCount)",
                     label: "Interviews",
-                    color: AppColors.accentGreen
+                    color: .green
                 )
             }
             .buttonStyle(.plain)
@@ -1114,14 +1102,14 @@ struct DashboardView: View {
             QuickStatMini(
                 value: String(format: "%.1f", averageScore),
                 label: "Avg Score",
-                color: AppColors.accentOrange
+                color: .orange
             )
             
             NavigationLink(destination: AllSignaledProgramsView()) {
                 QuickStatMini(
                     value: "\(totalSignalCount)",
                     label: "Signals",
-                    color: AppColors.accentPurple
+                    color: .purple
                 )
             }
             .buttonStyle(.plain)
@@ -1144,15 +1132,28 @@ struct DashboardView: View {
                 )
                 .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 3)
         } else {
-            ZStack {
-                Circle()
-                    .fill(AppColors.primaryGradient)
-                    .frame(width: size, height: size)
-                Image(systemName: "person.fill")
-                    .font(.arial(size: size * 0.45, weight: .medium))
-                    .foregroundColor(.white)
-            }
-            .frame(width: size, height: size)
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(.systemGray5),
+                            Color(.systemGray6)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: size, height: size)
+                .overlay(
+                    Circle()
+                        .stroke(Color(.separator).opacity(0.3), lineWidth: 1.5)
+                )
+                .overlay(
+                    Image(systemName: "person.fill")
+                        .font(.arial(size: size * 0.45, weight: .medium))
+                        .foregroundColor(Color(.systemGray))
+                )
+                .shadow(color: Color.black.opacity(0.08), radius: 6, x: 0, y: 2)
         }
     }
     
@@ -1435,27 +1436,12 @@ struct DashboardView: View {
     private var emptyStateIcon: some View {
         ZStack {
             Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [Color.blue.opacity(0.12), Color.purple.opacity(0.12)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(
-                    width: MatchlyDeviceLayout.isPad ? 120 : 100,
-                    height: MatchlyDeviceLayout.isPad ? 120 : 100
-                )
+                .fill(Color(.systemGray6))
+                .frame(width: MatchlyDeviceLayout.isPad ? 120 : 100, height: MatchlyDeviceLayout.isPad ? 120 : 100)
 
             Image(systemName: "cross.case.fill")
-                .font(.arial(size: MatchlyDeviceLayout.isPad ? 54 : 48, weight: .medium))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [AppColors.primaryBlue, AppColors.accentPurple],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+                .font(.arial(size: MatchlyDeviceLayout.isPad ? 54 : 48, weight: .light))
+                .foregroundColor(Color(white: 0.3))
         }
     }
 
@@ -2275,18 +2261,16 @@ struct QuickStatMini: View {
     let color: Color
     
     var body: some View {
-        VStack(spacing: 3) {
+        VStack(spacing: 2) {
             Text(value)
                 .font(.arial(size: 16, weight: .bold))
                 .foregroundColor(color)
             
             Text(label)
-                .font(.arial(size: 10, weight: .medium))
+                .font(.arial(size: 10))
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
-        .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
 

@@ -9,10 +9,10 @@ import Foundation
 
 enum MatchlyBuildInfo {
     /// User-facing app version (Settings → About).
-    static let version = "1.0"
+    static let version = "1.0.0"
 
-    /// Short recovery tag — changes when we reset the branch to a known-good baseline.
-    static let recoveryTag = "recovery-8"
+    /// Short baseline tag — visible in Settings → About to confirm Mac sync.
+    static let recoveryTag = "auth-baseline"
 
     static var displayLabel: String { "\(version) · \(recoveryTag)" }
 }

@@ -10,7 +10,6 @@ import UIKit
 
 struct RankListView: View {
     @EnvironmentObject var dataManager: DataManager
-    @Binding var selectedTab: Int
     @State private var showExportSheet = false
     @State private var manualOrder: [String] = [] // Store program IDs in manual order
     @State private var isEditing = false
@@ -18,10 +17,6 @@ struct RankListView: View {
     @State private var filterInterviewed = false
     @State private var selectedSpecialties: Set<String> = []
     @State private var showAllSpecialties: Bool = true
-    
-    init(selectedTab: Binding<Int> = .constant(2)) {
-        _selectedTab = selectedTab
-    }
     
     enum SortOption: String, CaseIterable {
         case score = "Score"
@@ -166,7 +161,7 @@ struct RankListView: View {
         MatchlyNavigationView {
             Group {
                 if rankedPrograms.isEmpty {
-                    EmptyRankListView(selectedTab: $selectedTab)
+                    EmptyRankListView()
                         .matchlyRootContentFrame()
                 } else {
                     VStack(spacing: 0) {
@@ -183,9 +178,9 @@ struct RankListView: View {
             .sheet(isPresented: $showExportSheet) {
                 ExportView(
                     programs: regularPrograms,
-                    redFlaggedPrograms: redFlagged
+                    redFlaggedPrograms: redFlagged,
+                    applicantName: dataManager.preferences.profile.name
                 )
-                .environmentObject(dataManager)
             }
             .onAppear {
                 loadManualOrder()
@@ -199,45 +194,18 @@ struct RankListView: View {
     // MARK: - View Components
     
     private var filterToolbar: some View {
-        VStack(spacing: 10) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    specialtyFilterMenu
-                    sortMenu
-                    Spacer(minLength: 0)
-                    Text("\(rankedPrograms.count) programs")
-                        .font(.arial(size: 12, weight: .medium))
-                        .foregroundColor(.secondary)
-                        .fixedSize(horizontal: true, vertical: false)
-                }
-                .padding(.horizontal, 4)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 12) {
+                specialtyFilterMenu
+                sortMenu
+                Spacer()
+                Text("\(rankedPrograms.count) programs")
+                    .font(.arial(size: 12, weight: .medium))
+                    .foregroundColor(.secondary)
             }
-
-            exportPDFButton
+            .padding(.horizontal, 4)
         }
         .padding()
-    }
-
-    private var exportPDFButton: some View {
-        Button(action: {
-            showExportSheet = true
-        }) {
-            HStack(spacing: 8) {
-                Image(systemName: "doc.richtext")
-                    .font(.arial(size: 16, weight: .semibold))
-                Text("Export PDF")
-                    .font(.arial(size: 16, weight: .semibold))
-                Spacer(minLength: 0)
-                Image(systemName: "square.and.arrow.up")
-                    .font(.arial(size: 14, weight: .semibold))
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-        }
-        .buttonStyle(.glassProminent)
-        .tint(AppColors.primaryBlue)
-        .accessibilityLabel("Export rank list as PDF")
     }
     
     private var specialtyFilterMenu: some View {
@@ -378,7 +346,14 @@ struct RankListView: View {
     }
     
     private func specialtyHeader(_ specialty: String) -> some View {
-        MatchlySpecialtySectionHeader(specialty: specialty)
+        HStack(spacing: 6) {
+            Image(systemName: "stethoscope")
+                .font(.arial(size: 12))
+                .foregroundColor(SpecialtyFormatter.color(for: specialty))
+            Text("\(specialty) (\(SpecialtyFormatter.abbreviation(for: specialty)))")
+                .font(.arial(size: 13, weight: .semibold))
+        }
+        .foregroundColor(.secondary)
     }
     
     private var redFlaggedHeader: some View {
@@ -416,22 +391,20 @@ struct RankListView: View {
             }
         }
         ToolbarItem(placement: .navigationBarTrailing) {
-            HStack(spacing: 12) {
-                if !rankedPrograms.isEmpty {
+            if !rankedPrograms.isEmpty {
+                HStack(spacing: 16) {
                     NavigationLink(destination: ProgramComparisonView()) {
                         Image(systemName: "square.grid.2x2")
                     }
                     .accessibilityLabel("Compare programs")
+                    
+                    Button(action: {
+                        showExportSheet = true
+                    }) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                    .accessibilityLabel("Export rank list")
                 }
-
-                Button(action: {
-                    showExportSheet = true
-                }) {
-                    Text("Export PDF")
-                        .font(.arial(size: 15, weight: .semibold))
-                }
-                .tint(AppColors.primaryBlue)
-                .accessibilityLabel("Export rank list as PDF")
             }
         }
     }
@@ -618,11 +591,8 @@ struct RankListItemView: View {
 }
 
 struct EmptyRankListView: View {
-    @Binding var selectedTab: Int
-
     var body: some View {
         VStack(spacing: 24) {
-            Spacer(minLength: 0)
             ZStack {
                 Circle()
                     .fill(
@@ -635,7 +605,7 @@ struct EmptyRankListView: View {
                     .frame(width: 120, height: 120)
                 
                 Image(systemName: "chart.bar.xaxis")
-                    .font(.arial(size: 60))
+                .font(.arial(size: 60))
                     .foregroundStyle(
                         LinearGradient(
                             colors: [.blue, .purple],
@@ -646,66 +616,36 @@ struct EmptyRankListView: View {
             }
             
             VStack(spacing: 8) {
-                Text("No Programs to Rank")
+            Text("No Programs to Rank")
                     .font(.arial(size: 24, weight: .bold))
-                
-                Text("Add programs to see your rank list and export a PDF")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
+            
+            Text("Add programs to see your rank list")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
             }
-
-            Button(action: {
-                selectedTab = 1
-            }) {
-                HStack(spacing: 8) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.arial(size: 18))
-                    Text("Add Programs")
-                        .font(.arial(size: 17, weight: .semibold))
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 32)
-                .padding(.vertical, 14)
-            }
-            .buttonStyle(.glassProminent)
-            .tint(AppColors.primaryBlue)
-
-            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 24)
     }
 }
 
 struct ExportView: View {
     @Environment(\.dismiss) var dismiss
-    @EnvironmentObject var dataManager: DataManager
     let programs: [Program]
     let redFlaggedPrograms: [Program]
-    @State private var sharePayload: SharePayload?
+    let applicantName: String?
+    @State private var showShareSheet = false
+    @State private var shareItems: [Any] = []
     @State private var exportError: String?
 
     init(
         programs: [Program],
-        redFlaggedPrograms: [Program] = []
+        redFlaggedPrograms: [Program] = [],
+        applicantName: String? = nil
     ) {
         self.programs = programs
         self.redFlaggedPrograms = redFlaggedPrograms
-    }
-
-    private var applicantName: String {
-        dataManager.preferences.profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private var applicantAAMCID: String? {
-        let trimmed = dataManager.preferences.profile.aamcID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return trimmed.isEmpty ? nil : trimmed
-    }
-
-    private struct SharePayload: Identifiable {
-        let id = UUID()
-        let items: [Any]
+        self.applicantName = applicantName
     }
 
     private var allPrograms: [Program] {
@@ -713,14 +653,7 @@ struct ExportView: View {
     }
     
     var rankListText: String {
-        var text = "My Residency Rank List"
-        if !applicantName.isEmpty {
-            text += "\n\(applicantName)"
-        }
-        if let aamcID = applicantAAMCID {
-            text += "\nAAMC ID: \(aamcID)"
-        }
-        text += "\n\n"
+        var text = "My Residency Rank List\n\n"
         for (index, program) in allPrograms.enumerated() {
             let hospitalName = HospitalNameFormatter.format(program.hospital.isEmpty ? program.name : program.hospital)
             text += "\(index + 1). \(hospitalName)"
@@ -742,8 +675,7 @@ struct ExportView: View {
         RankListPDFExporter.Configuration(
             programs: programs,
             redFlaggedPrograms: redFlaggedPrograms,
-            applicantName: applicantName.isEmpty ? nil : applicantName,
-            aamcID: applicantAAMCID
+            applicantName: applicantName
         )
     }
     
@@ -825,8 +757,8 @@ struct ExportView: View {
                     .buttonStyle(.glass)
                 }
                 .padding(.horizontal)
-                .sheet(item: $sharePayload) { payload in
-                    ShareSheet(activityItems: payload.items)
+                .sheet(isPresented: $showShareSheet) {
+                    ShareSheet(activityItems: shareItems)
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
@@ -860,16 +792,6 @@ struct ExportView: View {
                 Text("Residency Rank List")
                     .font(.arial(size: 12))
                     .foregroundColor(.white.opacity(0.9))
-                if !applicantName.isEmpty {
-                    Text(applicantName)
-                        .font(.arial(size: 13, weight: .semibold))
-                        .foregroundColor(.white)
-                }
-                if let aamcID = applicantAAMCID {
-                    Text("AAMC ID: \(aamcID)")
-                        .font(.arial(size: 11))
-                        .foregroundColor(.white.opacity(0.92))
-                }
             }
 
             Spacer()
@@ -926,12 +848,14 @@ struct ExportView: View {
             exportError = "Couldn't create the PDF. Try again or use Share as Text."
             return
         }
-        sharePayload = SharePayload(items: [url])
+        shareItems = [url]
+        showShareSheet = true
     }
 
     private func sharePlainText() {
         exportError = nil
-        sharePayload = SharePayload(items: [rankListText])
+        shareItems = [rankListText]
+        showShareSheet = true
     }
 }
 

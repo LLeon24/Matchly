@@ -58,28 +58,24 @@ struct LiquidGlassTabBar: View {
                     }
                 }
 
-                if FeatureFlags.programsMapEnabled {
-                    TabBarButton(
-                        icon: "map.fill",
-                        title: "Map",
-                        isSelected: selectedTab == (MainTabLayout.mapIndex(isCoupleLinked: isCoupleLinked) ?? -1),
-                        color: AppColors.accentTeal,
-                        tourAnchorID: FeatureTourAnchorID.mapTab
-                    ) {
-                        if let mapIndex = MainTabLayout.mapIndex(isCoupleLinked: isCoupleLinked) {
-                            handleTabSelection(targetTab: mapIndex)
-                        }
-                    }
+                TabBarButton(
+                    icon: "map.fill",
+                    title: "Map",
+                    isSelected: selectedTab == (isCoupleLinked ? 4 : 3),
+                    color: AppColors.accentTeal,
+                    tourAnchorID: FeatureTourAnchorID.mapTab
+                ) {
+                    handleTabSelection(targetTab: isCoupleLinked ? 4 : 3)
                 }
 
                 TabBarButton(
                     icon: "gearshape.fill",
                     title: "Settings",
-                    isSelected: selectedTab == MainTabLayout.settingsIndex(isCoupleLinked: isCoupleLinked),
+                    isSelected: selectedTab == (isCoupleLinked ? 5 : 4),
                     color: AppColors.accentPurple,
                     tourAnchorID: FeatureTourAnchorID.settingsTab
                 ) {
-                    handleTabSelection(targetTab: MainTabLayout.settingsIndex(isCoupleLinked: isCoupleLinked))
+                    handleTabSelection(targetTab: isCoupleLinked ? 5 : 4)
                 }
             }
             .padding(.horizontal, layout == .compactVertical ? 8 : 10)

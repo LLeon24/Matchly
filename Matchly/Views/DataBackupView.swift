@@ -58,8 +58,6 @@ struct DataBackupView: View {
                 }
                 .padding(.vertical, 6)
                 .listRowBackground(Color.clear)
-            } header: {
-                MatchlyFormSectionHeader(title: "Cloud Backup")
             } footer: {
                 Text("Backs up your programs and settings to your Matchly account. Works the same for Apple, Google, and email sign-in.")
             }
@@ -77,7 +75,7 @@ struct DataBackupView: View {
                     Label("Import Backup File", systemImage: "square.and.arrow.down")
                 }
             } header: {
-                MatchlyFormSectionHeader(title: "File Backup")
+                Text("File Backup")
             } footer: {
                 Text("Optional. Save a JSON file on this device or share it elsewhere.")
             }
@@ -87,11 +85,10 @@ struct DataBackupView: View {
                 labeledRow("Profile", dataManager.preferences.profile.name.isEmpty ? "Not set" : "Set")
                 labeledRow("Specialties", "\(dataManager.preferences.specialties.count)")
             } header: {
-                MatchlyFormSectionHeader(title: "On This Device")
+                Text("On This Device")
             }
         }
         .scrollContentBackground(.hidden)
-        .matchlyReadableWidth()
         .appCanvasBackground()
         .navigationTitle("Backup & Sync")
         .navigationBarTitleDisplayMode(.inline)
@@ -147,15 +144,20 @@ struct DataBackupView: View {
     }
 
     private func syncAccountCloud() async {
-        let changed = await dataManager.mergeWithAccountCloudIfNeeded(trigger: "manual")
+        let outcome = await dataManager.mergeWithAccountCloudIfNeeded(trigger: "manual")
         if let error = accountCloudSync.syncError {
             syncAlertMessage = error
-        } else if changed {
-            syncAlertMessage = "Synced with your Matchly account."
-        } else if !accountCloudSync.isSignedIn {
-            syncAlertMessage = "Sign in to enable cloud backup."
         } else {
-            syncAlertMessage = "Already up to date."
+            switch outcome {
+            case .noChange:
+                syncAlertMessage = "Already up to date."
+            case .pulledPrograms, .pulledPreferences, .pulledBoth:
+                syncAlertMessage = "Downloaded the latest backup from your account."
+            case .pushedLocal:
+                syncAlertMessage = "Uploaded your data to your account."
+            case .notSignedIn:
+                syncAlertMessage = "Sign in to enable cloud backup."
+            }
         }
         showSyncAlert = true
     }
@@ -165,7 +167,7 @@ struct DataBackupView: View {
             programs: dataManager.programs,
             preferences: dataManager.preferences,
             exportDate: Date(),
-            version: MatchlyBuildInfo.version
+            version: "1.0.0"
         )
         return (try? JSONEncoder().encode(exportData)) ?? Data()
     }
