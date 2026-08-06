@@ -142,7 +142,8 @@ final class AccountCloudSyncManager: ObservableObject {
 
     private static func dataValue(_ value: Any?) -> Data? {
         if let data = value as? Data { return data }
-        if let blob = value as? Blob { return blob.data }
+        // Firestore may decode JSON payloads as UTF-8 strings on some clients.
+        if let string = value as? String { return Data(string.utf8) }
         return nil
     }
 }
