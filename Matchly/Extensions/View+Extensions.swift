@@ -8,6 +8,60 @@
 import SwiftUI
 import UIKit
 
+// MARK: - Arial font
+
+extension Font {
+    /// Matchly brand typeface (Arial), with system fallback when Arial is unavailable.
+    static func arial(
+        size: CGFloat,
+        weight: Font.Weight = .regular,
+        design: Font.Design = .default
+    ) -> Font {
+        if design != .default {
+            return .system(size: size, weight: weight, design: design)
+        }
+
+        let uiWeight = UIFont.Weight(arialWeight: weight)
+        if let descriptor = UIFont(name: "Arial", size: size)?.fontDescriptor
+            .addingAttributes([
+                .traits: [UIFontDescriptor.TraitKey.weight: uiWeight]
+            ]),
+           UIFont(descriptor: descriptor, size: size).fontName.lowercased().contains("arial") {
+            return Font(UIFont(descriptor: descriptor, size: size))
+        }
+
+        if let base = UIFont(name: "Arial", size: size) {
+            return Font(base)
+        }
+
+        return .system(size: size, weight: weight, design: .default)
+    }
+}
+
+private extension UIFont.Weight {
+    init(arialWeight: Font.Weight) {
+        switch arialWeight {
+        case .ultraLight: self = .ultraLight
+        case .thin: self = .thin
+        case .light: self = .light
+        case .regular: self = .regular
+        case .medium: self = .medium
+        case .semibold: self = .semibold
+        case .bold: self = .bold
+        case .heavy: self = .heavy
+        case .black: self = .black
+        default: self = .regular
+        }
+    }
+}
+
+extension View {
+    /// Applies Matchly's default Arial environment font.
+    func arialFont() -> some View {
+        environment(\.font, Font.arial(size: 17, weight: .regular))
+    }
+}
+
 // MARK: - Device layout
 
 enum MatchlyDeviceLayout {
