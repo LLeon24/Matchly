@@ -9,9 +9,17 @@ cd "$ROOT"
 echo "Repo: $ROOT"
 echo "Branch before: $(git branch --show-current 2>/dev/null || echo '(none)')"
 
+BEFORE="$(git rev-parse HEAD)"
 git fetch origin
 git checkout cursor/dashboard-overview-polish
 git pull --ff-only origin cursor/dashboard-overview-polish
+AFTER="$(git rev-parse HEAD)"
+
+# If git pull updated files (including this script), re-run so checks use the latest version.
+if [[ "$BEFORE" != "$AFTER" && -z "${MATCHLY_PULL_RERUN:-}" ]]; then
+  export MATCHLY_PULL_RERUN=1
+  exec "$0" "$@"
+fi
 
 echo
 echo "Latest commit:"
@@ -20,7 +28,7 @@ echo
 echo "Build-fix checks (must all pass before opening Xcode):"
 FAIL=0
 
-if rg -q "static func arial" Matchly/Extensions/View+Extensions.swift; then
+if grep -q "static func arial" Matchly/Extensions/View+Extensions.swift; then
   echo "  OK  Font.arial defined in View+Extensions.swift"
 else
   echo "  FAIL  Font.arial missing from View+Extensions.swift"
@@ -34,14 +42,14 @@ else
   FAIL=1
 fi
 
-if rg -q "Blob" Matchly/Models/Managers/AccountCloudSyncManager.swift; then
+if grep -q "Blob" Matchly/Models/Managers/AccountCloudSyncManager.swift; then
   echo "  FAIL  AccountCloudSyncManager still references Blob"
   FAIL=1
 else
   echo "  OK  AccountCloudSyncManager has no Blob reference"
 fi
 
-if rg -q "func arialFont" Matchly/Extensions/View+Extensions.swift; then
+if grep -q "func arialFont" Matchly/Extensions/View+Extensions.swift; then
   echo "  OK  View.arialFont() defined"
 else
   echo "  FAIL  View.arialFont() missing"
@@ -50,7 +58,7 @@ fi
 
 echo
 echo "Settings canary (optional UI verification):"
-rg -n "1\\.0\\.1|Add Email & Password|settingsSectionHeader" Matchly/Views/SettingsView.swift || true
+grep -nE "1\.0\.1|Add Email & Password|settingsSectionHeader" Matchly/Views/SettingsView.swift || true
 
 echo
 if [[ "$FAIL" -ne 0 ]]; then
