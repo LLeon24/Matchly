@@ -1,0 +1,4 @@
+# Python virtual environment (recreated by the Cursor Cloud update script)
+.venv/
+__pycache__/
+*.pyc
