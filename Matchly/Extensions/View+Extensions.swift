@@ -363,7 +363,70 @@ enum MatchlyListPageToolbar {
     static func showsActions(hasContent: Bool) -> Bool { hasContent }
 }
 
-/// Capsule chip label for sort menus — matches Rank List filter styling.
+/// Typography for list-tab page headers (My Programs, Rank List, Settings).
+enum MatchlyListPageTypography {
+    /// Between dashboard greeting (20pt) and legacy large title (34pt).
+    static let titleSize: CGFloat = 28
+}
+
+/// Second row on list tabs: page title flush left; optional trailing action (e.g. Export PDF).
+struct MatchlyListPageTitleRow<Trailing: View>: View {
+    let title: String
+    @ViewBuilder var trailing: () -> Trailing
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Text(title)
+                .font(.arial(size: MatchlyListPageTypography.titleSize, weight: .bold))
+                .foregroundColor(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+
+            Spacer(minLength: 8)
+
+            trailing()
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 6)
+        .padding(.bottom, 10)
+    }
+}
+
+extension MatchlyListPageTitleRow where Trailing == EmptyView {
+    init(title: String) {
+        self.init(title: title) { EmptyView() }
+    }
+}
+
+/// Flat capsule chip for filter/sort menus — one layer, no nested glass.
+struct MatchlyFilterChipLabel: View {
+    let icon: String
+    var iconColor: Color = .secondary
+    let text: String
+    var isActive: Bool = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.arial(size: 11, weight: .semibold))
+                .foregroundColor(isActive ? AppColors.primaryBlue : iconColor)
+            Text(text)
+                .font(.arial(size: 12, weight: .medium))
+            Image(systemName: "chevron.down")
+                .font(.arial(size: 9))
+                .foregroundColor(.secondary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            Capsule()
+                .fill(isActive ? AppColors.primaryBlue.opacity(0.1) : Color(.tertiarySystemFill))
+        )
+    }
+}
+
+/// Capsule chip label for sort menus in the navigation toolbar — no inner bubble;
+/// iOS already wraps toolbar items in its own chrome.
 struct MatchlyToolbarSortChipLabel: View {
     let valueLabel: String
 
@@ -377,9 +440,28 @@ struct MatchlyToolbarSortChipLabel: View {
                 .font(.arial(size: 9))
                 .foregroundColor(.secondary)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .glassEffect(.regular.interactive(), in: .capsule)
+    }
+}
+
+/// Colored capsule for Export PDF on list title rows — obvious without nested toolbar chrome.
+struct MatchlyToolbarExportPDFButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: "doc.richtext")
+                    .font(.arial(size: 12, weight: .semibold))
+                Text("Export PDF")
+                    .font(.arial(size: 13, weight: .semibold))
+            }
+            .foregroundColor(.white)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Capsule().fill(AppColors.primaryBlue))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Export rank list as PDF")
     }
 }
 
@@ -393,7 +475,7 @@ struct MatchlyToolbarAddButton: View {
                 .font(.arial(size: 18, weight: .semibold))
                 .foregroundColor(.white)
                 .frame(width: 36, height: 36)
-                .glassEffect(.regular.tint(AppColors.primaryBlue.opacity(0.35)).interactive(), in: .circle)
+                .background(Circle().fill(AppColors.primaryBlue))
         }
         .accessibilityLabel("Add")
     }

@@ -35,59 +35,54 @@ struct ProgramsListView: View {
                     }
                     let sortedSpecialties = groupedPrograms.keys.sorted()
                     
-                    List {
-                        ForEach(sortedSpecialties, id: \.self) { specialty in
-                            Section(header: 
-                                HStack(spacing: 6) {
-                                    Image(systemName: "stethoscope")
-                                        .font(.arial(size: 12))
-                                        .foregroundColor(SpecialtyFormatter.color(for: specialty))
-                                    Text(SpecialtyFormatter.abbreviation(for: specialty))
-                                        .font(.arial(size: 13, weight: .semibold))
-                                }
-                                .foregroundColor(.secondary)
-                            ) {
-                                ForEach(groupedPrograms[specialty] ?? []) { program in
-                                    if isEditMode {
-                                        HStack {
-                                            Button(action: {
-                                                if selectedPrograms.contains(program.id) {
-                                                    selectedPrograms.remove(program.id)
-                                                } else {
-                                                    selectedPrograms.insert(program.id)
+                    VStack(spacing: 0) {
+                        MatchlyListPageTitleRow(title: "My Programs")
+                        List {
+                            ForEach(sortedSpecialties, id: \.self) { specialty in
+                                Section(header: MatchlySpecialtySectionHeader(specialty: specialty)) {
+                                    ForEach(groupedPrograms[specialty] ?? []) { program in
+                                        if isEditMode {
+                                            HStack {
+                                                Button(action: {
+                                                    if selectedPrograms.contains(program.id) {
+                                                        selectedPrograms.remove(program.id)
+                                                    } else {
+                                                        selectedPrograms.insert(program.id)
+                                                    }
+                                                }) {
+                                                    Image(systemName: selectedPrograms.contains(program.id) ? "checkmark.circle.fill" : "circle")
+                                                        .foregroundColor(selectedPrograms.contains(program.id) ? .blue : .gray)
+                                                        .font(.arial(size: 22))
                                                 }
-                                            }) {
-                                                Image(systemName: selectedPrograms.contains(program.id) ? "checkmark.circle.fill" : "circle")
-                                                    .foregroundColor(selectedPrograms.contains(program.id) ? .blue : .gray)
-                                                    .font(.arial(size: 22))
+                                                .buttonStyle(.plain)
+
+                                                CompactProgramRowView(program: program)
                                             }
-                                            .buttonStyle(.plain)
-                                            
-                                            CompactProgramRowView(program: program)
-                                        }
-                                    } else {
-                                        NavigationLink(destination: ProgramEntryView(program: program)) {
-                                            CompactProgramRowView(program: program)
+                                        } else {
+                                            NavigationLink(destination: ProgramEntryView(program: program)) {
+                                                CompactProgramRowView(program: program)
+                                            }
                                         }
                                     }
-                                }
-                                .onDelete { offsets in
-                                    deleteProgramsInSpecialty(specialty, at: offsets, from: groupedPrograms[specialty] ?? [])
+                                    .onDelete { offsets in
+                                        deleteProgramsInSpecialty(specialty, at: offsets, from: groupedPrograms[specialty] ?? [])
+                                    }
                                 }
                             }
                         }
-                    }
-                    .listStyle(.insetGrouped)
-                    .matchlyReadableWidth()
-                    .matchlyScrollTabBarClearance()
-                    .refreshable {
-                        dataManager.recalculateAllScores()
-                        dataManager.objectWillChange.send()
+                        .listStyle(.insetGrouped)
+                        .matchlyReadableWidth()
+                        .matchlyScrollTabBarClearance()
+                        .refreshable {
+                            dataManager.recalculateAllScores()
+                            dataManager.objectWillChange.send()
+                        }
                     }
                 }
             }
             .matchlyRootContentFrame()
-            .navigationTitle("My Programs")
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 if MatchlyListPageToolbar.showsActions(hasContent: !dataManager.programs.isEmpty) {
                     programsListToolbar
@@ -158,10 +153,8 @@ struct ProgramsListView: View {
                 if dataManager.programs.count >= 2 {
                     NavigationLink(destination: ProgramComparisonView()) {
                         Image(systemName: "square.grid.2x2")
-                            .font(.arial(size: 18))
-                            .foregroundColor(.blue)
-                            .frame(width: 36, height: 36)
-                            .glassCircleButtonStyle()
+                            .font(.arial(size: 17, weight: .semibold))
+                            .foregroundColor(AppColors.primaryBlue)
                     }
                     .accessibilityLabel("Compare programs")
                 }

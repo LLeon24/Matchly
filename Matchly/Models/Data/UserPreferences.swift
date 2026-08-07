@@ -108,6 +108,7 @@ struct DashboardLayout: Codable, Hashable {
     static let defaultSectionOrder: [String] = [
         // Overview tab
         "overviewHero",
+        "overviewSignals",
         "needsAttention",
         "interviewPipeline",
         "quickStats",
@@ -115,15 +116,15 @@ struct DashboardLayout: Codable, Hashable {
         "recentActivity",
         // Programs tab
         "programsCompare",
+        "analytics",
         "programsScoreDist",
         "topPrograms",
-        "analytics",
         // Interviews tab
         "upcomingInterviews"
     ]
 
     static let overviewSectionIDs: Set<String> = [
-        "overviewHero", "needsAttention", "interviewPipeline",
+        "overviewHero", "overviewSignals", "needsAttention", "interviewPipeline",
         "quickStats", "quickActions", "recentActivity"
     ]
 
@@ -161,6 +162,17 @@ struct DashboardLayout: Codable, Hashable {
         }
         for id in defaultSectionOrder where !normalized.contains(id) {
             normalized.append(id)
+        }
+        if let heroIndex = normalized.firstIndex(of: "overviewHero"),
+           !normalized.contains("overviewSignals") {
+            normalized.insert("overviewSignals", at: heroIndex + 1)
+        }
+        if let compareIndex = normalized.firstIndex(of: "programsCompare"),
+           let analyticsIndex = normalized.firstIndex(of: "analytics"),
+           analyticsIndex != compareIndex + 1 {
+            normalized.remove(at: analyticsIndex)
+            let insertIndex = (normalized.firstIndex(of: "programsCompare") ?? compareIndex) + 1
+            normalized.insert("analytics", at: insertIndex)
         }
         return normalized
     }
@@ -305,11 +317,13 @@ extension DashboardLayout {
             var healed = Self.normalizeSectionIDs(disabled)
             // Compare was added after legacy customization — don't keep it hidden by old prefs.
             healed.remove("programsCompare")
+            healed.remove("analytics")
             self.disabledSections = healed
         } else {
             let legacyEnabled = try container.decodeIfPresent(Set<String>.self, forKey: .enabledSections) ?? []
             var migrated = Self.disabledSections(fromLegacyEnabledSections: legacyEnabled)
             migrated.remove("programsCompare")
+            migrated.remove("analytics")
             self.disabledSections = migrated
         }
     }

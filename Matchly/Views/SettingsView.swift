@@ -20,41 +20,46 @@ struct SettingsView: View {
     
     var body: some View {
         MatchlyNavigationView {
-            Form {
-                profileSection
-                appInformationSection
-                if FeatureFlags.couplesMatchEnabled {
-                    couplesMatchingSection
-                }
-                questionnaireSection
-                calendarSection
-                dataManagementSection
-                accountSection
-                
-                Section("About") {
-                    HStack {
-                        Text("Version")
-                        Spacer()
-                        Text(MatchlyBuildInfo.version)
-                            .foregroundColor(.secondary)
-                    }
+            VStack(spacing: 0) {
+                MatchlyListPageTitleRow(title: "Settings")
 
-                    HStack {
-                        Text("Build")
-                        Spacer()
-                        Text(MatchlyBuildInfo.displayLabel)
+                Form {
+                    profileSection
+                    appInformationSection
+                    if FeatureFlags.couplesMatchEnabled {
+                        couplesMatchingSection
+                    }
+                    questionnaireSection
+                    calendarSection
+                    dataManagementSection
+                    accountSection
+
+                    Section("About") {
+                        HStack {
+                            Text("Version")
+                            Spacer()
+                            Text(MatchlyBuildInfo.version)
+                                .foregroundColor(.secondary)
+                        }
+
+                        HStack {
+                            Text("Build")
+                            Spacer()
+                            Text(MatchlyBuildInfo.displayLabel)
+                                .foregroundColor(.secondary)
+                        }
+
+                        Text("Matchly helps medical students organize residency interview information and generate personalized rank lists.")
+                            .font(.caption)
                             .foregroundColor(.secondary)
                     }
-                    
-                    Text("Matchly helps medical students organize residency interview information and generate personalized rank lists.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
                 }
+                .scrollContentBackground(.hidden)
             }
-            .scrollContentBackground(.hidden)
             .matchlyReadableWidth()
             .matchlyScrollTabBarClearance()
-            .navigationTitle("Settings")
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .appCanvasBackground()
             .alert("Reset All Data", isPresented: $showResetAlert) {
                 Button("Cancel", role: .cancel) { }

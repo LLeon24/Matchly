@@ -16,30 +16,25 @@ import Charts
 
 // MARK: - Section Tab Bar (animated underline)
 
-/// A clean, Monarch-style tab bar: three text labels with a short rounded
-/// underline that slides between them via `matchedGeometryEffect`. The selected
-/// label is bold + accent-colored. No boxed pill / heavy shadow. Stays in sync
-/// with the paged `TabView` both ways (swipe animates the underline and taps
-/// animate the page).
+/// Text-only section tabs with a tinted rounded box on the selected label.
+/// Stays in sync with the paged `TabView` (swipe or tap).
 struct DashboardSectionTabBar: View {
     let titles: [String]
-    var icons: [String]? = nil
     @Binding var selection: Int
     var accent: Color = AppColors.primaryBlue
     var tabAccents: [Color]? = nil
     @Environment(\.matchlyLayout) private var layout
 
-    @Namespace private var underlineNamespace
+    @Namespace private var selectionNamespace
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 4) {
+        HStack(spacing: 6) {
             ForEach(titles.indices, id: \.self) { index in
                 tab(index)
             }
         }
-        .padding(.horizontal, layout == .compactVertical ? 6 : 10)
-        .padding(.top, layout == .compactVertical ? 6 : 8)
-        .padding(.bottom, layout == .compactVertical ? 6 : 8)
+        .padding(.horizontal, layout == .compactVertical ? 6 : 8)
+        .padding(.vertical, layout == .compactVertical ? 6 : 8)
         .background {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(Color(.systemBackground).opacity(0.92))
@@ -69,43 +64,22 @@ struct DashboardSectionTabBar: View {
                 selection = index
             }
         } label: {
-            VStack(spacing: layout.sectionTabSpacing) {
-                if let icons, index < icons.count {
-                    Image(systemName: icons[index])
-                        .font(.arial(size: layout.sectionTabIconFont, weight: isSelected ? .semibold : .medium))
-                        .foregroundColor(isSelected ? tabColor : Color.primary.opacity(0.55))
-                        .symbolRenderingMode(.hierarchical)
-                }
-
-                Text(titles[index])
-                    .font(.arial(size: layout.sectionTabFont, weight: isSelected ? .bold : .semibold))
-                    .foregroundColor(isSelected ? tabColor : Color.primary.opacity(0.68))
-
-                ZStack {
-                    // Reserves height so the row doesn't jump between states.
-                    Capsule()
-                        .fill(Color.clear)
-                        .frame(width: 36, height: 4)
-
+            Text(titles[index])
+                .font(.arial(size: layout.sectionTabFont, weight: isSelected ? .bold : .medium))
+                .foregroundColor(isSelected ? tabColor.opacity(0.82) : Color.primary.opacity(0.48))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .padding(.vertical, layout == .compactVertical ? 10 : 12)
+                .padding(.horizontal, layout == .compactVertical ? 6 : 8)
+                .frame(maxWidth: .infinity)
+                .background {
                     if isSelected {
-                        Capsule()
-                            .fill(tabColor)
-                            .frame(width: 36, height: 4)
-                            .matchedGeometryEffect(id: "sectionUnderline", in: underlineNamespace)
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(tabColor.opacity(0.09))
+                            .matchedGeometryEffect(id: "sectionTabFill", in: selectionNamespace)
                     }
                 }
-            }
-            .padding(.vertical, layout == .compactVertical ? 4 : 6)
-            .padding(.horizontal, 4)
-            .frame(maxWidth: .infinity)
-            .background {
-                if isSelected {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(tabColor.opacity(0.12))
-                        .matchedGeometryEffect(id: "sectionTabFill", in: underlineNamespace)
-                }
-            }
-            .contentShape(Rectangle())
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -147,14 +121,121 @@ struct DashboardSectionPageIndicator: View {
     }
 
     private func fillColor(for index: Int) -> Color {
-        if index == selection {
-            if let tabAccents, index < tabAccents.count {
-                return tabAccents[index]
-            }
-            return accent
+        let sectionColor: Color
+        if let tabAccents, index < tabAccents.count {
+            sectionColor = tabAccents[index]
+        } else {
+            sectionColor = accent
         }
-        return Color.primary.opacity(0.22)
+
+        if index == selection {
+            return sectionColor.opacity(0.55)
+        }
+        return Color.primary.opacity(0.18)
     }
+}
+
+/// Refined section summary: obvious headline stat without the full-page hero footprint.
+struct DashboardSectionSummaryHero: View {
+    let icon: String
+    let tint: Color
+    let bigNumber: String
+    var unit: String = ""
+    let title: String
+    let subtitle: String
+    var metrics: [DashboardSummaryMetric] = []
+    @Environment(\.matchlyLayout) private var layout
+
+    private var iconSize: CGFloat { layout == .compactVertical ? 50 : 56 }
+    private var iconFont: CGFloat { layout == .compactVertical ? 20 : 24 }
+    private var numberFont: CGFloat { layout == .compactVertical ? 34 : 40 }
+    private var titleFont: CGFloat { layout == .compactVertical ? 15 : 17 }
+    private var subtitleFont: CGFloat { layout == .compactVertical ? 12 : 13 }
+    private var metricValueFont: CGFloat { layout == .compactVertical ? 16 : 18 }
+
+    var body: some View {
+        VStack(spacing: layout == .compactVertical ? 10 : 12) {
+            HStack(alignment: .center, spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(tint.opacity(0.14))
+                        .frame(width: iconSize, height: iconSize)
+                    Image(systemName: icon)
+                        .font(.arial(size: iconFont, weight: .semibold))
+                        .foregroundColor(tint)
+                        .symbolRenderingMode(.hierarchical)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: 5) {
+                        Text(bigNumber)
+                            .font(.arial(size: numberFont, weight: .bold))
+                            .foregroundStyle(tint.gradient)
+                            .minimumScaleFactor(0.6)
+                            .lineLimit(1)
+                        if !unit.isEmpty {
+                            Text(unit)
+                                .font(.arial(size: titleFont, weight: .semibold))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+
+                    Text(title)
+                        .font(.arial(size: titleFont, weight: .bold))
+                        .foregroundColor(.primary)
+
+                    Text(subtitle)
+                        .font(.arial(size: subtitleFont))
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            if !metrics.isEmpty {
+                Divider()
+                    .overlay(Color(.separator).opacity(0.35))
+
+                HStack(spacing: 0) {
+                    ForEach(Array(metrics.enumerated()), id: \.element.id) { index, metric in
+                        if index > 0 {
+                            Spacer(minLength: 8)
+                        }
+                        summaryMetric(metric)
+                        if index < metrics.count - 1 {
+                            Spacer(minLength: 8)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.vertical, layout == .compactVertical ? 12 : 14)
+        .padding(.horizontal, 4)
+    }
+
+    private func summaryMetric(_ metric: DashboardSummaryMetric) -> some View {
+        VStack(spacing: 2) {
+            Text(metric.value)
+                .font(.arial(size: metricValueFont, weight: .bold))
+                .foregroundColor(metric.tint)
+                .minimumScaleFactor(0.7)
+                .lineLimit(1)
+            Text(metric.label)
+                .font(.arial(size: 11, weight: .medium))
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+struct DashboardSummaryMetric: Identifiable {
+    let id = UUID()
+    let value: String
+    let label: String
+    let tint: Color
 }
 
 // MARK: - Heroes

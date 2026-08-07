@@ -32,6 +32,11 @@ struct DashboardView: View {
         dataManager.preferences.dashboardPreferences
     }
 
+    /// Section identity colors for tab labels and page dots (matches each page’s hero).
+    private var dashboardSectionAccents: [Color] {
+        [AppColors.accentOrange, AppColors.primaryBlue, AppColors.accentGreen]
+    }
+
     /// Changes when layout or header prefs change — forces dashboard pages to refresh.
     private var dashboardCustomizationToken: String {
         let layout = dataManager.preferences.dashboardLayout
@@ -61,9 +66,8 @@ struct DashboardView: View {
                 // the paged TabView below.
                 DashboardSectionTabBar(
                     titles: ["Overview", "Programs", "Interviews"],
-                    icons: ["square.grid.2x2.fill", "building.2.fill", "calendar.badge.clock"],
                     selection: $selectedSection,
-                    tabAccents: [AppColors.primaryBlue, AppColors.primaryBlue, AppColors.accentGreen]
+                    tabAccents: dashboardSectionAccents
                 )
                 .padding(.horizontal, 16)
                 .padding(.top, screenLayout == .compactVertical ? 4 : 6)
@@ -72,7 +76,7 @@ struct DashboardView: View {
                 DashboardSectionPageIndicator(
                     count: 3,
                     selection: $selectedSection,
-                    tabAccents: [AppColors.primaryBlue, AppColors.primaryBlue, AppColors.accentGreen]
+                    tabAccents: dashboardSectionAccents
                 )
                 .padding(.bottom, screenLayout == .compactVertical ? 6 : 8)
 
@@ -334,6 +338,11 @@ struct DashboardView: View {
                 accentTint: overviewHeroAccentTint
             )
             .dashboardCardStyle()
+        case "overviewSignals":
+            if !signalBudgetSummaries.isEmpty {
+                DashboardSignalsCondensedCard(summaries: signalBudgetSummaries)
+                    .dashboardCardStyle()
+            }
         case "needsAttention":
             needsAttentionCard
         case "interviewPipeline":
@@ -361,28 +370,23 @@ struct DashboardView: View {
         .dashboardCardStyle()
     }
 
-    /// 2) Programs — count hero + compare + score distribution + top programs.
+    /// 2) Programs — compact summary + compare + score distribution + top programs.
     private var programsPage: some View {
         ScrollView {
             VStack(spacing: screenLayout.dashboardSectionSpacing) {
-                DashboardNumberHero(
-                    bigNumber: "\(dataManager.programs.count)",
-                    unit: "",
-                    title: "Programs Tracked",
-                    subtitle: topProgramMaxScore > 0
-                        ? "Top score \(String(format: "%.1f", topProgramMaxScore))"
-                        : "Score programs to build your rank list",
-                    icon: "building.2.fill",
-                    tint: AppColors.primaryBlue
-                )
-                .dashboardCardStyle()
+                programsSummaryStrip
+                    .dashboardCardStyle()
 
                 if dataManager.programs.count >= 2 {
                     programsCompareCard
                 }
 
+                if shouldShowSection("analytics") {
+                    analyticsSection
+                }
+
                 ForEach(layout.orderedSectionIDs(in: DashboardLayout.programsSectionIDs), id: \.self) { sectionId in
-                    if sectionId != "programsCompare", shouldShowSection(sectionId) {
+                    if sectionId != "programsCompare", sectionId != "analytics", shouldShowSection(sectionId) {
                         programsSectionView(for: sectionId)
                     }
                 }
@@ -396,6 +400,30 @@ struct DashboardView: View {
             dataManager.recalculateAllScores()
             dataManager.objectWillChange.send()
         }
+    }
+
+    private var programsSummaryStrip: some View {
+        DashboardSectionSummaryHero(
+            icon: "building.2.fill",
+            tint: AppColors.primaryBlue,
+            bigNumber: "\(dataManager.programs.count)",
+            title: "Programs Tracked",
+            subtitle: topProgramMaxScore > 0
+                ? "Top score \(String(format: "%.1f", topProgramMaxScore))"
+                : "Score programs to build your rank list",
+            metrics: [
+                DashboardSummaryMetric(
+                    value: "\(dataManager.programs.filter { $0.finalScore > 0 }.count)",
+                    label: "Scored",
+                    tint: AppColors.accentTeal
+                ),
+                DashboardSummaryMetric(
+                    value: "\(programsNeedingReview)",
+                    label: "To Review",
+                    tint: programsNeedingReview > 0 ? AppColors.accentOrange : .secondary
+                )
+            ]
+        )
     }
 
     @ViewBuilder
@@ -465,28 +493,21 @@ struct DashboardView: View {
         .dashboardCardStyle()
     }
 
-    /// 3) Interviews — upcoming count hero + chronological timeline.
+    /// 3) Interviews — compact summary + upcoming and completed lists.
     private var interviewsPage: some View {
         ScrollView {
             VStack(spacing: screenLayout.dashboardSectionSpacing) {
-                DashboardNumberHero(
-                    bigNumber: "\(upcomingInterviews.count)",
-                    unit: "",
-                    title: "Upcoming Interviews",
-                    subtitle: interviewCount > 0
-                        ? "\(interviewCount) scheduled in total"
-                        : "Add interview dates to plan ahead",
-                    icon: "calendar.badge.clock",
-                    tint: AppColors.accentGreen
-                )
-                .dashboardCardStyle()
+                interviewsSummaryStrip
+                    .dashboardCardStyle()
 
-                if shouldShowSection("upcomingInterviews") {
-                    if upcomingInterviews.isEmpty {
-                        interviewsEmptyCard
-                    } else {
-                        interviewsTimelineCard
-                    }
+                interviewsUpcomingSection
+
+                if !completedInterviews.isEmpty {
+                    interviewsCompletedSection
+                }
+
+                if interviewCount == 0 {
+                    interviewsEmptyCard
                 }
             }
             .padding(.horizontal, 16)
@@ -496,18 +517,76 @@ struct DashboardView: View {
         .matchlyScrollTabBarClearance()
     }
 
-    private var interviewsTimelineCard: some View {
+    private var interviewsSummaryStrip: some View {
+        DashboardSectionSummaryHero(
+            icon: "calendar.badge.clock",
+            tint: AppColors.accentGreen,
+            bigNumber: "\(upcomingInterviews.count)",
+            title: "Upcoming Interviews",
+            subtitle: interviewCount > 0
+                ? "\(interviewCount) scheduled · \(completedInterviews.count) completed"
+                : "Add interview dates to plan ahead",
+            metrics: [
+                DashboardSummaryMetric(
+                    value: "\(completedInterviews.count)",
+                    label: "Completed",
+                    tint: AppColors.primaryBlue
+                ),
+                DashboardSummaryMetric(
+                    value: "\(interviewCount)",
+                    label: "Total",
+                    tint: AppColors.accentGreen
+                )
+            ]
+        )
+    }
+
+    private var interviewsUpcomingSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             DashboardSectionHeader(
-                title: "Timeline",
-                icon: "calendar",
+                title: "Upcoming",
+                icon: "calendar.badge.clock",
                 tint: AppColors.accentGreen
             )
 
+            if upcomingInterviews.isEmpty {
+                HStack(spacing: 10) {
+                    Image(systemName: "calendar")
+                        .font(.arial(size: 14))
+                        .foregroundColor(.secondary)
+                    Text(interviewCount > 0
+                         ? "No upcoming interviews — see completed below"
+                         : "Interview dates you add will appear here")
+                        .font(.arial(size: 13))
+                        .foregroundColor(.secondary)
+                }
+                .padding(.vertical, 6)
+            } else {
+                VStack(spacing: 6) {
+                    ForEach(upcomingInterviews, id: \.id) { program in
+                        NavigationLink(destination: ProgramEntryView(program: program)) {
+                            DashboardInterviewRow(program: program, isUpcoming: true)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .dashboardCardStyle()
+    }
+
+    private var interviewsCompletedSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            DashboardSectionHeader(
+                title: "Completed",
+                icon: "checkmark.circle.fill",
+                tint: AppColors.primaryBlue
+            )
+
             VStack(spacing: 6) {
-                ForEach(upcomingInterviews, id: \.id) { program in
+                ForEach(completedInterviews, id: \.id) { program in
                     NavigationLink(destination: ProgramEntryView(program: program)) {
-                        UpcomingInterviewRow(program: program)
+                        DashboardInterviewRow(program: program, isUpcoming: false)
                     }
                     .buttonStyle(.plain)
                 }
@@ -628,10 +707,9 @@ struct DashboardView: View {
         return "\(ranked) of \(total) scored for your rank list"
     }
 
+    /// Overview section identity — orange, matching the Overview tab.
     private var overviewHeroAccentTint: Color {
-        if !upcomingInterviews.isEmpty { return AppColors.accentGreen }
-        if programsNeedingInterviewDateCount > 0 { return AppColors.accentOrange }
-        return AppColors.primaryBlue
+        AppColors.accentOrange
     }
 
     private var overviewHeroStats: [DashboardSnapshotStat] {
@@ -1501,6 +1579,16 @@ struct DashboardView: View {
             }
             .sorted { ($0.interviewDate ?? now) < ($1.interviewDate ?? now) }
     }
+
+    private var completedInterviews: [Program] {
+        let now = Date()
+        return dataManager.programs
+            .filter { program in
+                guard let date = program.interviewDate else { return false }
+                return date < now
+            }
+            .sorted { ($0.interviewDate ?? now) > ($1.interviewDate ?? now) }
+    }
     
     private var goldSignalCount: Int {
         dataManager.programs.filter { program in
@@ -1539,6 +1627,10 @@ struct DashboardView: View {
     }
     
     // MARK: - Programs Tab: Signals & Status
+    private var signalBudgetSummaries: [DataManager.SignalBudgetSummary] {
+        dataManager.signalBudgetSummaries()
+    }
+
     private var analyticsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             DashboardSectionHeader(
@@ -1547,75 +1639,15 @@ struct DashboardView: View {
                 tint: AppColors.accentOrange
             )
 
-            // Signal Tracking
-            NavigationLink(destination: AllSignaledProgramsView()) {
-                HStack(spacing: 12) {
-                    let signalProgress = getSignalProgress()
-                    ZStack {
-                        Circle()
-                            .stroke(Color.orange.opacity(0.2), lineWidth: 3)
-                            .frame(width: 44, height: 44)
-
-                        Circle()
-                            .trim(from: 0, to: signalProgress)
-                            .stroke(Color.orange, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                            .frame(width: 44, height: 44)
-                            .rotationEffect(.degrees(-90))
-                            .animation(.spring(response: 0.6, dampingFraction: 0.8), value: signalProgress)
-
-                        VStack(spacing: 0) {
-                            Text("\(totalSignalCount)")
-                                .font(.arial(size: 14, weight: .bold))
-                                .foregroundColor(.orange)
-                            Text("total")
-                                .font(.arial(size: 8))
-                                .foregroundColor(.secondary)
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("ERAS Signals")
-                            .font(.arial(size: 15, weight: .semibold))
-                            .foregroundColor(.primary)
-                        Text(totalSignalCount > 0
-                             ? "Gold, silver, and specialty signal usage"
-                             : "Track signals as you assign them to programs")
-                            .font(.arial(size: 12))
-                            .foregroundColor(.secondary)
-                            .lineLimit(2)
-
-                        if totalSignalCount > 0 {
-                            HStack(spacing: 8) {
-                                if hasTieredSignals, goldSignalCount > 0 {
-                                    Label("\(goldSignalCount)", systemImage: "star.fill")
-                                        .font(.arial(size: 11, weight: .medium))
-                                        .foregroundColor(.yellow)
-                                }
-                                if hasTieredSignals, silverSignalCount > 0 {
-                                    Label("\(silverSignalCount)", systemImage: "star")
-                                        .font(.arial(size: 11, weight: .medium))
-                                        .foregroundColor(.gray)
-                                }
-                                if hasSingleLevelSignals, singleLevelSignalCount > 0 {
-                                    Label("\(singleLevelSignalCount)", systemImage: "star.fill")
-                                        .font(.arial(size: 11, weight: .medium))
-                                        .foregroundColor(.blue)
-                                }
-                            }
-                        }
-                    }
-
-                    Spacer(minLength: 8)
-
-                    Image(systemName: "chevron.right")
-                        .font(.arial(size: 12))
-                        .foregroundColor(.secondary.opacity(0.5))
-                }
-                .padding(.vertical, 4)
+            if !signalBudgetSummaries.isEmpty {
+                DashboardSignalsDetailBlock(summaries: signalBudgetSummaries)
             }
-            .buttonStyle(.plain)
 
             if programsNeedingReview > 0 {
+                if !signalBudgetSummaries.isEmpty {
+                    Divider()
+                        .padding(.vertical, 2)
+                }
                 NavigationLink(destination: ProgramsNeedingReviewView()) {
                     programsStatusRow(
                         title: "\(programsNeedingReview) Program\(programsNeedingReview == 1 ? "" : "s") Need Review",
@@ -1929,23 +1961,14 @@ struct DashboardView: View {
     }
     
     private func getSignalProgress() -> Double {
-        // Calculate progress based on signal usage across all specialties
-        let buckets = Set(
-            dataManager.programs.map {
-                SignalLimits.signalBucket(for: $0.specialty, accreditationID: $0.accreditationID)
-            }
-        ).filter { SignalLimits.participatesInSignaling(for: $0) }
-        guard !buckets.isEmpty else { return 0 }
-        
-        var totalUsed = 0
-        var totalAvailable = 0
-        
-        for bucket in buckets {
-            let usage = dataManager.getSignalUsage(for: bucket)
-            totalUsed += usage.goldUsed + usage.silverUsed
-            totalAvailable += usage.goldLimit + usage.silverLimit
+        let summaries = dataManager.signalBudgetSummaries()
+        guard !summaries.isEmpty else { return 0 }
+
+        let totalUsed = summaries.reduce(0) { $0 + $1.goldUsed + $1.silverUsed }
+        let totalAvailable = summaries.reduce(0) { partial, summary in
+            partial + summary.goldLimit + summary.silverLimit
         }
-        
+
         guard totalAvailable > 0 else { return 0 }
         return min(Double(totalUsed) / Double(totalAvailable), 1.0)
     }
@@ -1958,8 +1981,11 @@ struct DashboardView: View {
         switch sectionId {
         case "needsAttention", "interviewPipeline", "overviewHero", "quickActions", "quickStats":
             return true
+        case "overviewSignals":
+            return !signalBudgetSummaries.isEmpty
         case "analytics":
-            return !dataManager.programs.isEmpty
+            let hasStatus = programsNeedingReview > 0 || redFlaggedProgramsCount > 0
+            return !signalBudgetSummaries.isEmpty || (!dataManager.programs.isEmpty && hasStatus)
         case "recentActivity":
             return !getRecentPrograms().isEmpty
         case "topPrograms":
@@ -2001,7 +2027,7 @@ struct DashboardSectionHeader<Trailing: View>: View {
             }
             
             Text(title)
-                .font(.arial(size: 21, weight: .bold))
+                .font(.arial(size: 17, weight: .bold))
                 .foregroundColor(.primary)
             
             Spacer(minLength: 8)
@@ -2160,8 +2186,8 @@ struct TopProgramRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(HospitalNameFormatter.format(program.hospital.isEmpty ? program.name : program.hospital))
                     .font(.arial(size: 15, weight: .semibold))
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.8)
+                    .lineLimit(3)
+                    .minimumScaleFactor(0.85)
                     .fixedSize(horizontal: false, vertical: true)
                 
                 HStack(spacing: 6) {
@@ -2193,6 +2219,99 @@ struct TopProgramRow: View {
         .padding(.horizontal, 4)
     }
     
+}
+
+/// Dashboard interview list row — matches `TopProgramRow` typography and layout.
+struct DashboardInterviewRow: View {
+    let program: Program
+    let isUpcoming: Bool
+
+    private var badgeColor: Color {
+        isUpcoming ? AppColors.accentGreen : AppColors.primaryBlue
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(badgeColor.opacity(0.15))
+                    .frame(width: 40, height: 40)
+
+                if let date = program.interviewDate {
+                    VStack(spacing: 0) {
+                        Text(Self.dayFormatter.string(from: date))
+                            .font(.arial(size: 14, weight: .bold))
+                            .foregroundColor(badgeColor)
+                        Text(Self.monthFormatter.string(from: date))
+                            .font(.arial(size: 9, weight: .medium))
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(HospitalNameFormatter.format(program.hospital.isEmpty ? program.name : program.hospital))
+                    .font(.arial(size: 15, weight: .semibold))
+                    .foregroundColor(.primary)
+                    .lineLimit(3)
+                    .minimumScaleFactor(0.85)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 6) {
+                    if !program.city.isEmpty && !program.state.isEmpty {
+                        Text("\(program.city), \(program.state)")
+                            .font(.arial(size: 13))
+                            .foregroundColor(.secondary)
+                    }
+
+                    if let date = program.interviewDate {
+                        HStack(spacing: 3) {
+                            Image(systemName: "clock")
+                                .font(.arial(size: 10))
+                            Text(Self.timeFormatter.string(from: date))
+                                .font(.arial(size: 13, weight: .medium))
+                        }
+                        .foregroundColor(.secondary)
+                    }
+
+                    if isUpcoming, let date = program.interviewDate {
+                        let daysUntil = Calendar.current.dateComponents([.day], from: Date(), to: date).day ?? 0
+                        Text("· \(daysUntil)d")
+                            .font(.arial(size: 13, weight: .semibold))
+                            .foregroundColor(badgeColor)
+                    }
+
+                    ProgramVoiceMemoBadge(program: program, iconSize: 9, textSize: 11)
+                }
+            }
+
+            Spacer(minLength: 4)
+
+            Image(systemName: "chevron.right")
+                .font(.arial(size: 12))
+                .foregroundColor(.secondary.opacity(0.4))
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 4)
+    }
+
+    private static let dayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "d"
+        return formatter
+    }()
+
+    private static let monthFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM"
+        return formatter
+    }()
+
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        return formatter
+    }()
 }
 
 struct UpcomingInterviewRow: View {

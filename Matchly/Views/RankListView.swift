@@ -165,13 +165,19 @@ struct RankListView: View {
                         .matchlyRootContentFrame()
                 } else {
                     VStack(spacing: 0) {
+                        MatchlyListPageTitleRow(title: "Rank List") {
+                            MatchlyToolbarExportPDFButton {
+                                showExportSheet = true
+                            }
+                        }
+
                         filterToolbar
                         programListContent
                     }
                 }
             }
             .matchlyRootContentFrame()
-            .navigationTitle("Rank List")
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 toolbarContent
@@ -247,21 +253,12 @@ struct RankListView: View {
                 }
             }
         } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "stethoscope")
-                    .font(.arial(size: 11))
-                    .foregroundColor(.blue)
-                Text(showAllSpecialties ? "All" : "\(selectedSpecialties.count)")
-                    .font(.arial(size: 12, weight: .medium))
-                Image(systemName: "chevron.down")
-                    .font(.arial(size: 9))
-                    .foregroundColor(.secondary)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .modifier(SpecialtyChipGlassModifier(
+            MatchlyFilterChipLabel(
+                icon: "stethoscope",
+                iconColor: AppColors.primaryBlue,
+                text: showAllSpecialties ? "All" : "\(selectedSpecialties.count)",
                 isActive: !showAllSpecialties && !selectedSpecialties.isEmpty
-            ))
+            )
         }
     }
     
@@ -284,18 +281,10 @@ struct RankListView: View {
                 }
             }
         } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "arrow.up.arrow.down")
-                    .font(.arial(size: 11))
-                Text("Sort: \(sortOption.rawValue)")
-                    .font(.arial(size: 12, weight: .medium))
-                Image(systemName: "chevron.down")
-                    .font(.arial(size: 9))
-                    .foregroundColor(.secondary)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .glassEffect(.regular.interactive(), in: .capsule)
+            MatchlyFilterChipLabel(
+                icon: "arrow.up.arrow.down",
+                text: "Sort: \(sortOption.rawValue)"
+            )
         }
     }
     
@@ -347,14 +336,7 @@ struct RankListView: View {
     }
     
     private func specialtyHeader(_ specialty: String) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "stethoscope")
-                .font(.arial(size: 12))
-                .foregroundColor(SpecialtyFormatter.color(for: specialty))
-            Text("\(specialty) (\(SpecialtyFormatter.abbreviation(for: specialty)))")
-                .font(.arial(size: 13, weight: .semibold))
-        }
-        .foregroundColor(.secondary)
+        MatchlySpecialtySectionHeader(specialty: specialty)
     }
     
     private var redFlaggedHeader: some View {
@@ -391,22 +373,13 @@ struct RankListView: View {
                 }
             }
             ToolbarItem(placement: .navigationBarTrailing) {
-                HStack(spacing: 12) {
-                    if dataManager.programs.count >= 2 {
-                        NavigationLink(destination: ProgramComparisonView()) {
-                            Image(systemName: "square.grid.2x2")
-                        }
-                        .accessibilityLabel("Compare programs")
+                if dataManager.programs.count >= 2 {
+                    NavigationLink(destination: ProgramComparisonView()) {
+                        Image(systemName: "square.grid.2x2")
+                            .font(.arial(size: 17, weight: .semibold))
+                            .foregroundColor(AppColors.primaryBlue)
                     }
-
-                    Button(action: {
-                        showExportSheet = true
-                    }) {
-                        Text("Export PDF")
-                            .font(.arial(size: 15, weight: .semibold))
-                    }
-                    .tint(AppColors.primaryBlue)
-                    .accessibilityLabel("Export rank list as PDF")
+                    .accessibilityLabel("Compare programs")
                 }
             }
         }
@@ -442,18 +415,6 @@ struct RankListView: View {
     private func loadManualOrder() {
         if let saved = UserDefaults.standard.array(forKey: "manual_rank_order") as? [String] {
             manualOrder = saved
-        }
-    }
-}
-
-private struct SpecialtyChipGlassModifier: ViewModifier {
-    let isActive: Bool
-
-    func body(content: Content) -> some View {
-        if isActive {
-            content.glassChipStyle(tint: .blue)
-        } else {
-            content.glassEffect(.regular.interactive(), in: .capsule)
         }
     }
 }
