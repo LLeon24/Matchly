@@ -745,7 +745,7 @@ struct ProgramEntryView: View {
                 Text(dataManager.lastAddProgramNotice ?? "")
             }
             .alert("Add to Calendar", isPresented: $showEnableCalendarSyncAlert) {
-                Button("Cancel", role: .cancel) {
+                Button("Not Now", role: .cancel) {
                     pendingInterviewDate = nil
                 }
                 Button("Add Event") {

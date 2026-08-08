@@ -260,6 +260,8 @@ struct DashboardView: View {
                 unit: overviewHeroUnit,
                 title: "Your Interview Season",
                 subtitle: overviewHeroSubtitle,
+                nextInterview: overviewHeroNextInterview,
+                ringSegments: overviewHeroRingSegments,
                 stats: overviewHeroStats,
                 accentTint: overviewHeroAccentTint
             )
@@ -338,7 +340,30 @@ struct DashboardView: View {
 
     // MARK: - Overview: Needs Attention
 
-    /// Contextual one-liner under the hero title — programs tracked + season status.
+    /// Contextual one-liner under the hero title — season status (next interview uses its own callout).
+    private var overviewHeroNextInterview: DashboardNextInterviewCallout? {
+        guard let next = upcomingInterviews.first, let date = next.interviewDate else { return nil }
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d"
+        let name = HospitalNameFormatter.format(next.hospital.isEmpty ? next.name : next.hospital)
+
+        let prefix: String
+        if Calendar.current.isDateInToday(date) {
+            prefix = "Today"
+        } else if Calendar.current.isDateInTomorrow(date) {
+            prefix = "Tomorrow"
+        } else {
+            prefix = "Next Interview"
+        }
+
+        return DashboardNextInterviewCallout(
+            prefix: prefix,
+            programName: name,
+            dateText: formatter.string(from: date)
+        )
+    }
+
     private var overviewHeroSubtitle: String {
         let programCount = dataManager.programs.count
         guard programCount > 0 else {
@@ -350,29 +375,20 @@ struct DashboardView: View {
             parts.append("Top score \(String(format: "%.1f", topProgramMaxScore))")
         }
 
-        if let next = upcomingInterviews.first, let date = next.interviewDate {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "MMM d"
-            let name = HospitalNameFormatter.format(next.hospital.isEmpty ? next.name : next.hospital)
-            if Calendar.current.isDateInToday(date) {
-                parts.append("Today: \(name)")
-            } else if Calendar.current.isDateInTomorrow(date) {
-                parts.append("Tomorrow: \(name)")
+        if overviewHeroNextInterview == nil {
+            if programsNeedingInterviewDateCount > 0 {
+                parts.append("Log interview dates so you can prep and score after each visit")
+            } else if postInterviewNeedingScoreCount > 0 {
+                parts.append("\(postInterviewNeedingScoreCount) completed interview\(postInterviewNeedingScoreCount == 1 ? "" : "s") ready to score")
+            } else if interviewCount > 0 && upcomingInterviews.isEmpty {
+                parts.append("All interviews done — finish scoring to finalize your rank list")
             } else {
-                parts.append("Next: \(name) · \(formatter.string(from: date))")
-            }
-        } else if programsNeedingInterviewDateCount > 0 {
-            parts.append("Log interview dates so you can prep and score after each visit")
-        } else if postInterviewNeedingScoreCount > 0 {
-            parts.append("\(postInterviewNeedingScoreCount) completed interview\(postInterviewNeedingScoreCount == 1 ? "" : "s") ready to score")
-        } else if interviewCount > 0 && upcomingInterviews.isEmpty {
-            parts.append("All interviews done — finish scoring to finalize your rank list")
-        } else {
-            let ranked = dataManager.programs.filter { $0.finalScore > 0 }.count
-            if ranked > 0 {
-                parts.append("\(ranked) program\(ranked == 1 ? "" : "s") scored and on your rank list")
-            } else {
-                parts.append("Score each program after its interview to build your rank list")
+                let ranked = dataManager.programs.filter { $0.finalScore > 0 }.count
+                if ranked > 0 {
+                    parts.append("\(ranked) program\(ranked == 1 ? "" : "s") scored and on your rank list")
+                } else {
+                    parts.append("Score each program after its interview to build your rank list")
+                }
             }
         }
 
@@ -428,8 +444,7 @@ struct DashboardView: View {
         let programCount = dataManager.programs.count
         guard programCount > 0 else { return [] }
 
-        let ranked = dataManager.programs.filter { $0.finalScore > 0 }.count
-        let scored = ranked
+        let scored = dataManager.programs.filter { $0.finalScore > 0 }.count
 
         return [
             DashboardSnapshotStat(
@@ -442,21 +457,43 @@ struct DashboardView: View {
                 id: "upcoming",
                 value: "\(upcomingInterviews.count)",
                 label: "Upcoming",
-                tint: AppColors.accentGreen
+                tint: AppColors.accentAmber
             ),
             DashboardSnapshotStat(
                 id: "scored",
                 value: "\(scored)",
                 label: "Scored",
-                tint: AppColors.accentTeal
+                tint: AppColors.accentGreen
             ),
             DashboardSnapshotStat(
                 id: "toReview",
                 value: "\(programsNeedingReview)",
                 label: "To Review",
-                tint: programsNeedingReview > 0 ? AppColors.accentOrange : .secondary
+                tint: programsNeedingReview > 0 ? AppColors.accentRed : .secondary
             )
         ]
+    }
+
+    /// Multi-color ring slices matching the stat row (proportional to each count).
+    private var overviewHeroRingSegments: [DashboardSnapshotRingSegment] {
+        let buckets: [(String, Int, Color)] = [
+            ("needDate", programsNeedingInterviewDateCount, AppColors.accentOrange),
+            ("upcoming", upcomingInterviews.count, AppColors.accentYellow),
+            ("scored", dataManager.programs.filter { $0.finalScore > 0 }.count, AppColors.accentGreen),
+            ("toReview", programsNeedingReview, AppColors.accentRed)
+        ]
+
+        let total = buckets.reduce(0) { $0 + $1.1 }
+        guard total > 0 else { return [] }
+
+        return buckets.compactMap { id, count, color in
+            guard count > 0 else { return nil }
+            return DashboardSnapshotRingSegment(
+                id: id,
+                fraction: Double(count) / Double(total),
+                color: color
+            )
+        }
     }
 
     private var programsNeedingInterviewDateCount: Int {

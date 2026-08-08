@@ -43,6 +43,15 @@ struct AppColors {
         light: Color(red: 1.0, green: 0.85, blue: 0.2),
         dark: Color(red: 1.0, green: 0.9, blue: 0.3)
     )
+    /// Darker yellow for stat labels on light backgrounds.
+    static let accentAmber = Color(
+        light: Color(red: 0.80, green: 0.58, blue: 0.04),
+        dark: Color(red: 1.0, green: 0.82, blue: 0.28)
+    )
+    static let accentRed = Color(
+        light: Color(red: 0.90, green: 0.28, blue: 0.30),
+        dark: Color(red: 1.0, green: 0.38, blue: 0.40)
+    )
     
     // Gradient combinations - adapt to dark mode
     static var primaryGradient: LinearGradient {

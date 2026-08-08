@@ -335,12 +335,26 @@ struct DashboardRingHero: View {
     }
 }
 
+/// One slice of the season hero ring — sized as a fraction of the full circle (0...1).
+struct DashboardSnapshotRingSegment: Identifiable {
+    let id: String
+    let fraction: Double
+    let color: Color
+}
+
 /// One metric in the Overview snapshot stat row.
 struct DashboardSnapshotStat: Identifiable {
     let id: String
     let value: String
     let label: String
     let tint: Color
+}
+
+/// Prominent next-upcoming interview line for the season hero.
+struct DashboardNextInterviewCallout: Equatable {
+    let prefix: String
+    let programName: String
+    let dateText: String
 }
 
 /// Overview hero: upcoming interviews front-and-center, ring shows season progress,
@@ -352,9 +366,13 @@ struct DashboardSnapshotHero: View {
     let unit: String
     let title: String
     let subtitle: String
+    var nextInterview: DashboardNextInterviewCallout? = nil
+    var ringSegments: [DashboardSnapshotRingSegment] = []
     let stats: [DashboardSnapshotStat]
     var accentTint: Color = AppColors.accentGreen
     @Environment(\.matchlyLayout) private var layout
+
+    private var usesSegmentedRing: Bool { !ringSegments.isEmpty }
 
     private var gradientColors: [Color] {
         [accentTint, accentTint.opacity(0.65)]
@@ -367,6 +385,10 @@ struct DashboardSnapshotHero: View {
             startAngle: .degrees(-90),
             endAngle: .degrees(270)
         )
+    }
+
+    private var segmentedRingFill: Double {
+        min(max(ringSegments.reduce(0) { $0 + $1.fraction }, 0), 1)
     }
 
     var body: some View {
@@ -382,7 +404,7 @@ struct DashboardSnapshotHero: View {
     }
 
     private var standardBody: some View {
-        let heroMidSpacing: CGFloat = 12
+        let heroMidSpacing: CGFloat = 8
         return VStack(spacing: 0) {
             heroRing
 
@@ -393,17 +415,24 @@ struct DashboardSnapshotHero: View {
                 .lineLimit(2)
                 .minimumScaleFactor(0.85)
                 .padding(.top, heroMidSpacing)
-                .padding(.bottom, heroMidSpacing)
+                .padding(.bottom, 6)
 
-            VStack(spacing: 5) {
+            VStack(spacing: 10) {
                 Text(title)
                     .font(.arial(size: layout.heroTitleFont, weight: .bold))
                     .foregroundColor(.primary)
-                Text(subtitle)
-                    .font(.arial(size: layout.heroSubtitleFont))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
+
+                if let nextInterview {
+                    nextInterviewCallout(nextInterview)
+                }
+
+                if !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.arial(size: layout.heroSubtitleFont))
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             statsRow
@@ -416,17 +445,24 @@ struct DashboardSnapshotHero: View {
                 .frame(width: layout.heroRingSize + 8)
 
             VStack(alignment: .leading, spacing: 8) {
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text(title)
                         .font(.arial(size: layout.heroTitleFont, weight: .bold))
                         .foregroundColor(.primary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
-                    Text(subtitle)
-                        .font(.arial(size: layout.heroSubtitleFont))
-                        .foregroundColor(.secondary)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
+
+                    if let nextInterview {
+                        nextInterviewCallout(nextInterview, alignment: .leading)
+                    }
+
+                    if !subtitle.isEmpty {
+                        Text(subtitle)
+                            .font(.arial(size: layout.heroSubtitleFont))
+                            .foregroundColor(.secondary)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
 
                 statsGrid
@@ -445,35 +481,33 @@ struct DashboardSnapshotHero: View {
     private var heroRing: some View {
         ZStack {
             Circle()
-                .stroke(gradientColors[0].opacity(0.16), lineWidth: layout.heroRingLineWidth)
+                .stroke(Color.secondary.opacity(0.14), lineWidth: layout.heroRingLineWidth)
                 .frame(width: layout.heroRingSize, height: layout.heroRingSize)
 
-            Circle()
-                .trim(from: 0, to: min(max(progress, 0), 1))
-                .stroke(
-                    ringGradient,
-                    style: StrokeStyle(lineWidth: layout.heroRingLineWidth, lineCap: .round)
-                )
-                .frame(width: layout.heroRingSize, height: layout.heroRingSize)
-                .rotationEffect(.degrees(-90))
-                .animation(.spring(response: 0.7, dampingFraction: 0.85), value: progress)
+            if usesSegmentedRing {
+                segmentedRingArcs
+            } else {
+                Circle()
+                    .trim(from: 0, to: min(max(progress, 0), 1))
+                    .stroke(
+                        ringGradient,
+                        style: StrokeStyle(lineWidth: layout.heroRingLineWidth, lineCap: .round)
+                    )
+                    .frame(width: layout.heroRingSize, height: layout.heroRingSize)
+                    .rotationEffect(.degrees(-90))
+                    .animation(.spring(response: 0.7, dampingFraction: 0.85), value: progress)
+            }
 
             VStack(spacing: 0) {
                 Text(bigNumber)
                     .font(.arial(size: layout.heroBigNumberFont, weight: .bold))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: gradientColors,
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                    .foregroundStyle(centerNumberStyle)
                     .minimumScaleFactor(0.5)
                     .lineLimit(1)
                 if !unit.isEmpty {
                     Text(unit)
                         .font(.arial(size: layout.heroUnitFont, weight: .semibold))
-                        .foregroundColor(accentTint.opacity(0.9))
+                        .foregroundColor(usesSegmentedRing ? .secondary : accentTint.opacity(0.9))
                         .textCase(.uppercase)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
@@ -481,6 +515,45 @@ struct DashboardSnapshotHero: View {
             }
             .padding(.horizontal, 4)
         }
+    }
+
+    private var centerNumberStyle: AnyShapeStyle {
+        if usesSegmentedRing {
+            return AnyShapeStyle(Color.primary)
+        }
+        return AnyShapeStyle(
+            LinearGradient(
+                colors: gradientColors,
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+    }
+
+    private var segmentedRingArcs: some View {
+        let segments = ringSegments
+        let starts: [Double] = segments.indices.map { index in
+            segments.prefix(index).reduce(0) { $0 + $1.fraction }
+        }
+
+        return ZStack {
+            ForEach(Array(segments.enumerated()), id: \.element.id) { index, segment in
+                let start = starts[index]
+                let end = min(start + segment.fraction, 1)
+                Circle()
+                    .trim(from: start, to: end)
+                    .stroke(
+                        segment.color,
+                        style: StrokeStyle(
+                            lineWidth: layout.heroRingLineWidth,
+                            lineCap: index == 0 || index == segments.count - 1 ? .round : .butt
+                        )
+                    )
+                    .frame(width: layout.heroRingSize, height: layout.heroRingSize)
+                    .rotationEffect(.degrees(-90))
+            }
+        }
+        .animation(.spring(response: 0.7, dampingFraction: 0.85), value: segmentedRingFill)
     }
 
     private var progressCaptionLabel: some View {
@@ -536,6 +609,40 @@ struct DashboardSnapshotHero: View {
                 .minimumScaleFactor(0.8)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    private func nextInterviewCallout(
+        _ info: DashboardNextInterviewCallout,
+        alignment: HorizontalAlignment = .center
+    ) -> some View {
+        VStack(alignment: alignment, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "calendar.badge.clock")
+                    .font(.arial(size: 13, weight: .semibold))
+                    .foregroundColor(AppColors.primaryBlue)
+                Text(info.prefix)
+                    .font(.arial(size: 13, weight: .semibold))
+                    .foregroundColor(AppColors.primaryBlue)
+                Spacer(minLength: 8)
+                Text(info.dateText)
+                    .font(.arial(size: 15, weight: .bold))
+                    .foregroundColor(.primary)
+            }
+
+            Text(info.programName)
+                .font(.arial(size: 15, weight: .semibold))
+                .foregroundColor(.primary)
+                .multilineTextAlignment(alignment == .center ? .center : .leading)
+                .lineLimit(3)
+                .minimumScaleFactor(0.9)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: alignment == .center ? .center : .leading)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity)
+        .background(AppColors.primaryBlue.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 

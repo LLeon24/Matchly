@@ -134,9 +134,9 @@ enum MatchlyLayoutStyle: Equatable {
     case standard
     case compactVertical
 
-    var heroRingSize: CGFloat { self == .compactVertical ? 118 : 210 }
-    var heroRingLineWidth: CGFloat { self == .compactVertical ? 10 : 16 }
-    var heroBigNumberFont: CGFloat { self == .compactVertical ? 42 : 80 }
+    var heroRingSize: CGFloat { self == .compactVertical ? 96 : 172 }
+    var heroRingLineWidth: CGFloat { self == .compactVertical ? 9 : 13 }
+    var heroBigNumberFont: CGFloat { self == .compactVertical ? 36 : 64 }
     var heroUnitFont: CGFloat { self == .compactVertical ? 11 : 13 }
     var heroTitleFont: CGFloat { self == .compactVertical ? 17 : 24 }
     var heroSubtitleFont: CGFloat { self == .compactVertical ? 12 : 14 }
