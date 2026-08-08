@@ -115,7 +115,7 @@ private struct DrawState {
         guard programs[index].hasRedFlags() else { return false }
         guard index > 0 else { return false }
         guard !programs[index - 1].hasRedFlags() else { return false }
-        return programs[index...].allSatisfy(\.hasRedFlags)
+        return programs[index...].allSatisfy { $0.hasRedFlags() }
     }
 
     private func elevatedRedFlag(at index: Int, in programs: [Program]) -> Bool {

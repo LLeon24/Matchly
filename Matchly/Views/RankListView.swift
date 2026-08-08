@@ -165,7 +165,7 @@ struct RankListView: View {
         guard programs[index].hasRedFlags() else { return false }
         guard index > 0 else { return false }
         guard !programs[index - 1].hasRedFlags() else { return false }
-        return programs[index...].allSatisfy(\.hasRedFlags)
+        return programs[index...].allSatisfy { $0.hasRedFlags() }
     }
 
     private func elevatedRedFlag(at index: Int) -> Bool {
@@ -738,7 +738,7 @@ struct ExportView: View {
         guard orderedRankedPrograms[index].hasRedFlags() else { return false }
         guard index > 0 else { return false }
         guard !orderedRankedPrograms[index - 1].hasRedFlags() else { return false }
-        return orderedRankedPrograms[index...].allSatisfy(\.hasRedFlags)
+        return orderedRankedPrograms[index...].allSatisfy { $0.hasRedFlags() }
     }
 
     private func elevatedRedFlag(at index: Int) -> Bool {
