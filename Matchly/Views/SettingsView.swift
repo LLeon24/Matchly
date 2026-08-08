@@ -147,7 +147,6 @@ struct SettingsView: View {
                             .glassEffect(.regular, in: .rect(cornerRadius: 16))
                             .padding(.vertical, 4)
                     )
-                }
         } header: {
             MatchlyFormSectionHeader(title: "Profile")
         }
@@ -210,7 +209,6 @@ struct SettingsView: View {
                     .buttonStyle(.glassProminent)
                     .tint(AppColors.primaryBlue)
                     .listRowBackground(Color.clear)
-                }
         } header: {
             MatchlyFormSectionHeader(title: "App Information")
         }
@@ -257,7 +255,6 @@ struct SettingsView: View {
                             }
                         }
                     }
-                }
         } header: {
             MatchlyFormSectionHeader(title: "Couples Matching")
         }
@@ -304,7 +301,6 @@ struct SettingsView: View {
                                 .foregroundColor(.secondary)
                         }
                     }
-                }
         } header: {
             MatchlyFormSectionHeader(title: "Questionnaire")
         }
@@ -355,7 +351,6 @@ struct SettingsView: View {
                         Text("Reset All Data")
                     }
                     .buttonStyle(.glass)
-                }
         } header: {
             MatchlyFormSectionHeader(title: "Data Management")
         }
@@ -429,7 +424,6 @@ struct SettingsView: View {
                         }
                     }
                     .buttonStyle(.glass)
-                }
         } header: {
             MatchlyFormSectionHeader(title: "Account")
         }
