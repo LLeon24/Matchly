@@ -10,6 +10,7 @@ import SwiftUI
 enum FeatureTourAnchorID {
     static let dashboardTab = "tour.tab.dashboard"
     static let programsTab = "tour.tab.programs"
+    static let interviewsTab = "tour.tab.interviews"
     static let rankListTab = "tour.tab.rankList"
     static let coupleTab = "tour.tab.couple"
     static let mapTab = "tour.tab.map"
@@ -42,7 +43,7 @@ enum AppFeatureTourSteps {
         var steps: [FeatureTourStep] = [
             FeatureTourStep(
                 id: "intro",
-                tabIndex: 0,
+                tabIndex: MainTabLayout.dashboardIndex,
                 anchorID: nil,
                 title: "Welcome to your tour",
                 message: "We'll point at the real tabs and explain what each area does. Tap Next to follow along — or Skip anytime.",
@@ -50,23 +51,31 @@ enum AppFeatureTourSteps {
             ),
             FeatureTourStep(
                 id: "dashboard",
-                tabIndex: 0,
+                tabIndex: MainTabLayout.dashboardIndex,
                 anchorID: FeatureTourAnchorID.dashboardTab,
                 title: "Dashboard",
-                message: "Your home base during match season: upcoming interviews, signals, programs needing review, and quick next steps.",
+                message: "Your home base during match season: interview season progress, signals, programs needing review, and quick next steps.",
                 placesBubbleAboveSpotlight: true
             ),
             FeatureTourStep(
                 id: "programs",
-                tabIndex: 1,
+                tabIndex: MainTabLayout.programsIndex,
                 anchorID: FeatureTourAnchorID.programsTab,
                 title: "My Programs",
                 message: "Search and add programs, complete questionnaires after interviews, and track signals, red flags, and voice memos.",
                 placesBubbleAboveSpotlight: true
             ),
             FeatureTourStep(
+                id: "interviews",
+                tabIndex: MainTabLayout.interviewsIndex,
+                anchorID: FeatureTourAnchorID.interviewsTab,
+                title: "Interviews",
+                message: "See upcoming and past interviews in a list or calendar, set missing dates, and sync to your device calendar.",
+                placesBubbleAboveSpotlight: true
+            ),
+            FeatureTourStep(
                 id: "rankList",
-                tabIndex: 2,
+                tabIndex: MainTabLayout.rankListIndex(isCoupleLinked: showCouple),
                 anchorID: FeatureTourAnchorID.rankListTab,
                 title: "Rank List",
                 message: "Build your personal NRMP rank list from scored programs. Reorder as you learn more and export when you're ready.",
@@ -78,7 +87,7 @@ enum AppFeatureTourSteps {
             steps.append(
                 FeatureTourStep(
                     id: "couple",
-                    tabIndex: 3,
+                    tabIndex: MainTabLayout.coupleHubIndex(isCoupleLinked: true) ?? 4,
                     anchorID: FeatureTourAnchorID.coupleTab,
                     title: "Couple Match",
                     message: "Chat with your partner, share rank lists, and generate a suggested couples rank list together.",
@@ -116,7 +125,7 @@ enum AppFeatureTourSteps {
             ),
             FeatureTourStep(
                 id: "outro",
-                tabIndex: 0,
+                tabIndex: MainTabLayout.dashboardIndex,
                 anchorID: nil,
                 title: "You're ready to go",
                 message: "Replay this tour anytime from Settings → Replay Guided Tour. Good luck this match season!",
@@ -130,10 +139,11 @@ enum AppFeatureTourSteps {
     /// Shown when couples matching is activated after the main app tour was already completed.
     static func coupleMatchSteps() -> [FeatureTourStep] {
         guard FeatureFlags.couplesMatchEnabled else { return [] }
+        let coupleIndex = MainTabLayout.coupleHubIndex(isCoupleLinked: true) ?? 4
         return [
             FeatureTourStep(
                 id: "couple-intro",
-                tabIndex: 3,
+                tabIndex: coupleIndex,
                 anchorID: nil,
                 title: "Couple Match is on",
                 message: "You're linked with your partner. We'll highlight the new Couple tab where you coordinate rank lists together.",
@@ -141,7 +151,7 @@ enum AppFeatureTourSteps {
             ),
             FeatureTourStep(
                 id: "couple",
-                tabIndex: 3,
+                tabIndex: coupleIndex,
                 anchorID: FeatureTourAnchorID.coupleTab,
                 title: "Couple Match",
                 message: "Chat with your partner, share rank lists, and generate a suggested couples rank list together.",
@@ -149,7 +159,7 @@ enum AppFeatureTourSteps {
             ),
             FeatureTourStep(
                 id: "couple-outro",
-                tabIndex: 3,
+                tabIndex: coupleIndex,
                 anchorID: nil,
                 title: "Happy matching together",
                 message: "Open Couple Match anytime to compare lists and stay aligned during match season.",

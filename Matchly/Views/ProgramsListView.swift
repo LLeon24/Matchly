@@ -283,48 +283,10 @@ struct CompactProgramRowView: View {
                 
                 // Specialty badge (only badge-style element) - matching search
                 if !program.specialty.isEmpty {
-                    let specialtyColor = SpecialtyFormatter.color(for: program.specialty)
-                    let specialtyAbbrev = SpecialtyFormatter.abbreviation(for: program.specialty)
-                    
-                    HStack(spacing: 3) {
-                        Image(systemName: "stethoscope")
-                            .font(.arial(size: 8))
-                        Text(specialtyAbbrev)
-                            .font(.arial(size: 10, weight: .semibold))
-                    }
-                    .foregroundColor(specialtyColor)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(specialtyColor.opacity(0.15))
-                    .cornerRadius(4)
+                    MatchlyProgramSpecialtyBadge(specialty: program.specialty)
                 }
-                
-                // Location and Accreditation ID on first line - EXACT match to search
-                HStack(spacing: 8) {
-                    // Location
-                    if !program.city.isEmpty && !program.state.isEmpty {
-                        HStack(spacing: 3) {
-                            Image(systemName: "mappin.circle.fill")
-                                .font(.arial(size: 9))
-                            Text("\(program.city), \(program.state)")
-                                .font(.arial(size: 11))
-                        }
-                        .foregroundColor(.secondary)
-                    }
-                    
-                    // Accreditation ID - subtle, no background (matching search exactly)
-                    if let acgmeID = program.accreditationID, !acgmeID.isEmpty {
-                        HStack(spacing: 2) {
-                            Image(systemName: "number.circle.fill")
-                                .font(.arial(size: 9))
-                            Text("ID:")
-                                .font(.arial(size: 10, weight: .medium))
-                            Text(acgmeID)
-                                .font(.arial(size: 11, weight: .medium))
-                        }
-                        .foregroundColor(.secondary)
-                    }
-                }
+
+                MatchlyProgramLocationAndIDRow(program: program)
                 
                 SavedProgramIMGBadge(program: program)
                 

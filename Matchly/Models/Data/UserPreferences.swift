@@ -106,35 +106,14 @@ struct DashboardLayout: Codable, Hashable {
     var disabledSections: Set<String> = []
 
     static let defaultSectionOrder: [String] = [
-        // Overview tab
         "overviewHero",
-        "overviewSignals",
         "needsAttention",
-        "interviewPipeline",
-        "quickStats",
-        "quickActions",
-        "recentActivity",
-        // Programs tab
-        "programsCompare",
         "analytics",
-        "programsScoreDist",
-        "topPrograms",
-        // Interviews tab
-        "upcomingInterviews"
+        "quickActions",
+        "programsCompare"
     ]
 
-    static let overviewSectionIDs: Set<String> = [
-        "overviewHero", "overviewSignals", "needsAttention", "interviewPipeline",
-        "quickStats", "quickActions", "recentActivity"
-    ]
-
-    static let programsSectionIDs: Set<String> = [
-        "programsScoreDist", "programsCompare", "topPrograms", "analytics"
-    ]
-
-    static let interviewsSectionIDs: Set<String> = [
-        "upcomingInterviews"
-    ]
+    static let dashboardSectionIDs: Set<String> = Set(defaultSectionOrder)
 
     static let defaultSections: Set<String> = Set(defaultSectionOrder)
 
@@ -153,9 +132,20 @@ struct DashboardLayout: Codable, Hashable {
     }
 
     static func normalizeSectionOrder(_ order: [String]) -> [String] {
+        let legacyDropIDs: Set<String> = [
+            "overviewSignals",
+            "upcomingInterviews",
+            "interviewPipeline",
+            "quickStats",
+            "recentActivity",
+            "programsScoreDist",
+            "topPrograms"
+        ]
         var normalized: [String] = []
         for id in order {
+            if legacyDropIDs.contains(id) { continue }
             guard let mapped = normalizeSectionID(id) else { continue }
+            if legacyDropIDs.contains(mapped) { continue }
             if !normalized.contains(mapped) {
                 normalized.append(mapped)
             }
@@ -164,14 +154,17 @@ struct DashboardLayout: Codable, Hashable {
             normalized.append(id)
         }
         if let heroIndex = normalized.firstIndex(of: "overviewHero"),
-           !normalized.contains("overviewSignals") {
-            normalized.insert("overviewSignals", at: heroIndex + 1)
+           let needsIndex = normalized.firstIndex(of: "needsAttention"),
+           needsIndex != heroIndex + 1 {
+            normalized.remove(at: needsIndex)
+            let insertIndex = (normalized.firstIndex(of: "overviewHero") ?? heroIndex) + 1
+            normalized.insert("needsAttention", at: insertIndex)
         }
-        if let compareIndex = normalized.firstIndex(of: "programsCompare"),
+        if let needsIndex = normalized.firstIndex(of: "needsAttention"),
            let analyticsIndex = normalized.firstIndex(of: "analytics"),
-           analyticsIndex != compareIndex + 1 {
+           analyticsIndex != needsIndex + 1 {
             normalized.remove(at: analyticsIndex)
-            let insertIndex = (normalized.firstIndex(of: "programsCompare") ?? compareIndex) + 1
+            let insertIndex = (normalized.firstIndex(of: "needsAttention") ?? needsIndex) + 1
             normalized.insert("analytics", at: insertIndex)
         }
         return normalized

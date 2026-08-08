@@ -19,42 +19,54 @@ struct LiquidGlassTabBar: View {
                 TabBarButton(
                     icon: "house.fill",
                     title: "Dashboard",
-                    isSelected: selectedTab == 0,
+                    isSelected: selectedTab == MainTabLayout.dashboardIndex,
                     color: AppColors.primaryBlue,
                     tourAnchorID: FeatureTourAnchorID.dashboardTab
                 ) {
-                    handleTabSelection(targetTab: 0)
+                    handleTabSelection(targetTab: MainTabLayout.dashboardIndex)
                 }
 
                 TabBarButton(
                     icon: "list.bullet",
                     title: "My Programs",
-                    isSelected: selectedTab == 1,
+                    isSelected: selectedTab == MainTabLayout.programsIndex,
                     color: AppColors.accentGreen,
                     tourAnchorID: FeatureTourAnchorID.programsTab
                 ) {
-                    handleTabSelection(targetTab: 1)
+                    handleTabSelection(targetTab: MainTabLayout.programsIndex)
+                }
+
+                TabBarButton(
+                    icon: "calendar.badge.clock",
+                    title: "Interviews",
+                    isSelected: selectedTab == MainTabLayout.interviewsIndex,
+                    color: AppColors.accentTeal,
+                    tourAnchorID: FeatureTourAnchorID.interviewsTab
+                ) {
+                    handleTabSelection(targetTab: MainTabLayout.interviewsIndex)
                 }
 
                 TabBarButton(
                     icon: "chart.bar.fill",
                     title: "Rank List",
-                    isSelected: selectedTab == 2,
+                    isSelected: selectedTab == MainTabLayout.rankListIndex(isCoupleLinked: isCoupleLinked),
                     color: AppColors.accentPink,
                     tourAnchorID: FeatureTourAnchorID.rankListTab
                 ) {
-                    handleTabSelection(targetTab: 2)
+                    handleTabSelection(targetTab: MainTabLayout.rankListIndex(isCoupleLinked: isCoupleLinked))
                 }
 
                 if isCoupleLinked {
                     TabBarButton(
                         icon: "heart.fill",
                         title: "Couple",
-                        isSelected: selectedTab == 3,
+                        isSelected: selectedTab == MainTabLayout.coupleHubIndex(isCoupleLinked: isCoupleLinked),
                         color: .pink,
                         tourAnchorID: FeatureTourAnchorID.coupleTab
                     ) {
-                        handleTabSelection(targetTab: 3)
+                        if let coupleIndex = MainTabLayout.coupleHubIndex(isCoupleLinked: isCoupleLinked) {
+                            handleTabSelection(targetTab: coupleIndex)
+                        }
                     }
                 }
 
@@ -109,7 +121,7 @@ struct LiquidGlassTabBar: View {
                 selectedTab = targetTab
                 pendingTab = nil
 
-                if targetTab == 0 {
+                if targetTab == MainTabLayout.dashboardIndex {
                     NotificationCenter.default.post(name: NSNotification.Name("ScrollToTop"), object: nil)
                     NotificationCenter.default.post(name: NSNotification.Name("PopToRoot"), object: nil)
                 }

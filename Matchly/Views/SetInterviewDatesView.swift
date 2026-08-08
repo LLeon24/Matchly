@@ -243,51 +243,46 @@ struct ProgramNeedingInterviewDateRow: View {
     let program: Program
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(alignment: .top, spacing: 12) {
             ZStack {
                 Circle()
                     .fill(AppColors.accentOrange.opacity(0.15))
-                    .frame(width: 44, height: 44)
+                    .frame(width: 42, height: 42)
                 Image(systemName: "calendar.badge.plus")
-                    .font(.arial(size: 18, weight: .semibold))
+                    .font(.arial(size: 16, weight: .semibold))
                     .foregroundColor(AppColors.accentOrange)
-                    .symbolRenderingMode(.hierarchical)
             }
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(HospitalNameFormatter.format(
                     program.hospital.isEmpty
                         ? (program.name.isEmpty ? "Unnamed Program" : program.name)
                         : program.hospital
                 ))
                 .font(.arial(size: 15, weight: .semibold))
-                .lineLimit(2)
-                .foregroundColor(.primary)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
 
-                if !program.city.isEmpty && !program.state.isEmpty {
-                    HStack(spacing: 3) {
-                        Image(systemName: "mappin.circle.fill")
-                            .font(.arial(size: 9))
-                        Text("\(program.city), \(program.state)")
-                            .font(.arial(size: 12))
-                    }
-                    .foregroundColor(.secondary)
+                if !program.specialty.isEmpty {
+                    MatchlyProgramSpecialtyBadge(specialty: program.specialty)
                 }
 
+                MatchlyProgramLocationAndIDRow(program: program)
+
                 Text("No interview date")
-                    .font(.arial(size: 12, weight: .medium))
+                    .font(.arial(size: 11, weight: .semibold))
                     .foregroundColor(AppColors.accentOrange)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(AppColors.accentOrange.opacity(0.12))
+                    .cornerRadius(4)
 
                 ProgramVoiceMemoBadge(program: program, iconSize: 9, textSize: 11)
             }
 
             Spacer(minLength: 0)
-
-            Image(systemName: "chevron.right")
-                .font(.arial(size: 12, weight: .semibold))
-                .foregroundColor(.secondary)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
         .contentShape(Rectangle())
     }
 }

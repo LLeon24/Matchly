@@ -15,7 +15,7 @@ private enum FeatureTourMode {
 
 struct MainTabView: View {
     @ObservedObject private var dataManager = DataManager.shared
-    @State private var selectedTab: Int = 0
+    @State private var selectedTab: Int = MainTabLayout.dashboardIndex
     @State private var dashboardRefreshKey: UUID = UUID()
     @State private var isKeyboardVisible: Bool = false
     @State private var showFeatureTour = false
@@ -43,29 +43,26 @@ struct MainTabView: View {
 
             Group {
                 switch selectedTab {
-                case 0:
+                case MainTabLayout.dashboardIndex:
                     MatchlyNavigationView {
                         DashboardView(selectedTab: $selectedTab)
                             .matchlyReadableWidth()
                     }
                     .id("dashboard-\(dashboardRefreshKey)")
-                case 1:
+                case MainTabLayout.programsIndex:
                     ProgramsListView()
-                case 2:
+                case MainTabLayout.interviewsIndex:
+                    MatchlyNavigationView {
+                        InterviewsView()
+                            .matchlyReadableWidth()
+                    }
+                case MainTabLayout.rankListIndex(isCoupleLinked: isCoupleLinked):
                     RankListView()
-                case 3 where isCoupleLinked:
+                case let index where index == MainTabLayout.coupleHubIndex(isCoupleLinked: isCoupleLinked):
                     CouplesHubView()
-                case 3 where FeatureFlags.programsMapEnabled:
+                case let index where index == MainTabLayout.mapIndex(isCoupleLinked: isCoupleLinked):
                     ProgramsMapView()
-                case 3:
-                    SettingsView()
-                case 4 where isCoupleLinked && FeatureFlags.programsMapEnabled:
-                    ProgramsMapView()
-                case 4 where isCoupleLinked:
-                    SettingsView()
-                case 4:
-                    SettingsView()
-                case 5:
+                case MainTabLayout.settingsIndex(isCoupleLinked: isCoupleLinked):
                     SettingsView()
                 default:
                     MatchlyNavigationView {
@@ -110,7 +107,7 @@ struct MainTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ShowFeatureTour"))) { _ in
             featureTourMode = .full
             featureTourStepIndex = 0
-            selectedTab = 0
+            selectedTab = MainTabLayout.dashboardIndex
             showFeatureTour = true
         }
         .onChange(of: selectedTab) { oldTab, newTab in
@@ -121,17 +118,9 @@ struct MainTabView: View {
             if linked && !wasLinked {
                 handleCoupleMatchActivated()
             }
-            guard !linked else { return }
-            let settingsIndex = MainTabLayout.settingsIndex(isCoupleLinked: false)
-            switch selectedTab {
-            case 3:
-                selectedTab = 0
-            case 4:
-                selectedTab = FeatureFlags.programsMapEnabled ? 3 : settingsIndex
-            case 5:
-                selectedTab = settingsIndex
-            default:
-                break
+            guard wasLinked, !linked else { return }
+            if selectedTab == MainTabLayout.coupleHubIndex(isCoupleLinked: true) {
+                selectedTab = MainTabLayout.dashboardIndex
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("PopToRoot"))) { _ in
@@ -165,7 +154,7 @@ struct MainTabView: View {
 
         featureTourMode = .coupleOnly
         featureTourStepIndex = 0
-        selectedTab = 3
+        selectedTab = MainTabLayout.coupleHubIndex(isCoupleLinked: true) ?? MainTabLayout.dashboardIndex
         showFeatureTour = true
     }
 

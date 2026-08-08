@@ -8,19 +8,12 @@
 import SwiftUI
 import Combine
 
-private enum DashboardCustomizationTab: String {
-    case overview = "Overview"
-    case programs = "Programs"
-    case interviews = "Interviews"
-}
-
 private struct DashboardSectionInfo: Identifiable {
     let id: String
     let title: String
     let icon: String
     let tint: Color
     let description: String
-    let tab: DashboardCustomizationTab
 }
 
 struct DashboardCustomizationView: View {
@@ -28,99 +21,44 @@ struct DashboardCustomizationView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var draftPreferences = DashboardPreferences()
-    @State private var overviewOrder: [String] = []
-    @State private var programsOrder: [String] = []
-    @State private var interviewsOrder: [String] = []
+    @State private var dashboardOrder: [String] = []
     @State private var disabledSections: Set<String> = []
 
     private static let allSections: [DashboardSectionInfo] = [
-DashboardSectionInfo(
+        DashboardSectionInfo(
             id: "overviewHero",
             title: "Interview Season",
             icon: "sparkles",
             tint: AppColors.accentOrange,
-            description: "Snapshot hero with progress and key stats",
-            tab: .overview
+            description: "Season progress, program count, and key stats"
         ),
         DashboardSectionInfo(
-            id: "overviewSignals",
-            title: "Signal Budget",
-            icon: "star.circle.fill",
-            tint: AppColors.accentPurple,
-            description: "Condensed ERAS signal usage by specialty",
-            tab: .overview
-        ),
-DashboardSectionInfo(
             id: "needsAttention",
             title: "Needs Attention",
             icon: "bell.badge.fill",
             tint: AppColors.accentPink,
-            description: "Actionable to-dos and reminders",
-            tab: .overview
-        ),
-DashboardSectionInfo(
-            id: "interviewPipeline",
-            title: "Interview Pipeline",
-            icon: "line.3.horizontal.decrease",
-            tint: AppColors.accentTeal,
-            description: "Funnel from invites through ranking",
-            tab: .overview
-        ),
-DashboardSectionInfo(
-            id: "quickStats",
-            title: "Key Metrics",
-            icon: "chart.bar.fill",
-            tint: AppColors.primaryBlue,
-            description: "Programs, reviews, interviews, top program",
-            tab: .overview
-        ),
-DashboardSectionInfo(
-            id: "quickActions",
-            title: "Quick Actions",
-            icon: "bolt.fill",
-            tint: AppColors.accentYellow,
-            description: "Add Program, My Programs, Rank List",
-            tab: .overview
-        ),
-DashboardSectionInfo(
-            id: "recentActivity",
-            title: "Recent Activity",
-            icon: "clock.fill",
-            tint: AppColors.accentPurple,
-            description: "Recently added or updated programs",
-            tab: .overview
-        ),
-DashboardSectionInfo(
-            id: "programsScoreDist",
-            title: "Score Distribution",
-            icon: "chart.bar.fill",
-            tint: AppColors.accentGreen,
-            description: "How your program scores are spread",
-            tab: .programs
-        ),
-        DashboardSectionInfo(
-            id: "topPrograms",
-            title: "Top Programs",
-            icon: "trophy.fill",
-            tint: AppColors.accentYellow,
-            description: "Preview of your highest-ranked programs",
-            tab: .programs
+            description: "Actionable to-dos and reminders"
         ),
         DashboardSectionInfo(
             id: "analytics",
             title: "Signals & Status",
             icon: "star.circle.fill",
             tint: AppColors.accentPink,
-            description: "ERAS signal usage plus programs needing review or red-flag follow-up",
-            tab: .programs
+            description: "ERAS signal usage by specialty plus review and red-flag follow-up"
         ),
-DashboardSectionInfo(
-            id: "upcomingInterviews",
-            title: "Interview Timeline",
-            icon: "calendar.badge.clock",
-            tint: AppColors.accentTeal,
-            description: "Chronological list of upcoming interviews",
-            tab: .interviews
+        DashboardSectionInfo(
+            id: "quickActions",
+            title: "Quick Actions",
+            icon: "bolt.fill",
+            tint: AppColors.accentYellow,
+            description: "Add Program, My Programs, Rank List"
+        ),
+        DashboardSectionInfo(
+            id: "programsCompare",
+            title: "Compare Programs",
+            icon: "square.grid.2x2",
+            tint: AppColors.primaryBlue,
+            description: "Side-by-side scores and details for 2–4 programs"
         )
     ]
 
@@ -128,7 +66,7 @@ DashboardSectionInfo(
         MatchlyNavigationView {
             List {
                 Section {
-                    Text("Choose what appears on each dashboard tab and reorder sections to match your workflow. The greeting bar at the top is always visible.")
+                    Text("Choose what appears on your dashboard and reorder sections to match your workflow. The greeting bar at the top is always visible.")
                         .font(.arial(size: 13))
                         .foregroundColor(.secondary)
                         .padding(.vertical, 4)
@@ -139,23 +77,28 @@ DashboardSectionInfo(
                     Text("Dashboard Layout")
                 }
 
-                sectionGroup(
-                    title: "Overview Tab",
-                    footer: "Sections on the Overview page. On smaller phones, Needs Attention and Interview Pipeline may appear side by side when adjacent.",
-                    order: $overviewOrder
-                )
-
-                sectionGroup(
-                    title: "Programs Tab",
-                    footer: "Compare Programs and Signals & Status stay fixed below the Programs Tracked hero. Reorder the sections below them.",
-                    order: $programsOrder
-                )
-
-                sectionGroup(
-                    title: "Interviews Tab",
-                    footer: "Timeline below the Upcoming Interviews hero.",
-                    order: $interviewsOrder
-                )
+                Section {
+                    ForEach(dashboardOrder, id: \.self) { sectionId in
+                        if let section = Self.allSections.first(where: { $0.id == sectionId }) {
+                            DashboardSectionRow(
+                                section: section,
+                                isEnabled: !disabledSections.contains(sectionId),
+                                onToggle: {
+                                    if disabledSections.contains(sectionId) {
+                                        disabledSections.remove(sectionId)
+                                    } else {
+                                        disabledSections.insert(sectionId)
+                                    }
+                                }
+                            )
+                        }
+                    }
+                    .onMove { source, destination in
+                        dashboardOrder.move(fromOffsets: source, toOffset: destination)
+                    }
+                } footer: {
+                    Text("Interview Season includes the key metrics row. Needs Attention and Signals & Status stay near the top by default.")
+                }
 
                 Section {
                     Button("Reset to Defaults") {
@@ -192,38 +135,6 @@ DashboardSectionInfo(
         }
     }
 
-    @ViewBuilder
-    private func sectionGroup(
-        title: String,
-        footer: String,
-        order: Binding<[String]>
-    ) -> some View {
-        Section {
-            ForEach(order.wrappedValue, id: \.self) { sectionId in
-                if let section = Self.allSections.first(where: { $0.id == sectionId }) {
-                    DashboardSectionRow(
-                        section: section,
-                        isEnabled: !disabledSections.contains(sectionId),
-                        onToggle: {
-                            if disabledSections.contains(sectionId) {
-                                disabledSections.remove(sectionId)
-                            } else {
-                                disabledSections.insert(sectionId)
-                            }
-                        }
-                    )
-                }
-            }
-            .onMove { source, destination in
-                order.wrappedValue.move(fromOffsets: source, toOffset: destination)
-            }
-        } header: {
-            Text(title)
-        } footer: {
-            Text(footer)
-        }
-    }
-
     private func loadCurrentSettings() {
         draftPreferences = dataManager.preferences.dashboardPreferences
 
@@ -232,55 +143,31 @@ DashboardSectionInfo(
             layout.sectionOrder.isEmpty ? DashboardLayout.defaultSectionOrder : layout.sectionOrder
         )
 
-        overviewOrder = normalizedOrder.filter { DashboardLayout.overviewSectionIDs.contains($0) }
-        programsOrder = normalizedOrder.filter {
-            DashboardLayout.programsSectionIDs.contains($0)
-                && $0 != "programsCompare"
-                && $0 != "analytics"
-        }
-        interviewsOrder = normalizedOrder.filter { DashboardLayout.interviewsSectionIDs.contains($0) }
-
-        ensureGroupOrder(&overviewOrder, ids: DashboardLayout.overviewSectionIDs)
-        ensureGroupOrder(
-            &programsOrder,
-            ids: DashboardLayout.programsSectionIDs.subtracting(["programsCompare", "analytics"])
-        )
-        ensureGroupOrder(&interviewsOrder, ids: DashboardLayout.interviewsSectionIDs)
+        dashboardOrder = normalizedOrder.filter { DashboardLayout.dashboardSectionIDs.contains($0) }
+        ensureDashboardOrder(&dashboardOrder)
 
         disabledSections = DashboardLayout.normalizeSectionIDs(layout.disabledSections)
-        disabledSections.remove("programsCompare")
-        disabledSections.remove("analytics")
     }
 
-    private func ensureGroupOrder(_ order: inout [String], ids: Set<String>) {
-        for id in ids where !order.contains(id) {
+    private func ensureDashboardOrder(_ order: inout [String]) {
+        for id in DashboardLayout.dashboardSectionIDs where !order.contains(id) {
             order.append(id)
         }
-        order.removeAll { !ids.contains($0) }
+        order.removeAll { !DashboardLayout.dashboardSectionIDs.contains($0) }
     }
 
     private func resetToDefaults() {
         draftPreferences = DashboardPreferences()
-        overviewOrder = DashboardLayout.defaultSectionOrder.filter { DashboardLayout.overviewSectionIDs.contains($0) }
-        programsOrder = DashboardLayout.defaultSectionOrder.filter {
-            DashboardLayout.programsSectionIDs.contains($0)
-                && $0 != "programsCompare"
-                && $0 != "analytics"
-        }
-        interviewsOrder = DashboardLayout.defaultSectionOrder.filter { DashboardLayout.interviewsSectionIDs.contains($0) }
+        dashboardOrder = DashboardLayout.defaultSectionOrder
         disabledSections = []
     }
 
     private func saveCustomization() {
         var updatedLayout = dataManager.preferences.dashboardLayout
-        updatedLayout.sectionOrder = overviewOrder + ["programsCompare", "analytics"] + programsOrder + interviewsOrder
-        var normalizedDisabled = DashboardLayout.normalizeSectionIDs(disabledSections)
-        normalizedDisabled.remove("programsCompare")
-        normalizedDisabled.remove("analytics")
-        updatedLayout.disabledSections = normalizedDisabled
+        updatedLayout.sectionOrder = dashboardOrder
+        updatedLayout.disabledSections = DashboardLayout.normalizeSectionIDs(disabledSections)
 
         var prefs = draftPreferences
-        // Header bar is fixed for V1: time-based greeting + motivational subtitle.
         prefs.greetingStyle = .timeBased
         prefs.headerSubtitleMode = .motivational
         prefs.showMotivationalMessage = true

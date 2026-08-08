@@ -4,6 +4,9 @@
 //
 
 import ImageIO
+import PhotosUI
+import SwiftUI
+import UniformTypeIdentifiers
 import UIKit
 
 struct CropImageItem: Identifiable {
@@ -11,8 +14,30 @@ struct CropImageItem: Identifiable {
     let image: UIImage
 }
 
+/// Loads full-resolution image data from PhotosPicker (avoids low-res preview Data).
+struct ProfilePhotoPickerImage: Transferable {
+    let image: UIImage
+
+    static var transferRepresentation: some TransferRepresentation {
+        DataRepresentation(importedContentType: .image) { data in
+            guard let image = UIImage.preparedForCropping(from: data, maxPixelDimension: 4096) else {
+                throw CocoaError(.coderReadCorrupt)
+            }
+            return ProfilePhotoPickerImage(image: image)
+        }
+    }
+}
+
 enum PhotoPickerImageLoader {
-    private static let maxPixelDimension: CGFloat = 2048
+    private static let maxPixelDimension: CGFloat = 4096
+
+    static func loadPreparedImage(from item: PhotosPickerItem) async -> UIImage? {
+        if let picked = try? await item.loadTransferable(type: ProfilePhotoPickerImage.self) {
+            return picked.image
+        }
+        guard let data = try? await item.loadTransferable(type: Data.self) else { return nil }
+        return await loadPreparedImage(from: data)
+    }
 
     static func loadPreparedImage(from data: Data) async -> UIImage? {
         let data = data
@@ -25,22 +50,42 @@ enum PhotoPickerImageLoader {
 
 extension UIImage {
     nonisolated static func preparedForCropping(from data: Data, maxPixelDimension: CGFloat) -> UIImage? {
-        let image = downsampledImage(from: data, maxPixelDimension: maxPixelDimension) ?? UIImage(data: data)
-        return image?.fixedOrientation()
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
+            return UIImage(data: data)?.fixedOrientation()
+        }
+
+        let pixelSize = imagePixelSize(from: source)
+        let longestEdge = max(pixelSize.width, pixelSize.height)
+        let cgImage: CGImage?
+
+        if longestEdge > maxPixelDimension {
+            let thumbOptions: [CFString: Any] = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceShouldCacheImmediately: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: maxPixelDimension,
+            ]
+            cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbOptions as CFDictionary)
+        } else {
+            let fullOptions: [CFString: Any] = [
+                kCGImageSourceShouldCacheImmediately: true,
+            ]
+            cgImage = CGImageSourceCreateImageAtIndex(source, 0, fullOptions as CFDictionary)
+        }
+
+        guard let cgImage else {
+            return UIImage(data: data)?.fixedOrientation()
+        }
+        return UIImage(cgImage: cgImage, scale: 1, orientation: .up)
     }
 
-    nonisolated static func downsampledImage(from data: Data, maxPixelDimension: CGFloat) -> UIImage? {
-        let options: [CFString: Any] = [
-            kCGImageSourceShouldCache: false,
-            kCGImageSourceCreateThumbnailFromImageIfAbsent: true,
-            kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: maxPixelDimension,
-        ]
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-              let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
-            return nil
+    nonisolated private static func imagePixelSize(from source: CGImageSource) -> CGSize {
+        guard let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? CGFloat,
+              let height = properties[kCGImagePropertyPixelHeight] as? CGFloat else {
+            return .zero
         }
-        return UIImage(cgImage: cgImage)
+        return CGSize(width: width, height: height)
     }
 
     nonisolated func fixedOrientation() -> UIImage {

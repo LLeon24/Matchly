@@ -22,6 +22,10 @@ struct ImageCropView: View {
 
     private let cropSize: CGFloat = 300
 
+    private var cropPixelSize: CGFloat {
+        cropSize * max(UIScreen.main.scale, 2)
+    }
+
     var body: some View {
         NavigationStack {
             GeometryReader { geometry in
@@ -215,8 +219,11 @@ struct ImageCropView: View {
         source.size.width = min(source.width, pixelWidth - source.origin.x)
         source.size.height = min(source.height, pixelHeight - source.origin.y)
 
-        let outputSize = CGSize(width: cropSize, height: cropSize)
-        let renderer = UIGraphicsImageRenderer(size: outputSize)
+        let outputSize = CGSize(width: cropPixelSize, height: cropPixelSize)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = false
+        let renderer = UIGraphicsImageRenderer(size: outputSize, format: format)
 
         let cropped = renderer.image { context in
             let outputRect = CGRect(origin: .zero, size: outputSize)

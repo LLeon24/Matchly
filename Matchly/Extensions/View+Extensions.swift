@@ -465,6 +465,76 @@ struct MatchlyToolbarExportPDFButton: View {
     }
 }
 
+/// Colored capsule for adding interview dates on the Interviews tab title row.
+struct MatchlyToolbarAddInterviewDateButton: View {
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "calendar.badge.plus")
+                .font(.arial(size: 12, weight: .semibold))
+            Text("Add Date")
+                .font(.arial(size: 13, weight: .semibold))
+        }
+        .foregroundColor(.white)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Capsule().fill(AppColors.accentTeal))
+        .accessibilityLabel("Add interview dates")
+    }
+}
+
+/// Specialty pill shared by program and interview list rows.
+struct MatchlyProgramSpecialtyBadge: View {
+    let specialty: String
+
+    var body: some View {
+        let specialtyColor = SpecialtyFormatter.color(for: specialty)
+        let specialtyAbbrev = SpecialtyFormatter.abbreviation(for: specialty)
+
+        HStack(spacing: 3) {
+            Image(systemName: "stethoscope")
+                .font(.arial(size: 8))
+            Text(specialtyAbbrev)
+                .font(.arial(size: 10, weight: .semibold))
+        }
+        .foregroundColor(specialtyColor)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(specialtyColor.opacity(0.15))
+        .cornerRadius(4)
+    }
+}
+
+/// Location + ACGME ID line shared by program and interview list rows.
+struct MatchlyProgramLocationAndIDRow: View {
+    let program: Program
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if !program.city.isEmpty && !program.state.isEmpty {
+                HStack(spacing: 3) {
+                    Image(systemName: "mappin.circle.fill")
+                        .font(.arial(size: 9))
+                    Text("\(program.city), \(program.state)")
+                        .font(.arial(size: 11))
+                }
+                .foregroundColor(.secondary)
+            }
+
+            if let acgmeID = program.accreditationID, !acgmeID.isEmpty {
+                HStack(spacing: 2) {
+                    Image(systemName: "number.circle.fill")
+                        .font(.arial(size: 9))
+                    Text("ID:")
+                        .font(.arial(size: 10, weight: .medium))
+                    Text(acgmeID)
+                        .font(.arial(size: 11, weight: .medium))
+                }
+                .foregroundColor(.secondary)
+            }
+        }
+    }
+}
+
 /// Primary add action for list page toolbars.
 struct MatchlyToolbarAddButton: View {
     let action: () -> Void

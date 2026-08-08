@@ -106,25 +106,26 @@ struct OnboardingFlowView: View {
             guard let newItem else { return }
             isLoadingPhoto = true
             Task {
-                guard let data = try? await newItem.loadTransferable(type: Data.self) else {
-                    await MainActor.run { isLoadingPhoto = false }
-                    return
-                }
-                let preparedImage = await PhotoPickerImageLoader.loadPreparedImage(from: data)
+                let preparedImage = await PhotoPickerImageLoader.loadPreparedImage(from: newItem)
                 await MainActor.run {
                     isLoadingPhoto = false
                     if let preparedImage {
                         cropImageItem = CropImageItem(image: preparedImage)
+                    } else {
+                        selectedPhoto = nil
                     }
                 }
             }
         }
-        .fullScreenCover(item: $cropImageItem) { item in
+        .fullScreenCover(item: $cropImageItem, onDismiss: {
+            selectedPhoto = nil
+        }) { item in
             ImageCropView(image: item.image) { croppedImage in
-                if let data = croppedImage.jpegData(compressionQuality: 0.9) {
+                if let data = croppedImage.jpegData(compressionQuality: 0.92) {
                     profile.photoData = data
                     profile.avatarPresetID = nil
                 }
+                selectedPhoto = nil
             }
         }
     }

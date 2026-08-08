@@ -21,20 +21,28 @@ enum FeatureFlags {
 
 /// Tab indices for the floating tab bar — accounts for optional Couple and Map tabs.
 enum MainTabLayout {
-    static func settingsIndex(isCoupleLinked: Bool) -> Int {
-        var index = 3
-        if FeatureFlags.couplesMatchEnabled && isCoupleLinked { index += 1 }
-        if FeatureFlags.programsMapEnabled { index += 1 }
-        return index
+    static let dashboardIndex = 0
+    static let programsIndex = 1
+    static let interviewsIndex = 2
+
+    static func rankListIndex(isCoupleLinked: Bool) -> Int { 3 }
+
+    static func coupleHubIndex(isCoupleLinked: Bool) -> Int? {
+        guard FeatureFlags.couplesMatchEnabled && isCoupleLinked else { return nil }
+        return 4
     }
 
     static func mapIndex(isCoupleLinked: Bool) -> Int? {
         guard FeatureFlags.programsMapEnabled else { return nil }
-        return (FeatureFlags.couplesMatchEnabled && isCoupleLinked) ? 4 : 3
+        var index = 4
+        if FeatureFlags.couplesMatchEnabled && isCoupleLinked { index += 1 }
+        return index
     }
 
-    static func coupleHubIndex(isCoupleLinked: Bool) -> Int? {
-        guard FeatureFlags.couplesMatchEnabled && isCoupleLinked else { return nil }
-        return 3
+    static func settingsIndex(isCoupleLinked: Bool) -> Int {
+        var index = 4
+        if FeatureFlags.couplesMatchEnabled && isCoupleLinked { index += 1 }
+        if FeatureFlags.programsMapEnabled { index += 1 }
+        return index
     }
 }

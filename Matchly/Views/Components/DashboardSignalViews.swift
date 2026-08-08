@@ -14,10 +14,19 @@ struct DashboardSignalUsageMeter: View {
     let used: Int
     let limit: Int
     let color: Color
+    var style: DashboardSignalBudgetRow.Style = .standard
 
     private var remaining: Int { max(0, limit - used) }
 
     var body: some View {
+        if style == .compact {
+            compactBody
+        } else {
+            standardBody
+        }
+    }
+
+    private var standardBody: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
                 Text(title)
@@ -29,22 +38,44 @@ struct DashboardSignalUsageMeter: View {
                     .foregroundColor(used >= limit ? .red : .primary)
             }
 
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(color.opacity(0.15))
-                    Capsule()
-                        .fill(used >= limit ? Color.red.opacity(0.75) : color)
-                        .frame(width: limit > 0 ? geo.size.width * CGFloat(used) / CGFloat(limit) : 0)
-                }
-            }
-            .frame(height: 5)
+            progressBar(height: 5)
 
             Text(remaining == 0 ? "None left" : "\(remaining) left")
                 .font(.arial(size: 10))
                 .foregroundColor(remaining == 0 ? .red : .secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var compactBody: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 4) {
+                if !title.isEmpty {
+                    Text(title)
+                        .font(.arial(size: 10, weight: .medium))
+                        .foregroundColor(.secondary)
+                }
+                Spacer(minLength: 0)
+                Text("\(used)/\(limit)")
+                    .font(.arial(size: 10, weight: .semibold))
+                    .foregroundColor(used >= limit ? .red : .secondary)
+            }
+            progressBar(height: 4)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func progressBar(height: CGFloat) -> some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(color.opacity(0.15))
+                Capsule()
+                    .fill(used >= limit ? Color.red.opacity(0.75) : color)
+                    .frame(width: limit > 0 ? geo.size.width * CGFloat(used) / CGFloat(limit) : 0)
+            }
+        }
+        .frame(height: height)
     }
 }
 
@@ -64,14 +95,14 @@ struct DashboardSignalBudgetRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: style == .compact ? 6 : 8) {
+        VStack(alignment: .leading, spacing: style == .compact ? 4 : 8) {
             HStack(spacing: 6) {
                 Image(systemName: "stethoscope")
-                    .font(.arial(size: 11, weight: .semibold))
+                    .font(.arial(size: style == .compact ? 10 : 11, weight: .semibold))
                     .foregroundColor(specialtyColor)
 
                 Text(SpecialtyFormatter.displayNameWithAbbreviation(summary.displayName))
-                    .font(.arial(size: style == .compact ? 13 : 14, weight: .semibold))
+                    .font(.arial(size: style == .compact ? 12 : 14, weight: .semibold))
                     .foregroundColor(.primary)
                     .lineLimit(1)
 
@@ -79,15 +110,19 @@ struct DashboardSignalBudgetRow: View {
 
                 if summary.usesResidencyCAS {
                     Text("CAS")
-                        .font(.arial(size: 9, weight: .bold))
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
+                        .font(.arial(size: 8, weight: .bold))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
                         .background(Color.blue.opacity(0.12))
                         .foregroundColor(.blue)
                         .clipShape(Capsule())
                 }
 
-                if style == .compact {
+                if style == .compact, !summary.isTiered, summary.goldLimit > 0 {
+                    Text("\(summary.goldUsed)/\(summary.goldLimit)")
+                        .font(.arial(size: 11, weight: .semibold))
+                        .foregroundColor(summary.goldUsed >= summary.goldLimit ? .red : .secondary)
+                } else if style == .compact {
                     Text(compactUsageSummary)
                         .font(.arial(size: 11, weight: .semibold))
                         .foregroundColor(summary.totalRemaining == 0 ? .red : .secondary)
@@ -124,9 +159,43 @@ struct DashboardSignalBudgetRow: View {
                         .font(.arial(size: 10))
                         .foregroundColor(.secondary)
                 }
+            } else {
+                if summary.isTiered {
+                    HStack(spacing: 8) {
+                        DashboardSignalUsageMeter(
+                            title: "Gold",
+                            used: summary.goldUsed,
+                            limit: summary.goldLimit,
+                            color: .yellow,
+                            style: .compact
+                        )
+                        DashboardSignalUsageMeter(
+                            title: "Silver",
+                            used: summary.silverUsed,
+                            limit: summary.silverLimit,
+                            color: Color(white: 0.55),
+                            style: .compact
+                        )
+                    }
+                } else if summary.goldLimit > 0 {
+                    progressBarOnly(used: summary.goldUsed, limit: summary.goldLimit, color: AppColors.primaryBlue)
+                }
             }
         }
-        .padding(.vertical, style == .compact ? 2 : 4)
+        .padding(.vertical, style == .compact ? 0 : 4)
+    }
+
+    private func progressBarOnly(used: Int, limit: Int, color: Color) -> some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(color.opacity(0.15))
+                Capsule()
+                    .fill(used >= limit ? Color.red.opacity(0.75) : color)
+                    .frame(width: limit > 0 ? geo.size.width * CGFloat(used) / CGFloat(limit) : 0)
+            }
+        }
+        .frame(height: 4)
     }
 
     private var compactUsageSummary: String {
@@ -137,77 +206,30 @@ struct DashboardSignalBudgetRow: View {
     }
 }
 
-// MARK: - Overview condensed card
-
-struct DashboardSignalsCondensedCard: View {
-    let summaries: [DataManager.SignalBudgetSummary]
-    var maxVisible: Int = 3
-
-    var body: some View {
-        NavigationLink(destination: AllSignaledProgramsView()) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    DashboardSectionHeader(
-                        title: "Signal Budget",
-                        icon: "star.circle.fill",
-                        tint: AppColors.accentPurple
-                    )
-                    Spacer(minLength: 0)
-                    Image(systemName: "chevron.right")
-                        .font(.arial(size: 12))
-                        .foregroundColor(.secondary.opacity(0.5))
-                }
-
-                VStack(spacing: 8) {
-                    ForEach(Array(summaries.prefix(maxVisible).enumerated()), id: \.element.id) { index, summary in
-                        DashboardSignalBudgetRow(summary: summary, style: .compact)
-                        if index < min(summaries.count, maxVisible) - 1 {
-                            Divider()
-                        }
-                    }
-                }
-
-                if summaries.count > maxVisible {
-                    Text("+ \(summaries.count - maxVisible) more specialt\(summaries.count - maxVisible == 1 ? "y" : "ies")")
-                        .font(.arial(size: 11, weight: .medium))
-                        .foregroundColor(AppColors.primaryBlue)
-                }
-
-                let totalRemaining = summaries.map(\.totalRemaining).reduce(0, +)
-                Text(totalRemaining == 0
-                     ? "All signal slots used across your specialties"
-                     : "\(totalRemaining) signal slot\(totalRemaining == 1 ? "" : "s") remaining total")
-                    .font(.arial(size: 11))
-                    .foregroundColor(.secondary)
-            }
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-// MARK: - Programs tab detail block
+// MARK: - Dashboard detail block
 
 struct DashboardSignalsDetailBlock: View {
     let summaries: [DataManager.SignalBudgetSummary]
+    var style: DashboardSignalBudgetRow.Style = .compact
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: style == .compact ? 8 : 12) {
             NavigationLink(destination: AllSignaledProgramsView()) {
                 HStack {
                     Text("View all assigned signals")
-                        .font(.arial(size: 13, weight: .semibold))
+                        .font(.arial(size: style == .compact ? 12 : 13, weight: .semibold))
                         .foregroundColor(AppColors.primaryBlue)
                     Spacer()
                     Image(systemName: "chevron.right")
-                        .font(.arial(size: 11))
+                        .font(.arial(size: 10))
                         .foregroundColor(.secondary.opacity(0.5))
                 }
             }
             .buttonStyle(.plain)
 
-            VStack(spacing: 14) {
+            VStack(spacing: style == .compact ? 8 : 14) {
                 ForEach(Array(summaries.enumerated()), id: \.element.id) { index, summary in
-                    DashboardSignalBudgetRow(summary: summary, style: .standard)
+                    DashboardSignalBudgetRow(summary: summary, style: style)
                     if index < summaries.count - 1 {
                         Divider()
                     }

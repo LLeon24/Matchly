@@ -17,7 +17,6 @@ struct DashboardView: View {
     @State private var showAddProgram = false
     @State private var showCustomization = false
     @State private var showProfileEdit = false
-    @State private var selectedSection: Int = 0
     @Binding var selectedTab: Int
     
     init(selectedTab: Binding<Int> = .constant(0)) {
@@ -28,16 +27,15 @@ struct DashboardView: View {
         dataManager.preferences.dashboardLayout
     }
 
+    private var isCoupleLinked: Bool {
+        FeatureFlags.couplesMatchEnabled && dataManager.preferences.couple?.isLinked == true
+    }
+
     private var dashboardPreferences: DashboardPreferences {
         dataManager.preferences.dashboardPreferences
     }
 
-    /// Section identity colors for tab labels and page dots (matches each page’s hero).
-    private var dashboardSectionAccents: [Color] {
-        [AppColors.accentOrange, AppColors.primaryBlue, AppColors.accentGreen]
-    }
-
-    /// Changes when layout or header prefs change — forces dashboard pages to refresh.
+    /// Changes when layout or header prefs change — forces dashboard to refresh.
     private var dashboardCustomizationToken: String {
         let layout = dataManager.preferences.dashboardLayout
         let prefs = dataManager.preferences.dashboardPreferences
@@ -62,36 +60,8 @@ struct DashboardView: View {
                 }
                 .matchlyScrollTabBarClearance()
             } else {
-                // Clean animated-underline section selector, kept in sync with
-                // the paged TabView below.
-                DashboardSectionTabBar(
-                    titles: ["Overview", "Programs", "Interviews"],
-                    selection: $selectedSection,
-                    tabAccents: dashboardSectionAccents
-                )
-                .padding(.horizontal, 16)
-                .padding(.top, screenLayout == .compactVertical ? 4 : 6)
-                .padding(.bottom, screenLayout == .compactVertical ? 4 : 6)
-
-                DashboardSectionPageIndicator(
-                    count: 3,
-                    selection: $selectedSection,
-                    tabAccents: dashboardSectionAccents
-                )
-                .padding(.bottom, screenLayout == .compactVertical ? 6 : 8)
-
-                TabView(selection: $selectedSection) {
-                    overviewPage
-                        .tag(0)
-                        .id("overview-\(dashboardCustomizationToken)")
-                    programsPage
-                        .tag(1)
-                        .id("programs-\(dashboardCustomizationToken)")
-                    interviewsPage
-                        .tag(2)
-                        .id("interviews-\(dashboardCustomizationToken)")
-                }
-                .tabViewStyle(.page(indexDisplayMode: .never))
+                dashboardPage
+                    .id("dashboard-\(dashboardCustomizationToken)")
             }
         }
         .matchlyRootContentFrame()
@@ -113,17 +83,12 @@ struct DashboardView: View {
             }
         }
         .onChange(of: selectedTab) { _, newValue in
-            // When the Dashboard tab is (re)selected, return to the Overview page.
-            if newValue == 0 {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    selectedSection = 0
-                }
+            if newValue == MainTabLayout.dashboardIndex {
+                NotificationCenter.default.post(name: NSNotification.Name("ScrollToTop"), object: nil)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ScrollToTop"))) { _ in
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                selectedSection = 0
-            }
+            // Dashboard is a single scroll view — PopToRoot handles navigation stack reset.
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("PopToRoot"))) { _ in
             // Pop to root when Dashboard tab is tapped — dismisses any pushed
@@ -259,24 +224,13 @@ struct DashboardView: View {
         }
     }
 
-    // MARK: - Section Pages
+    // MARK: - Dashboard Page
 
-    /// 1) Overview — application snapshot hero + Needs Attention to-dos + funnel + quick actions.
-    private var overviewPage: some View {
+    private var dashboardPage: some View {
         ScrollView {
             VStack(spacing: screenLayout.dashboardSectionSpacing) {
-                ForEach(overviewDisplayBlocks) { block in
-                    switch block {
-                    case .pairedAttentionAndPipeline:
-                        HStack(alignment: .top, spacing: 10) {
-                            needsAttentionCard
-                                .frame(maxWidth: .infinity, alignment: .topLeading)
-                            overviewFunnelCard
-                                .frame(maxWidth: .infinity, alignment: .topLeading)
-                        }
-                    case .section(let sectionId):
-                        overviewSectionView(for: sectionId)
-                    }
+                ForEach(dashboardSectionIDs, id: \.self) { sectionId in
+                    dashboardSectionView(for: sectionId)
                 }
             }
             .padding(.horizontal, 16)
@@ -290,41 +244,13 @@ struct DashboardView: View {
         }
     }
 
-    private enum OverviewDisplayBlock: Identifiable {
-        case section(String)
-        case pairedAttentionAndPipeline
-
-        var id: String {
-            switch self {
-            case .section(let sectionId): return sectionId
-            case .pairedAttentionAndPipeline: return "pairedAttentionAndPipeline"
-            }
-        }
-    }
-
-    private var overviewDisplayBlocks: [OverviewDisplayBlock] {
-        let visible = layout.orderedSectionIDs(in: DashboardLayout.overviewSectionIDs)
+    private var dashboardSectionIDs: [String] {
+        layout.orderedSectionIDs(in: DashboardLayout.dashboardSectionIDs)
             .filter { shouldShowSection($0) }
-        var blocks: [OverviewDisplayBlock] = []
-        var index = 0
-        while index < visible.count {
-            let sectionId = visible[index]
-            if screenLayout == .compactVertical,
-               sectionId == "needsAttention",
-               index + 1 < visible.count,
-               visible[index + 1] == "interviewPipeline" {
-                blocks.append(.pairedAttentionAndPipeline)
-                index += 2
-            } else {
-                blocks.append(.section(sectionId))
-                index += 1
-            }
-        }
-        return blocks
     }
 
     @ViewBuilder
-    private func overviewSectionView(for sectionId: String) -> some View {
+    private func dashboardSectionView(for sectionId: String) -> some View {
         switch sectionId {
         case "overviewHero":
             DashboardSnapshotHero(
@@ -338,21 +264,14 @@ struct DashboardView: View {
                 accentTint: overviewHeroAccentTint
             )
             .dashboardCardStyle()
-        case "overviewSignals":
-            if !signalBudgetSummaries.isEmpty {
-                DashboardSignalsCondensedCard(summaries: signalBudgetSummaries)
-                    .dashboardCardStyle()
-            }
         case "needsAttention":
             needsAttentionCard
-        case "interviewPipeline":
-            overviewFunnelCard
-        case "quickStats":
-            quickStatsSection
+        case "analytics":
+            analyticsSection
         case "quickActions":
             quickActionsSection
-        case "recentActivity":
-            recentActivitySection
+        case "programsCompare":
+            programsCompareCard
         default:
             EmptyView()
         }
@@ -368,82 +287,6 @@ struct DashboardView: View {
             ApplicationFunnelChart(stages: funnelStages)
         }
         .dashboardCardStyle()
-    }
-
-    /// 2) Programs — compact summary + compare + score distribution + top programs.
-    private var programsPage: some View {
-        ScrollView {
-            VStack(spacing: screenLayout.dashboardSectionSpacing) {
-                programsSummaryStrip
-                    .dashboardCardStyle()
-
-                if dataManager.programs.count >= 2 {
-                    programsCompareCard
-                }
-
-                if shouldShowSection("analytics") {
-                    analyticsSection
-                }
-
-                ForEach(layout.orderedSectionIDs(in: DashboardLayout.programsSectionIDs), id: \.self) { sectionId in
-                    if sectionId != "programsCompare", sectionId != "analytics", shouldShowSection(sectionId) {
-                        programsSectionView(for: sectionId)
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 2)
-            .padding(.bottom, screenLayout.pageBottomInset)
-        }
-        .matchlyScrollTabBarClearance()
-        .refreshable {
-            dataManager.recalculateAllScores()
-            dataManager.objectWillChange.send()
-        }
-    }
-
-    private var programsSummaryStrip: some View {
-        DashboardSectionSummaryHero(
-            icon: "building.2.fill",
-            tint: AppColors.primaryBlue,
-            bigNumber: "\(dataManager.programs.count)",
-            title: "Programs Tracked",
-            subtitle: topProgramMaxScore > 0
-                ? "Top score \(String(format: "%.1f", topProgramMaxScore))"
-                : "Score programs to build your rank list",
-            metrics: [
-                DashboardSummaryMetric(
-                    value: "\(dataManager.programs.filter { $0.finalScore > 0 }.count)",
-                    label: "Scored",
-                    tint: AppColors.accentTeal
-                ),
-                DashboardSummaryMetric(
-                    value: "\(programsNeedingReview)",
-                    label: "To Review",
-                    tint: programsNeedingReview > 0 ? AppColors.accentOrange : .secondary
-                )
-            ]
-        )
-    }
-
-    @ViewBuilder
-    private func programsSectionView(for sectionId: String) -> some View {
-        switch sectionId {
-        case "programsScoreDist":
-            programsScoreDistributionCard
-        case "programsCompare":
-            if dataManager.programs.count >= 2 {
-                programsCompareCard
-            }
-        case "topPrograms":
-            if !topPrograms.isEmpty {
-                topProgramsSection
-            }
-        case "analytics":
-            analyticsSection
-        default:
-            EmptyView()
-        }
     }
 
     private var programsScoreDistributionCard: some View {
@@ -493,133 +336,18 @@ struct DashboardView: View {
         .dashboardCardStyle()
     }
 
-    /// 3) Interviews — compact summary + upcoming and completed lists.
-    private var interviewsPage: some View {
-        ScrollView {
-            VStack(spacing: screenLayout.dashboardSectionSpacing) {
-                interviewsSummaryStrip
-                    .dashboardCardStyle()
-
-                interviewsUpcomingSection
-
-                if !completedInterviews.isEmpty {
-                    interviewsCompletedSection
-                }
-
-                if interviewCount == 0 {
-                    interviewsEmptyCard
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 2)
-            .padding(.bottom, screenLayout.pageBottomInset)
-        }
-        .matchlyScrollTabBarClearance()
-    }
-
-    private var interviewsSummaryStrip: some View {
-        DashboardSectionSummaryHero(
-            icon: "calendar.badge.clock",
-            tint: AppColors.accentGreen,
-            bigNumber: "\(upcomingInterviews.count)",
-            title: "Upcoming Interviews",
-            subtitle: interviewCount > 0
-                ? "\(interviewCount) scheduled · \(completedInterviews.count) completed"
-                : "Add interview dates to plan ahead",
-            metrics: [
-                DashboardSummaryMetric(
-                    value: "\(completedInterviews.count)",
-                    label: "Completed",
-                    tint: AppColors.primaryBlue
-                ),
-                DashboardSummaryMetric(
-                    value: "\(interviewCount)",
-                    label: "Total",
-                    tint: AppColors.accentGreen
-                )
-            ]
-        )
-    }
-
-    private var interviewsUpcomingSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            DashboardSectionHeader(
-                title: "Upcoming",
-                icon: "calendar.badge.clock",
-                tint: AppColors.accentGreen
-            )
-
-            if upcomingInterviews.isEmpty {
-                HStack(spacing: 10) {
-                    Image(systemName: "calendar")
-                        .font(.arial(size: 14))
-                        .foregroundColor(.secondary)
-                    Text(interviewCount > 0
-                         ? "No upcoming interviews — see completed below"
-                         : "Interview dates you add will appear here")
-                        .font(.arial(size: 13))
-                        .foregroundColor(.secondary)
-                }
-                .padding(.vertical, 6)
-            } else {
-                VStack(spacing: 6) {
-                    ForEach(upcomingInterviews, id: \.id) { program in
-                        NavigationLink(destination: ProgramEntryView(program: program)) {
-                            DashboardInterviewRow(program: program, isUpcoming: true)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-        }
-        .dashboardCardStyle()
-    }
-
-    private var interviewsCompletedSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            DashboardSectionHeader(
-                title: "Completed",
-                icon: "checkmark.circle.fill",
-                tint: AppColors.primaryBlue
-            )
-
-            VStack(spacing: 6) {
-                ForEach(completedInterviews, id: \.id) { program in
-                    NavigationLink(destination: ProgramEntryView(program: program)) {
-                        DashboardInterviewRow(program: program, isUpcoming: false)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .dashboardCardStyle()
-    }
-
-    private var interviewsEmptyCard: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "calendar.badge.plus")
-                .font(.arial(size: 28, weight: .light))
-                .foregroundColor(.secondary)
-            Text("No upcoming interviews")
-                .font(.arial(size: 15, weight: .semibold))
-                .foregroundColor(.primary)
-            Text("Interview dates you add to programs will appear here, sorted by date.")
-                .font(.arial(size: 12))
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 14)
-        .dashboardCardStyle()
-    }
-
     // MARK: - Overview: Needs Attention
 
-    /// Contextual one-liner under the hero title — tuned for post-invite workflow.
+    /// Contextual one-liner under the hero title — programs tracked + season status.
     private var overviewHeroSubtitle: String {
         let programCount = dataManager.programs.count
         guard programCount > 0 else {
             return "Add each program you've been invited to interview at"
+        }
+
+        var parts: [String] = []
+        if topProgramMaxScore > 0 {
+            parts.append("Top score \(String(format: "%.1f", topProgramMaxScore))")
         }
 
         if let next = upcomingInterviews.first, let date = next.interviewDate {
@@ -627,53 +355,37 @@ struct DashboardView: View {
             formatter.dateFormat = "MMM d"
             let name = HospitalNameFormatter.format(next.hospital.isEmpty ? next.name : next.hospital)
             if Calendar.current.isDateInToday(date) {
-                return "Today: \(name)"
+                parts.append("Today: \(name)")
+            } else if Calendar.current.isDateInTomorrow(date) {
+                parts.append("Tomorrow: \(name)")
+            } else {
+                parts.append("Next: \(name) · \(formatter.string(from: date))")
             }
-            if Calendar.current.isDateInTomorrow(date) {
-                return "Tomorrow: \(name)"
+        } else if programsNeedingInterviewDateCount > 0 {
+            parts.append("Log interview dates so you can prep and score after each visit")
+        } else if postInterviewNeedingScoreCount > 0 {
+            parts.append("\(postInterviewNeedingScoreCount) completed interview\(postInterviewNeedingScoreCount == 1 ? "" : "s") ready to score")
+        } else if interviewCount > 0 && upcomingInterviews.isEmpty {
+            parts.append("All interviews done — finish scoring to finalize your rank list")
+        } else {
+            let ranked = dataManager.programs.filter { $0.finalScore > 0 }.count
+            if ranked > 0 {
+                parts.append("\(ranked) program\(ranked == 1 ? "" : "s") scored and on your rank list")
+            } else {
+                parts.append("Score each program after its interview to build your rank list")
             }
-            return "Next: \(name) · \(formatter.string(from: date))"
         }
 
-        if programsNeedingInterviewDateCount > 0 {
-            return "Log interview dates so you can prep and score after each visit"
-        }
-
-        if postInterviewNeedingScoreCount > 0 {
-            return "\(postInterviewNeedingScoreCount) completed interview\(postInterviewNeedingScoreCount == 1 ? "" : "s") ready to score for your rank list"
-        }
-
-        if interviewCount > 0 && upcomingInterviews.isEmpty {
-            return "All interviews done — finish scoring to finalize your rank list"
-        }
-
-        let ranked = dataManager.programs.filter { $0.finalScore > 0 }.count
-        if ranked > 0 {
-            return "\(ranked) program\(ranked == 1 ? "" : "s") scored and on your rank list"
-        }
-
-        return "Score each program after its interview to build your rank list"
+        return parts.joined(separator: " · ")
     }
 
-    /// Hero center: upcoming interviews first; otherwise invites still needing a date.
+    /// Hero center: total programs tracked for the season.
     private var overviewHeroBigNumber: String {
-        if !upcomingInterviews.isEmpty {
-            return "\(upcomingInterviews.count)"
-        }
-        if programsNeedingInterviewDateCount > 0 {
-            return "\(programsNeedingInterviewDateCount)"
-        }
-        return "0"
+        "\(dataManager.programs.count)"
     }
 
     private var overviewHeroUnit: String {
-        if !upcomingInterviews.isEmpty {
-            return "upcoming"
-        }
-        if programsNeedingInterviewDateCount > 0 {
-            return programsNeedingInterviewDateCount == 1 ? "need date" : "need dates"
-        }
-        return "upcoming"
+        dataManager.programs.count == 1 ? "program" : "programs"
     }
 
     /// Ring: interview completion when dates exist; otherwise rank-list readiness.
@@ -717,6 +429,7 @@ struct DashboardView: View {
         guard programCount > 0 else { return [] }
 
         let ranked = dataManager.programs.filter { $0.finalScore > 0 }.count
+        let scored = ranked
 
         return [
             DashboardSnapshotStat(
@@ -732,16 +445,16 @@ struct DashboardView: View {
                 tint: AppColors.accentGreen
             ),
             DashboardSnapshotStat(
-                id: "toScore",
-                value: "\(programsNeedingScoringCount)",
-                label: "To Score",
-                tint: AppColors.primaryBlue
+                id: "scored",
+                value: "\(scored)",
+                label: "Scored",
+                tint: AppColors.accentTeal
             ),
             DashboardSnapshotStat(
-                id: "ranked",
-                value: "\(ranked)",
-                label: "Ranked",
-                tint: AppColors.accentPurple
+                id: "toReview",
+                value: "\(programsNeedingReview)",
+                label: "To Review",
+                tint: programsNeedingReview > 0 ? AppColors.accentOrange : .secondary
             )
         ]
     }
@@ -1165,7 +878,7 @@ struct DashboardView: View {
     private var quickStatsRow: some View {
         HStack(spacing: 12) {
             Button(action: {
-                selectedTab = 1 // My Programs tab
+                selectedTab = MainTabLayout.programsIndex
             }) {
                 QuickStatMini(
                     value: "\(dataManager.programs.count)",
@@ -1175,7 +888,9 @@ struct DashboardView: View {
             }
             .buttonStyle(.plain)
             
-            NavigationLink(destination: InterviewsView()) {
+            Button(action: {
+                selectedTab = MainTabLayout.interviewsIndex
+            }) {
                 QuickStatMini(
                     value: "\(interviewCount)",
                     label: "Interviews",
@@ -1316,7 +1031,7 @@ struct DashboardView: View {
             ], spacing: 10) {
                 // Total Programs - Primary KPI (top-left priority)
                 Button(action: {
-                    selectedTab = 1 // My Programs tab
+                    selectedTab = MainTabLayout.programsIndex
                 }) {
                     StatCard(
                         title: "Total Programs",
@@ -1341,7 +1056,9 @@ struct DashboardView: View {
                 .buttonStyle(.plain)
                 
                 // Interviews - Success indicator (green for positive status)
-                NavigationLink(destination: InterviewsView()) {
+                Button(action: {
+                    selectedTab = MainTabLayout.interviewsIndex
+                }) {
                     StatCard(
                         title: "Interviews",
                         value: "\(interviewCount)",
@@ -1394,7 +1111,7 @@ struct DashboardView: View {
                 )
                 
                 Button(action: {
-                    selectedTab = 1 // My Programs tab
+                    selectedTab = MainTabLayout.programsIndex
                 }) {
                     QuickActionContent(
                         title: "My Programs",
@@ -1404,7 +1121,7 @@ struct DashboardView: View {
                 }
                 
                 Button(action: {
-                    selectedTab = 2 // Rank List tab
+                    selectedTab = MainTabLayout.rankListIndex(isCoupleLinked: isCoupleLinked)
                 }) {
                     QuickActionContent(
                         title: "Rank List",
@@ -1437,23 +1154,6 @@ struct DashboardView: View {
                 ForEach(Array(topPrograms.prefix(3).enumerated()), id: \.element.id) { index, program in
                     NavigationLink(destination: ProgramEntryView(program: program)) {
                         TopProgramRow(program: program, rank: index + 1)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .dashboardCardStyle()
-    }
-    
-    // MARK: - Upcoming Interviews
-    private var upcomingInterviewsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            DashboardSectionHeader(title: "Upcoming Interviews", icon: "calendar.badge.clock", tint: AppColors.accentGreen)
-            
-            VStack(spacing: 6) {
-                ForEach(Array(upcomingInterviews.prefix(3)), id: \.id) { program in
-                    NavigationLink(destination: ProgramEntryView(program: program)) {
-                        UpcomingInterviewRow(program: program)
                     }
                     .buttonStyle(.plain)
                 }
@@ -1632,7 +1332,7 @@ struct DashboardView: View {
     }
 
     private var analyticsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             DashboardSectionHeader(
                 title: "Signals & Status",
                 icon: "star.circle.fill",
@@ -1675,22 +1375,22 @@ struct DashboardView: View {
     }
 
     private func programsStatusRow(title: String, subtitle: String, icon: String, tint: Color) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             ZStack {
                 Circle()
                     .fill(tint.opacity(0.15))
-                    .frame(width: 36, height: 36)
+                    .frame(width: 32, height: 32)
                 Image(systemName: icon)
-                    .font(.arial(size: 15, weight: .semibold))
+                    .font(.arial(size: 14, weight: .semibold))
                     .foregroundColor(tint)
             }
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(title)
-                    .font(.arial(size: 14, weight: .semibold))
+                    .font(.arial(size: 13, weight: .semibold))
                     .foregroundColor(.primary)
                 Text(subtitle)
-                    .font(.arial(size: 11))
+                    .font(.arial(size: 10))
                     .foregroundColor(.secondary)
                     .lineLimit(2)
             }
@@ -1701,7 +1401,7 @@ struct DashboardView: View {
                 .font(.arial(size: 10))
                 .foregroundColor(.secondary.opacity(0.5))
         }
-        .padding(.horizontal, 4)
+        .padding(.horizontal, 2)
         .padding(.vertical, 6)
     }
     
@@ -1979,25 +1679,15 @@ struct DashboardView: View {
         guard layout.isSectionEnabled(sectionId) else { return false }
 
         switch sectionId {
-        case "needsAttention", "interviewPipeline", "overviewHero", "quickActions", "quickStats":
+        case "needsAttention", "overviewHero", "quickActions":
             return true
-        case "overviewSignals":
-            return !signalBudgetSummaries.isEmpty
         case "analytics":
             let hasStatus = programsNeedingReview > 0 || redFlaggedProgramsCount > 0
             return !signalBudgetSummaries.isEmpty || (!dataManager.programs.isEmpty && hasStatus)
-        case "recentActivity":
-            return !getRecentPrograms().isEmpty
-        case "topPrograms":
-            return !topPrograms.isEmpty
-        case "programsScoreDist":
-            return !dataManager.programs.isEmpty
         case "programsCompare":
             return dataManager.programs.count >= 2
-        case "upcomingInterviews":
-            return true
         default:
-            return true
+            return false
         }
     }
     
@@ -2219,141 +1909,6 @@ struct TopProgramRow: View {
         .padding(.horizontal, 4)
     }
     
-}
-
-/// Dashboard interview list row — matches `TopProgramRow` typography and layout.
-struct DashboardInterviewRow: View {
-    let program: Program
-    let isUpcoming: Bool
-
-    private var badgeColor: Color {
-        isUpcoming ? AppColors.accentGreen : AppColors.primaryBlue
-    }
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(badgeColor.opacity(0.15))
-                    .frame(width: 40, height: 40)
-
-                if let date = program.interviewDate {
-                    VStack(spacing: 0) {
-                        Text(Self.dayFormatter.string(from: date))
-                            .font(.arial(size: 14, weight: .bold))
-                            .foregroundColor(badgeColor)
-                        Text(Self.monthFormatter.string(from: date))
-                            .font(.arial(size: 9, weight: .medium))
-                            .foregroundColor(.secondary)
-                    }
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(HospitalNameFormatter.format(program.hospital.isEmpty ? program.name : program.hospital))
-                    .font(.arial(size: 15, weight: .semibold))
-                    .foregroundColor(.primary)
-                    .lineLimit(3)
-                    .minimumScaleFactor(0.85)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                HStack(spacing: 6) {
-                    if !program.city.isEmpty && !program.state.isEmpty {
-                        Text("\(program.city), \(program.state)")
-                            .font(.arial(size: 13))
-                            .foregroundColor(.secondary)
-                    }
-
-                    if let date = program.interviewDate {
-                        HStack(spacing: 3) {
-                            Image(systemName: "clock")
-                                .font(.arial(size: 10))
-                            Text(Self.timeFormatter.string(from: date))
-                                .font(.arial(size: 13, weight: .medium))
-                        }
-                        .foregroundColor(.secondary)
-                    }
-
-                    if isUpcoming, let date = program.interviewDate {
-                        let daysUntil = Calendar.current.dateComponents([.day], from: Date(), to: date).day ?? 0
-                        Text("· \(daysUntil)d")
-                            .font(.arial(size: 13, weight: .semibold))
-                            .foregroundColor(badgeColor)
-                    }
-
-                    ProgramVoiceMemoBadge(program: program, iconSize: 9, textSize: 11)
-                }
-            }
-
-            Spacer(minLength: 4)
-
-            Image(systemName: "chevron.right")
-                .font(.arial(size: 12))
-                .foregroundColor(.secondary.opacity(0.4))
-        }
-        .padding(.vertical, 10)
-        .padding(.horizontal, 4)
-    }
-
-    private static let dayFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "d"
-        return formatter
-    }()
-
-    private static let monthFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM"
-        return formatter
-    }()
-
-    private static let timeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "h:mm a"
-        return formatter
-    }()
-}
-
-struct UpcomingInterviewRow: View {
-    let program: Program
-    
-    var body: some View {
-        HStack(spacing: 12) {
-            // Calendar icon - cleaner and more vibrant
-            ZStack {
-                Circle()
-                    .fill(Color(red: 0.15, green: 0.75, blue: 0.35).opacity(0.15))
-                    .frame(width: 40, height: 40)
-                
-                Image(systemName: "calendar.badge.clock")
-                    .font(.arial(size: 18, weight: .semibold))
-                    .foregroundColor(Color(red: 0.15, green: 0.75, blue: 0.35))
-            }
-            
-            // Program info
-            VStack(alignment: .leading, spacing: 4) {
-                Text(HospitalNameFormatter.format(program.hospital.isEmpty ? program.name : program.hospital))
-                    .font(.arial(size: 15, weight: .semibold))
-                    .lineLimit(1)
-                
-                if let interviewDate = program.interviewDate {
-                    Text(interviewDate, style: .date)
-                        .font(.arial(size: 13))
-                        .foregroundColor(.secondary)
-                }
-
-                ProgramVoiceMemoBadge(program: program, iconSize: 9, textSize: 11)
-            }
-            
-            Spacer()
-            
-            Image(systemName: "chevron.right")
-                .font(.arial(size: 12))
-                .foregroundColor(.secondary.opacity(0.4))
-        }
-        .padding(.vertical, 10)
-        .padding(.horizontal, 4)
-    }
 }
 
 // MARK: - Helper Functions

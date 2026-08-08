@@ -34,7 +34,7 @@ struct SettingsView: View {
                     dataManagementSection
                     accountSection
 
-                    Section("About") {
+                    Section {
                         HStack {
                             Text("Version")
                             Spacer()
@@ -42,16 +42,11 @@ struct SettingsView: View {
                                 .foregroundColor(.secondary)
                         }
 
-                        HStack {
-                            Text("Build")
-                            Spacer()
-                            Text(MatchlyBuildInfo.displayLabel)
-                                .foregroundColor(.secondary)
-                        }
-
                         Text("Matchly helps medical students organize residency interview information and generate personalized rank lists.")
                             .font(.caption)
                             .foregroundColor(.secondary)
+                    } header: {
+                        MatchlyFormSectionHeader(title: "About")
                     }
                 }
                 .scrollContentBackground(.hidden)
@@ -91,7 +86,7 @@ struct SettingsView: View {
     }
     
     private var profileSection: some View {
-        Section("Profile") {
+        Section {
                     NavigationLink(destination: ProfileEditView()) {
                         HStack(spacing: 12) {
                             // Profile photo or icon
@@ -153,10 +148,13 @@ struct SettingsView: View {
                             .padding(.vertical, 4)
                     )
                 }
+        } header: {
+            MatchlyFormSectionHeader(title: "Profile")
+        }
     }
     
     private var appInformationSection: some View {
-        Section("App Information") {
+        Section {
                     Button {
                         NotificationCenter.default.post(name: NSNotification.Name("ShowFeatureTour"), object: nil)
                     } label: {
@@ -213,10 +211,13 @@ struct SettingsView: View {
                     .tint(AppColors.primaryBlue)
                     .listRowBackground(Color.clear)
                 }
+        } header: {
+            MatchlyFormSectionHeader(title: "App Information")
+        }
     }
     
     private var couplesMatchingSection: some View {
-        Section("Couples Matching") {
+        Section {
                     if let couple = dataManager.preferences.couple {
                         if couple.isLinked {
                             NavigationLink(destination: CouplesMatchingView()) {
@@ -257,10 +258,13 @@ struct SettingsView: View {
                         }
                     }
                 }
+        } header: {
+            MatchlyFormSectionHeader(title: "Couples Matching")
+        }
     }
     
     private var questionnaireSection: some View {
-        Section("Questionnaire") {
+        Section {
                     NavigationLink(destination: QuestionnaireCustomizationView()) {
                         Text("Customize Questionnaire")
                     }
@@ -301,6 +305,9 @@ struct SettingsView: View {
                         }
                     }
                 }
+        } header: {
+            MatchlyFormSectionHeader(title: "Questionnaire")
+        }
     }
     
     private var calendarSection: some View {
@@ -325,14 +332,14 @@ struct SettingsView: View {
                         }
                     }
                 } header: {
-                    Text("Calendar")
+                    MatchlyFormSectionHeader(title: "Calendar")
                 } footer: {
                     Text("When enabled, your interview dates will be synced to a \"Matchly Interviews\" calendar in your device calendar app. You can sync interviews from the Interviews page.")
                 }
     }
     
     private var dataManagementSection: some View {
-        Section("Data Management") {
+        Section {
                     NavigationLink(destination: DataBackupView()) {
                         HStack {
                             Image(systemName: "icloud.fill")
@@ -349,10 +356,13 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.glass)
                 }
+        } header: {
+            MatchlyFormSectionHeader(title: "Data Management")
+        }
     }
     
     private var accountSection: some View {
-        Section("Account") {
+        Section {
                     if BiometricAuthManager.shared.canAuthenticate {
                         Toggle(isOn: biometricLoginBinding) {
                             Label {
@@ -420,6 +430,9 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.glass)
                 }
+        } header: {
+            MatchlyFormSectionHeader(title: "Account")
+        }
     }
     
     private var biometricLoginBinding: Binding<Bool> {

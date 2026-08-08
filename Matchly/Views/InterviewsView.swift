@@ -46,6 +46,15 @@ struct InterviewsView: View {
     
     var body: some View {
         VStack(spacing: 0) {
+            MatchlyListPageTitleRow(title: "Interviews") {
+                if !programsNeedingDates.isEmpty {
+                    NavigationLink(destination: SetInterviewDatesView()) {
+                        MatchlyToolbarAddInterviewDateButton()
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
             // View Mode Picker
             Picker("View Mode", selection: $viewMode) {
                 Label("List", systemImage: "list.bullet").tag(ViewMode.list)
@@ -53,8 +62,7 @@ struct InterviewsView: View {
             }
             .pickerStyle(.segmented)
             .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .glassEffect(.regular, in: .rect(cornerRadius: 12))
+            .padding(.vertical, 8)
             .padding(.horizontal, 16)
             
             if viewMode == .list {
@@ -63,36 +71,10 @@ struct InterviewsView: View {
                 calendarView
             }
         }
-        .navigationTitle("Interviews")
-        .navigationBarTitleDisplayMode(.large)
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .matchlyScrollTabBarClearance()
         .appCanvasBackground()
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                if allInterviews.isEmpty && !programsNeedingDates.isEmpty {
-                    NavigationLink(destination: SetInterviewDatesView()) {
-                        Image(systemName: "calendar.badge.plus")
-                            .font(.arial(size: 16))
-                    }
-                    .accessibilityLabel("Set interview dates")
-                } else {
-                    Button(action: {
-                        Task {
-                            await createCalendarEvents()
-                        }
-                    }) {
-                        if isCreatingEvents {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                        } else {
-                            Image(systemName: "calendar.badge.plus")
-                                .font(.arial(size: 16))
-                        }
-                    }
-                    .disabled(isCreatingEvents || allInterviews.isEmpty)
-                    .accessibilityLabel("Add interviews to calendar")
-                }
-            }
-        }
         .alert("Calendar Access Required", isPresented: $showCalendarPermissionAlert) {
             Button("Settings") {
                 if let settingsUrl = URL(string: UIApplication.openSettingsURLString) {
@@ -299,7 +281,9 @@ struct InterviewsView: View {
                 }
             }
         }
-        .padding(.bottom, 90) // Space for custom tab bar
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .matchlyScrollTabBarClearance()
     }
     
     private var calendarView: some View {
@@ -624,87 +608,89 @@ struct CompactInterviewCard: View {
 struct InterviewRow: View {
     let program: Program
     let isUpcoming: Bool
-    
-    var body: some View {
-        HStack(spacing: 12) {
-            // Date indicator
-            VStack(spacing: 2) {
-                if let date = program.interviewDate {
-                    Text(Self.dayFormatter.string(from: date))
-                        .font(.arial(size: 20, weight: .bold))
-                        .foregroundColor(isUpcoming ? .blue : .secondary)
-                    
-                    Text(Self.monthFormatter.string(from: date))
-                        .font(.arial(size: 11, weight: .medium))
-                        .foregroundColor(.secondary)
-                }
-            }
-            .frame(width: 50)
-            .padding(.vertical, 8)
-            .glassEffect(
-                isUpcoming
-                    ? .regular.tint(Color.blue.opacity(0.18)).interactive()
-                    : .regular,
-                in: .rect(cornerRadius: 8)
-            )
-            
-            // Program info
-            VStack(alignment: .leading, spacing: 4) {
-                Text(HospitalNameFormatter.format(program.hospital.isEmpty ? program.name : program.hospital))
-                    .font(.arial(size: 16, weight: .semibold))
-                    .lineLimit(2)
-                
-                if !program.city.isEmpty && !program.state.isEmpty {
-                    Text("\(program.city), \(program.state)")
-                        .font(.arial(size: 13))
-                        .foregroundColor(.secondary)
-                }
-                
-                if let date = program.interviewDate {
-                    HStack(spacing: 4) {
-                        Image(systemName: "clock")
-                            .font(.arial(size: 11))
-                        Text(Self.timeFormatter.string(from: date))
-                            .font(.arial(size: 12))
-                    }
-                    .foregroundColor(.secondary)
-                }
 
-                ProgramVoiceMemoBadge(program: program, iconSize: 9, textSize: 11)
-            }
-            
-            Spacer()
-            
-            if isUpcoming {
-                // Days until indicator
+    private var badgeColor: Color {
+        isUpcoming ? AppColors.accentTeal : Color.secondary
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(badgeColor.opacity(0.15))
+                    .frame(width: 42, height: 42)
+
                 if let date = program.interviewDate {
-                    let daysUntil = Calendar.current.dateComponents([.day], from: Date(), to: date).day ?? 0
-                    VStack(spacing: 2) {
-                        Text("\(daysUntil)")
-                            .font(.arial(size: 18, weight: .bold))
-                            .foregroundColor(.blue)
-                        Text("days")
-                            .font(.arial(size: 10))
+                    VStack(spacing: 0) {
+                        Text(Self.dayFormatter.string(from: date))
+                            .font(.arial(size: 15, weight: .bold))
+                            .foregroundColor(badgeColor)
+                        Text(Self.monthFormatter.string(from: date))
+                            .font(.arial(size: 9, weight: .medium))
                             .foregroundColor(.secondary)
                     }
                 }
             }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(HospitalNameFormatter.format(
+                    program.hospital.isEmpty
+                        ? (program.name.isEmpty ? "Unnamed Program" : program.name)
+                        : program.hospital
+                ))
+                .font(.arial(size: 15, weight: .semibold))
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+
+                if !program.specialty.isEmpty {
+                    MatchlyProgramSpecialtyBadge(specialty: program.specialty)
+                }
+
+                MatchlyProgramLocationAndIDRow(program: program)
+
+                if let date = program.interviewDate {
+                    HStack(spacing: 8) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "clock")
+                                .font(.arial(size: 9))
+                            Text(Self.timeFormatter.string(from: date))
+                                .font(.arial(size: 11, weight: .medium))
+                        }
+                        .foregroundColor(.secondary)
+
+                        if isUpcoming {
+                            let daysUntil = Calendar.current.dateComponents([.day], from: Date(), to: date).day ?? 0
+                            Text("\(daysUntil)d")
+                                .font(.arial(size: 10, weight: .semibold))
+                                .foregroundColor(AppColors.accentTeal)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(AppColors.accentTeal.opacity(0.12))
+                                .cornerRadius(4)
+                        }
+                    }
+                }
+
+                ProgramVoiceMemoBadge(program: program, iconSize: 9, textSize: 11)
+            }
+
+            Spacer(minLength: 0)
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
     }
-    
+
     private static let dayFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "d"
         return formatter
     }()
-    
+
     private static let monthFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM"
         return formatter
     }()
-    
+
     private static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "h:mm a"
