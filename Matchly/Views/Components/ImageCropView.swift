@@ -10,6 +10,7 @@ struct ImageCropView: View {
     let image: UIImage
     var onCrop: (UIImage) -> Void
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.displayScale) private var displayScale
 
     @State private var scale: CGFloat = 1
     @State private var steadyScale: CGFloat = 1
@@ -23,7 +24,7 @@ struct ImageCropView: View {
     private let cropSize: CGFloat = 300
 
     private var cropPixelSize: CGFloat {
-        cropSize * max(UIScreen.main.scale, 2)
+        cropSize * max(displayScale, 2)
     }
 
     var body: some View {

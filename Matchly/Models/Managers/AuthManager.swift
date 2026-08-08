@@ -80,6 +80,7 @@ struct User: Codable, Identifiable, Equatable {
 }
 
 // MARK: - Auth Manager
+@MainActor
 class AuthManager: ObservableObject {
     static let shared = AuthManager()
 
@@ -241,7 +242,7 @@ class AuthManager: ObservableObject {
         }
 
         Task {
-            await DataManager.shared.mergeWithAccountCloudIfNeeded(trigger: "signIn")
+            _ = await DataManager.shared.mergeWithAccountCloudIfNeeded(trigger: "signIn")
         }
     }
 
@@ -470,7 +471,7 @@ class AuthManager: ObservableObject {
         }
         GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
 
-        guard let presenting = await Self.topViewController() else {
+        guard let presenting = Self.topViewController() else {
             throw AuthError.networkError
         }
 
@@ -712,26 +713,52 @@ class AuthManager: ObservableObject {
         }
     }
 
-    @MainActor
-    private static func topViewController(
-        base: UIViewController? = {
-            UIApplication.shared.connectedScenes
-                .compactMap { $0 as? UIWindowScene }
-                .flatMap(\.windows)
-                .first { $0.isKeyWindow }?
-                .rootViewController
-        }()
-    ) -> UIViewController? {
-        if let nav = base as? UINavigationController {
+    private static func topViewController(base: UIViewController? = nil) -> UIViewController? {
+        let resolvedBase = base ?? activeRootViewController()
+        if let nav = resolvedBase as? UINavigationController {
             return topViewController(base: nav.visibleViewController)
         }
-        if let tab = base as? UITabBarController {
+        if let tab = resolvedBase as? UITabBarController {
             return topViewController(base: tab.selectedViewController)
         }
-        if let presented = base?.presentedViewController {
+        if let presented = resolvedBase?.presentedViewController {
             return topViewController(base: presented)
         }
-        return base
+        return resolvedBase
+    }
+
+    private static func activeRootViewController() -> UIViewController? {
+        for scene in UIApplication.shared.connectedScenes {
+            guard let windowScene = scene as? UIWindowScene else { continue }
+            if let keyWindow = windowScene.windows.first(where: { $0.isKeyWindow }) {
+                return keyWindow.rootViewController
+            }
+            if let window = windowScene.windows.first {
+                return window.rootViewController
+            }
+        }
+        return nil
+    }
+
+    static func presentationAnchorForAppleSignIn() -> ASPresentationAnchor {
+        for scene in UIApplication.shared.connectedScenes {
+            guard let windowScene = scene as? UIWindowScene else { continue }
+            if let keyWindow = windowScene.windows.first(where: { $0.isKeyWindow }) {
+                return keyWindow
+            }
+            if let window = windowScene.windows.first {
+                return window
+            }
+        }
+
+        Self.logger.error("Apple Sign In: No key window available")
+        let windowScenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        if let windowScene = windowScenes.first(where: { $0.activationState == .foregroundActive }) ?? windowScenes.first {
+            return UIWindow(windowScene: windowScene)
+        }
+
+        Self.logger.error("Apple Sign In: No window scene available")
+        preconditionFailure("Apple Sign In requires an active window scene")
     }
 
     // MARK: - CloudKit Identity
@@ -987,34 +1014,11 @@ class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, ASAuthor
         continuation.resume(throwing: error)
     }
     
-    func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
-        // Try to get window from connected scenes (iOS 13+)
-        // First, try to find the key window
-        for scene in UIApplication.shared.connectedScenes {
-            if let windowScene = scene as? UIWindowScene {
-                if let keyWindow = windowScene.windows.first(where: { $0.isKeyWindow }) {
-                    return keyWindow
-                }
-                // Fallback to first window in scene
-                if let window = windowScene.windows.first {
-                    return window
-                }
-            }
+    nonisolated func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+        // ASAuthorizationController calls this on the main thread.
+        MainActor.assumeIsolated {
+            AuthManager.presentationAnchorForAppleSignIn()
         }
-        
-        // This should never happen in a properly initialized app
-        // Log the error for debugging
-        AuthManager.logger.error("Apple Sign In: No key window available")
-        // Return a window created from a window scene found through context to
-        // prevent a crash. The sign-in will fail gracefully and the delegate will
-        // surface the error. Prefer the foreground-active scene.
-        let windowScenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-        if let windowScene = windowScenes.first(where: { $0.activationState == .foregroundActive }) ?? windowScenes.first {
-            return UIWindow(windowScene: windowScene)
-        }
-        // Last resort: no window scene exists (should not happen during active sign-in).
-        AuthManager.logger.error("Apple Sign In: No window scene available")
-        preconditionFailure("Apple Sign In requires an active window scene")
     }
 }
 
