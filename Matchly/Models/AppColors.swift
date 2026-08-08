@@ -52,6 +52,23 @@ struct AppColors {
         light: Color(red: 0.90, green: 0.28, blue: 0.30),
         dark: Color(red: 1.0, green: 0.38, blue: 0.40)
     )
+
+    // MARK: - Interview season pipeline (hero ring + stat row share these exactly)
+
+    /// Warm coral — program still needs an interview date.
+    static let pipelineNeedDate = accentOrange
+    /// Rich gold — readable on light backgrounds; matches ring arc.
+    static let pipelineUpcoming = Color(
+        light: Color(red: 0.86, green: 0.66, blue: 0.10),
+        dark: Color(red: 0.96, green: 0.78, blue: 0.28)
+    )
+    /// Brand-success green — questionnaire scored and ready.
+    static let pipelineScored = accentGreen
+    /// Soft rose — needs questionnaire attention; blends with orange/gold on the ring.
+    static let pipelineToReview = Color(
+        light: Color(red: 0.88, green: 0.40, blue: 0.46),
+        dark: Color(red: 0.96, green: 0.50, blue: 0.54)
+    )
     
     // Gradient combinations - adapt to dark mode
     static var primaryGradient: LinearGradient {

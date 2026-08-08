@@ -350,13 +350,6 @@ struct DashboardSnapshotStat: Identifiable {
     let tint: Color
 }
 
-/// Prominent next-upcoming interview line for the season hero.
-struct DashboardNextInterviewCallout: Equatable {
-    let prefix: String
-    let programName: String
-    let dateText: String
-}
-
 /// Overview hero: upcoming interviews front-and-center, ring shows season progress,
 /// and a four-up stat row for programs, rank list, completed interviews, and scoring.
 struct DashboardSnapshotHero: View {
@@ -366,13 +359,14 @@ struct DashboardSnapshotHero: View {
     let unit: String
     let title: String
     let subtitle: String
-    var nextInterview: DashboardNextInterviewCallout? = nil
+    var nextInterviewProgram: Program? = nil
     var ringSegments: [DashboardSnapshotRingSegment] = []
     let stats: [DashboardSnapshotStat]
     var accentTint: Color = AppColors.accentGreen
     @Environment(\.matchlyLayout) private var layout
 
     private var usesSegmentedRing: Bool { !ringSegments.isEmpty }
+    private let segmentBlendFraction: Double = 0.055
 
     private var gradientColors: [Color] {
         [accentTint, accentTint.opacity(0.65)]
@@ -422,9 +416,7 @@ struct DashboardSnapshotHero: View {
                     .font(.arial(size: layout.heroTitleFont, weight: .bold))
                     .foregroundColor(.primary)
 
-                if let nextInterview {
-                    nextInterviewCallout(nextInterview)
-                }
+                nextInterviewSection
 
                 if !subtitle.isEmpty {
                     Text(subtitle)
@@ -452,9 +444,7 @@ struct DashboardSnapshotHero: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
 
-                    if let nextInterview {
-                        nextInterviewCallout(nextInterview, alignment: .leading)
-                    }
+                    nextInterviewSectionContent(alignment: .leading)
 
                     if !subtitle.isEmpty {
                         Text(subtitle)
@@ -531,29 +521,89 @@ struct DashboardSnapshotHero: View {
     }
 
     private var segmentedRingArcs: some View {
+        Circle()
+            .trim(from: 0, to: segmentedRingFill)
+            .stroke(
+                blendedSegmentGradient(),
+                style: StrokeStyle(lineWidth: layout.heroRingLineWidth, lineCap: .round)
+            )
+            .frame(width: layout.heroRingSize, height: layout.heroRingSize)
+            .rotationEffect(.degrees(-90))
+            .animation(.spring(response: 0.7, dampingFraction: 0.85), value: segmentedRingFill)
+    }
+
+    private func blendedSegmentGradient() -> AngularGradient {
         let segments = ringSegments
-        let starts: [Double] = segments.indices.map { index in
-            segments.prefix(index).reduce(0) { $0 + $1.fraction }
+        guard !segments.isEmpty else {
+            return AngularGradient(
+                gradient: Gradient(colors: [accentTint]),
+                center: .center,
+                startAngle: .degrees(-90),
+                endAngle: .degrees(270)
+            )
         }
 
-        return ZStack {
-            ForEach(Array(segments.enumerated()), id: \.element.id) { index, segment in
-                let start = starts[index]
-                let end = min(start + segment.fraction, 1)
-                Circle()
-                    .trim(from: start, to: end)
-                    .stroke(
-                        segment.color,
-                        style: StrokeStyle(
-                            lineWidth: layout.heroRingLineWidth,
-                            lineCap: index == 0 || index == segments.count - 1 ? .round : .butt
-                        )
-                    )
-                    .frame(width: layout.heroRingSize, height: layout.heroRingSize)
-                    .rotationEffect(.degrees(-90))
+        let blend = segmentBlendFraction
+        var stops: [Gradient.Stop] = []
+        var cursor: Double = 0
+
+        for (index, segment) in segments.enumerated() {
+            let previous = segments[(index - 1 + segments.count) % segments.count].color
+            let next = segments[(index + 1) % segments.count].color
+            let start = cursor
+            let end = min(cursor + segment.fraction, 1)
+            let innerStart = min(start + blend, end)
+            let innerEnd = max(end - blend, innerStart)
+
+            if segments.count == 1 {
+                stops.append(.init(color: segment.color, location: start))
+                stops.append(.init(color: segment.color, location: end))
+            } else {
+                stops.append(.init(color: previous, location: start))
+                stops.append(.init(color: segment.color, location: innerStart))
+                stops.append(.init(color: segment.color, location: innerEnd))
+                stops.append(.init(color: next, location: end))
+            }
+
+            cursor = end
+        }
+
+        if segments.count > 1, segmentedRingFill >= 0.999 {
+            let first = segments[0].color
+            let last = segments[segments.count - 1].color
+            stops.append(.init(color: last, location: max(0, 1 - blend)))
+            stops.append(.init(color: first, location: 1))
+        }
+
+        let sorted = stops.sorted { $0.location < $1.location }
+        return AngularGradient(
+            gradient: Gradient(stops: sorted),
+            center: .center,
+            startAngle: .degrees(-90),
+            endAngle: .degrees(270)
+        )
+    }
+
+    @ViewBuilder
+    private var nextInterviewSection: some View {
+        nextInterviewSectionContent(alignment: .center)
+    }
+
+    @ViewBuilder
+    private func nextInterviewSectionContent(alignment: HorizontalAlignment) -> some View {
+        if let program = nextInterviewProgram {
+            VStack(alignment: alignment, spacing: 8) {
+                Text("Next Interview")
+                    .font(.arial(size: 12, weight: .semibold))
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: alignment == .center ? .center : .leading)
+
+                NavigationLink(destination: ProgramEntryView(program: program)) {
+                    InterviewRow(program: program, isUpcoming: true)
+                }
+                .buttonStyle(.plain)
             }
         }
-        .animation(.spring(response: 0.7, dampingFraction: 0.85), value: segmentedRingFill)
     }
 
     private var progressCaptionLabel: some View {
@@ -568,19 +618,26 @@ struct DashboardSnapshotHero: View {
     @ViewBuilder
     private var statsRow: some View {
         if !stats.isEmpty {
+            Divider()
+                .padding(.top, 14)
+                .padding(.bottom, 10)
+
             HStack(spacing: 0) {
                 ForEach(stats) { stat in
                     statCell(stat)
                 }
             }
-            .padding(.top, 4)
         }
     }
 
     @ViewBuilder
     private var statsGrid: some View {
-        if !stats.isEmpty {
-            LazyVGrid(
+                if !stats.isEmpty {
+                    Divider()
+                        .padding(.top, 6)
+                        .padding(.bottom, 4)
+
+                    LazyVGrid(
                 columns: [
                     GridItem(.flexible(), spacing: 8),
                     GridItem(.flexible(), spacing: 8)
@@ -609,40 +666,6 @@ struct DashboardSnapshotHero: View {
                 .minimumScaleFactor(0.8)
         }
         .frame(maxWidth: .infinity)
-    }
-
-    private func nextInterviewCallout(
-        _ info: DashboardNextInterviewCallout,
-        alignment: HorizontalAlignment = .center
-    ) -> some View {
-        VStack(alignment: alignment, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "calendar.badge.clock")
-                    .font(.arial(size: 13, weight: .semibold))
-                    .foregroundColor(AppColors.primaryBlue)
-                Text(info.prefix)
-                    .font(.arial(size: 13, weight: .semibold))
-                    .foregroundColor(AppColors.primaryBlue)
-                Spacer(minLength: 8)
-                Text(info.dateText)
-                    .font(.arial(size: 15, weight: .bold))
-                    .foregroundColor(.primary)
-            }
-
-            Text(info.programName)
-                .font(.arial(size: 15, weight: .semibold))
-                .foregroundColor(.primary)
-                .multilineTextAlignment(alignment == .center ? .center : .leading)
-                .lineLimit(3)
-                .minimumScaleFactor(0.9)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: alignment == .center ? .center : .leading)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 14)
-        .frame(maxWidth: .infinity)
-        .background(AppColors.primaryBlue.opacity(0.07))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 

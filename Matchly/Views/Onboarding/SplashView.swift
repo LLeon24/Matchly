@@ -124,14 +124,24 @@ struct SplashView: View {
     
     @ViewBuilder
     private var contentView: some View {
-        // Check authentication first
-        if authManager.authState == .signedOut {
+        switch authManager.authState {
+        case .loading:
+            launchPlaceholder
+        case .signedOut:
             AuthenticationView()
-        } else if dataManager.preferences.hasCompletedOnboarding {
-            MainTabView()
-        } else {
-            OnboardingFlowView()
+        case .signedIn:
+            if dataManager.preferences.hasCompletedOnboarding {
+                MainTabView()
+            } else {
+                OnboardingFlowView()
+            }
         }
+    }
+
+    /// Avoid flashing login or main UI while session restoration finishes.
+    private var launchPlaceholder: some View {
+        AppColors.dashboardCanvas
+            .ignoresSafeArea()
     }
 }
 

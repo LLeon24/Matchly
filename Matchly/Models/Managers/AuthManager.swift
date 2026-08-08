@@ -181,18 +181,12 @@ class AuthManager: ObservableObject {
     }
 
     /// Align local session with Firebase Auth after `FirebaseApp.configure()`.
+    /// Never clears a valid local session on launch — that caused a flash of the login
+    /// screen before Face ID / cached session restored the user.
     func syncWithFirebaseSession() {
-        if let firebaseUser = Auth.auth().currentUser {
-            let user = makeUser(from: firebaseUser, existing: currentUser)
-            signIn(user: user)
-        } else if case .signedIn = authState {
-            // Local cache without a Firebase session — keep signed-out until they re-auth.
-            // Do not wipe biometric keychain; only clear the active session.
-            currentUser = nil
-            authState = .signedOut
-            isAppLocked = false
-            UserDefaults.standard.removeObject(forKey: authKey)
-        }
+        guard let firebaseUser = Auth.auth().currentUser else { return }
+        let user = makeUser(from: firebaseUser, existing: currentUser)
+        signIn(user: user)
     }
     
     // MARK: - Auth State Management

@@ -165,7 +165,7 @@ struct ProgramEntryView: View {
                         combinedInterviewAndSignalingSection
                             .frame(maxWidth: .infinity)
                             .padding(.horizontal, 20)
-                            .padding(.vertical, 12)
+                            .padding(.vertical, 14)
                     }
                     .glassEffect(.regular, in: .rect(cornerRadius: 16))
                     .padding(.horizontal, 20)
@@ -297,7 +297,7 @@ struct ProgramEntryView: View {
                         .font(.arial(size: 14))
                         .foregroundColor(.blue)
                     Text("Electronic Medical Record (EMR)")
-                        .font(.arial(size: 18, weight: .semibold))
+                        .font(.arial(size: 16, weight: .semibold))
                         .foregroundColor(.primary)
                     Spacer()
                 }
@@ -368,7 +368,7 @@ struct ProgramEntryView: View {
                             .foregroundColor(.orange)
                     }
                 } else if !preferredIsSpecific {
-                    Text("Set your preferred EMR and its importance in Settings ▸ Section Weights to factor EMR into scoring.")
+                    Text("Set your preferred EMR and how much it matters in Settings ▸ Section Weights.")
                         .font(.arial(size: 11))
                         .foregroundColor(.secondary)
                 }
@@ -1363,12 +1363,12 @@ struct ProgramEntryView: View {
             // Interview Date - flexible width that can shrink
             HStack(alignment: .center, spacing: 8) {
                 Image(systemName: "calendar")
-                    .font(.arial(size: 13))
+                    .font(.arial(size: 15))
                     .foregroundColor(.secondary)
-                    .frame(width: 15, height: 15)
+                    .frame(width: 18, height: 18)
                 
                 Text("Interview")
-                    .font(.arial(size: 13, weight: .semibold))
+                    .font(.arial(size: 16, weight: .semibold))
                     .foregroundColor(.primary)
                     .lineLimit(1)
                 
@@ -1377,13 +1377,13 @@ struct ProgramEntryView: View {
                 }) {
                     if hasInterviewDate {
                         Text(formatInterviewDate(interviewDate))
-                            .font(.arial(size: 13, weight: .medium))
+                            .font(.arial(size: 15, weight: .medium))
                             .foregroundColor(.primary)
                             .lineLimit(1)
                             .minimumScaleFactor(0.7)
                     } else {
                         Text("Set Date")
-                            .font(.arial(size: 13, weight: .medium))
+                            .font(.arial(size: 15, weight: .medium))
                             .foregroundColor(.blue)
                             .lineLimit(1)
                             .minimumScaleFactor(0.7)
@@ -1396,7 +1396,7 @@ struct ProgramEntryView: View {
             if signalConfig.participates {
                 Rectangle()
                     .fill(Color(.separator))
-                    .frame(width: 1, height: 18)
+                    .frame(width: 1, height: 22)
             }
             
             if signalConfig.participates {
@@ -1410,7 +1410,7 @@ struct ProgramEntryView: View {
 
             if signalConfig.usesResidencyCAS {
                 Text("Signals are tracked for planning. EM and OB/GYN apply through ResidencyCAS—verify limits in your portal.")
-                    .font(.arial(size: 9))
+                    .font(.arial(size: 11))
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -1427,12 +1427,12 @@ struct ProgramEntryView: View {
 
         HStack(alignment: .center, spacing: 5) {
             Image(systemName: "star.fill")
-                .font(.arial(size: 12))
+                .font(.arial(size: 14))
                 .foregroundColor(
                     signalType == .gold ? (isTiered ? .yellow : .blue) :
                     (signalType == .silver ? Color(white: 0.6) : .secondary)
                 )
-                .frame(width: 14, height: 14)
+                .frame(width: 16, height: 16)
 
             if isTiered {
                 HStack(spacing: 3) {
@@ -1456,7 +1456,7 @@ struct ProgramEntryView: View {
                         }
                     }) {
                         Text("Gold")
-                            .font(.arial(size: 10, weight: .semibold))
+                            .font(.arial(size: 12, weight: .semibold))
                             .foregroundColor(signalType == .gold ? .yellow : .secondary)
                             .fixedSize(horizontal: true, vertical: false)
                             .padding(.horizontal, 7)
@@ -1488,7 +1488,7 @@ struct ProgramEntryView: View {
                         }
                     }) {
                         Text("Silver")
-                            .font(.arial(size: 10, weight: .semibold))
+                            .font(.arial(size: 12, weight: .semibold))
                             .foregroundColor(signalType == .silver ? .primary : .secondary)
                             .fixedSize(horizontal: true, vertical: false)
                             .padding(.horizontal, 7)
@@ -1521,7 +1521,7 @@ struct ProgramEntryView: View {
                     }
                 }) {
                     Text("Signal")
-                        .font(.arial(size: 10, weight: .semibold))
+                        .font(.arial(size: 12, weight: .semibold))
                         .foregroundColor(signalType == .gold ? AppColors.primaryBlue : .secondary)
                         .padding(.horizontal, 7)
                         .padding(.vertical, 3)
@@ -1536,7 +1536,7 @@ struct ProgramEntryView: View {
             if !finalSpecialty.isEmpty && finalSpecialty != "Unknown" {
                 let usage = calculateSignalUsage(for: finalSpecialty, accreditationID: signalAccreditationID)
                 Text(isTiered ? "\(usage.goldUsed)/\(usage.goldLimit)G \(usage.silverUsed)/\(usage.silverLimit)S" : "\(usage.goldUsed)/\(usage.goldLimit)")
-                    .font(.arial(size: 8, weight: .medium))
+                    .font(.arial(size: 11, weight: .medium))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)

@@ -9,20 +9,20 @@ import SwiftUI
 
 struct QuestionnaireWeightsView: View {
     @EnvironmentObject var dataManager: DataManager
-    @State private var sectionWeights: [String: Double] = [:]
-    @State private var tempWeights: [String: Double] = [:]
-    
-    // Get all enabled sections (excluding red flags)
-    // Use a stable identifier based on section title since Questionnaire() generates new UUIDs
+    @State private var importances: [String: Int] = [:]
+
+    private var questionnaireSections: [(section: QuestionnaireSection, stableId: String)] {
+        enabledSections.filter { $0.stableId != EMRScoring.weightKey }
+    }
+
+    // Get all enabled sections (excluding red flags), including EMR as a weighted factor.
     private var enabledSections: [(section: QuestionnaireSection, stableId: String)] {
         let questionnaire = Questionnaire()
-        
-        // Get standard sections - use title as stable ID
+
         var allSections: [(section: QuestionnaireSection, stableId: String)] = questionnaire.sections.map { section in
             (section: section, stableId: section.title)
         }
-        
-        // Add custom sections from preferences (convert CustomQuestionnaireSection to QuestionnaireSection)
+
         let customSections = dataManager.preferences.customSections.map { customSection in
             (section: QuestionnaireSection(
                 id: customSection.id,
@@ -30,52 +30,40 @@ struct QuestionnaireWeightsView: View {
                 items: customSection.items.map { customItem in
                     QuestionnaireItem(id: customItem.id, question: customItem.question)
                 }
-            ), stableId: customSection.id) // Use the stored ID for custom sections
+            ), stableId: customSection.id)
         }
         allSections.append(contentsOf: customSections)
-        
+
         var filtered = allSections.filter { item in
             let section = item.section
-            // Check if section is enabled (empty set = all enabled)
-            // For standard sections, check by title; for custom, check by ID
             if !dataManager.preferences.enabledSectionIds.isEmpty {
-                if section.title.contains("Section A") || section.title.contains("Section B") || 
+                if section.title.contains("Section A") || section.title.contains("Section B") ||
                    section.title.contains("Section C") || section.title.contains("Section D") ||
                    section.title.contains("Section E") || section.title.contains("Section F") {
-                    // Standard section - check by title
                     if !dataManager.preferences.enabledSectionIds.contains(section.title) &&
                        !dataManager.preferences.enabledSectionIds.contains(section.id) {
                         return false
                     }
                 } else {
-                    // Custom section - check by ID
                     if !dataManager.preferences.enabledSectionIds.contains(section.id) {
                         return false
                     }
                 }
             }
-            // Skip red flags section
             if section.title.contains("Red flags") {
                 return false
             }
             return true
         }
-        
-        // EMR is a weighted factor too — surface it as a row so its importance is
-        // set with the exact same slider/percentage UX and stored in sectionWeights.
+
         filtered.append((
             section: QuestionnaireSection(id: EMRScoring.weightKey, title: EMRScoring.weightKey, items: []),
             stableId: EMRScoring.weightKey
         ))
-        
+
         return filtered
     }
-    
-    // Calculate total weight percentage
-    private var totalWeight: Double {
-        tempWeights.values.reduce(0, +)
-    }
-    
+
     var body: some View {
         Form {
             Section {
@@ -93,244 +81,188 @@ struct QuestionnaireWeightsView: View {
                     }
                 }
                 .pickerStyle(.menu)
+
+                ImportanceSliderRow(
+                    title: "How much does EMR matter?",
+                    importance: importanceBinding(for: EMRScoring.weightKey)
+                )
             } header: {
                 Text("Electronic Medical Record (EMR)")
             } footer: {
-                Text("Pick the EMR you know best. Programs that use this EMR score higher on the EMR factor; programs that use a different EMR score lower. \"Other\" / \"Not sure\" on either side is treated as neutral and isn't scored. Set how much EMR matters with the \"\(EMRScoring.weightKey)\" weight below.")
+                Text("Programs using your preferred EMR score higher on this factor. \"Other\" or \"Not sure\" is treated as neutral.")
             }
-            
+
             Section {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Total Weight")
-                            .font(.arial(size: 15, weight: .medium))
-                        Spacer()
-                        Text("\(Int(totalWeight * 100))%")
-                            .font(.arial(size: 15, weight: .semibold))
-                            .foregroundColor(totalWeight == 1.0 ? .green : .orange)
-                    }
-                    
-                    if totalWeight != 1.0 {
-                        Text("Weights must sum to 100%")
-                            .font(.caption)
-                            .foregroundColor(.orange)
-                    }
+                ForEach(questionnaireSections, id: \.stableId) { item in
+                    ImportanceSliderRow(
+                        title: item.section.title,
+                        importance: importanceBinding(for: item.stableId)
+                    )
                 }
-                .glassPanelStyle(cornerRadius: 14)
-                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                .listRowBackground(Color.clear)
             } header: {
-                Text("Weight Summary")
+                Text("Section Priorities")
             } footer: {
-                Text("Adjust the sliders to set the importance of each section. The total must equal 100%. Higher weights mean that section will have more influence on the final score.")
+                Text("Slide to show what matters most to you. Everything balances automatically—no percentages needed.")
             }
-            
+
             Section {
-                ForEach(enabledSections, id: \.stableId) { item in
-                    let section = item.section
-                    let stableId = item.stableId
-                    let sectionWeight = tempWeights[stableId] ?? 0.0
-                    
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text(section.title)
-                                .font(.arial(size: 15, weight: .medium))
-                            Spacer()
-                            
-                            // Text field for direct percentage input
-                            HStack(spacing: 4) {
-                                TextField("", value: Binding(
-                                    get: { Int(sectionWeight * 100) },
-                                    set: { newPercentage in
-                                        let clampedPercentage = max(0, min(100, newPercentage))
-                                        adjustWeights(sectionId: stableId, newValue: Double(clampedPercentage) / 100.0)
-                                    }
-                                ), format: .number)
-                                .keyboardType(.numberPad)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 50)
-                                .multilineTextAlignment(.center)
-                                
-                                Text("%")
-                                    .font(.arial(size: 15, weight: .semibold))
-                                    .foregroundColor(.blue)
-                            }
-                        }
-                        
-                        // Improved slider with better step size
-                        Slider(value: Binding(
-                            get: { sectionWeight },
-                            set: { newValue in
-                                adjustWeights(sectionId: stableId, newValue: newValue)
-                            }
-                        ), in: 0...1, step: 0.05) // Larger step for easier sliding
-                        .tint(.blue)
-                    }
-                    .padding(.vertical, 4)
-                }
-            } header: {
-                Text("Section Weights")
-            }
-            
-            Section {
-                Button(action: {
-                    resetToEqualWeights()
-                }) {
+                Button(action: resetToEqualImportance) {
                     HStack {
                         Image(systemName: "arrow.counterclockwise")
-                        Text("Reset to Equal Weights")
+                        Text("Reset to Equal Priority")
                     }
                     .foregroundColor(.blue)
                 }
             }
         }
-        .padding(.bottom, 90) // Space for custom tab bar
+        .padding(.bottom, 90)
         .navigationTitle("Section Weights")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Save") {
-                    saveWeights()
-                }
-                .disabled(totalWeight != 1.0)
-                .buttonStyle(.glassProminent)
-                .tint(AppColors.primaryBlue)
-            }
-        }
         .scrollContentBackground(.hidden)
         .appCanvasBackground()
         .onAppear {
-            loadWeights()
+            loadImportances()
         }
         .onChange(of: enabledSections.count) { oldCount, newCount in
-            // Reload weights if section count changes
             if oldCount != newCount {
-                loadWeights()
+                loadImportances()
             }
         }
     }
-    
-    private func loadWeights() {
+
+    private func importanceBinding(for stableId: String) -> Binding<Int> {
+        Binding(
+            get: { importances[stableId] ?? 3 },
+            set: { newValue in
+                importances[stableId] = newValue
+                persistWeights()
+            }
+        )
+    }
+
+    private func loadImportances() {
         guard !enabledSections.isEmpty else {
-            tempWeights = [:]
+            importances = [:]
             return
         }
-        
-        // Get saved weights
+
         let savedWeights = dataManager.preferences.sectionWeights
-        
-        // Initialize with equal weights for all enabled sections
-        let equalWeight = 1.0 / Double(enabledSections.count)
-        tempWeights = Dictionary(uniqueKeysWithValues: enabledSections.map { ($0.stableId, equalWeight) })
-        
-        // If we have saved weights, try to apply them
-        if !savedWeights.isEmpty {
-            var appliedWeights: [String: Double] = [:]
-            var totalApplied: Double = 0
-            
-            // Try to match saved weights to current sections
-            for item in enabledSections {
-                // Try stable ID first (title for standard sections, ID for custom)
-                if let weight = savedWeights[item.stableId] {
-                    appliedWeights[item.stableId] = weight
-                    totalApplied += weight
-                } else if let weight = savedWeights[item.section.title] {
-                    // Try by title for backward compatibility
-                    appliedWeights[item.stableId] = weight
-                    totalApplied += weight
-                }
-            }
-            
-            // If we found matching weights, use them
-            if !appliedWeights.isEmpty && totalApplied > 0 {
-                // Apply matched weights
-                for (stableId, weight) in appliedWeights {
-                    tempWeights[stableId] = weight
-                }
-                
-                // Distribute remaining weight equally among sections without saved weights
-                let sectionsWithWeights = Set(appliedWeights.keys)
-                let sectionsWithoutWeights = enabledSections.filter { !sectionsWithWeights.contains($0.stableId) }
-                
-                if !sectionsWithoutWeights.isEmpty {
-                    let usedWeight = tempWeights.values.reduce(0, +)
-                    let remainingWeight = max(0, 1.0 - usedWeight)
-                    let equalWeightForMissing = remainingWeight / Double(sectionsWithoutWeights.count)
-                    for item in sectionsWithoutWeights {
-                        tempWeights[item.stableId] = equalWeightForMissing
-                    }
-                }
-                
-                // Normalize to ensure exact 1.0
-                let total = tempWeights.values.reduce(0, +)
-                if total > 0 {
-                    tempWeights = tempWeights.mapValues { $0 / total }
-                }
+        let sectionIds = enabledSections.map(\.stableId)
+
+        if savedWeights.isEmpty {
+            importances = Dictionary(uniqueKeysWithValues: sectionIds.map { ($0, 3) })
+            return
+        }
+
+        var resolvedWeights: [String: Double] = [:]
+        for item in enabledSections {
+            if let weight = savedWeights[item.stableId] {
+                resolvedWeights[item.stableId] = weight
+            } else if let weight = savedWeights[item.section.title] {
+                resolvedWeights[item.stableId] = weight
             }
         }
-        
-        // Final safety check: ensure total is exactly 1.0
-        let finalTotal = tempWeights.values.reduce(0, +)
-        if abs(finalTotal - 1.0) > 0.001 { // Allow small floating point errors
-            if finalTotal > 0 {
-                tempWeights = tempWeights.mapValues { $0 / finalTotal }
+
+        if resolvedWeights.isEmpty {
+            importances = Dictionary(uniqueKeysWithValues: sectionIds.map { ($0, 3) })
+            return
+        }
+
+        for item in enabledSections where resolvedWeights[item.stableId] == nil {
+            resolvedWeights[item.stableId] = 0
+        }
+
+        let minWeight = resolvedWeights.values.min() ?? 0
+        let maxWeight = resolvedWeights.values.max() ?? 1
+
+        importances = Dictionary(uniqueKeysWithValues: enabledSections.map { item in
+            let weight = resolvedWeights[item.stableId] ?? 0
+            let importance: Int
+            if maxWeight - minWeight < 0.0001 {
+                importance = 3
             } else {
-                resetToEqualWeights()
+                let normalized = (weight - minWeight) / (maxWeight - minWeight)
+                importance = max(1, min(5, Int(round(1 + normalized * 4))))
             }
-        }
+            return (item.stableId, importance)
+        })
     }
-    
-    private func resetToEqualWeights() {
-        let equalWeight = 1.0 / Double(enabledSections.count)
-        tempWeights = Dictionary(uniqueKeysWithValues: enabledSections.map { ($0.stableId, equalWeight) })
+
+    private func resetToEqualImportance() {
+        importances = Dictionary(uniqueKeysWithValues: enabledSections.map { ($0.stableId, 3) })
+        persistWeights()
     }
-    
-    private func adjustWeights(sectionId: String, newValue: Double) {
-        let oldValue = tempWeights[sectionId] ?? 0.0
-        let difference = newValue - oldValue
-        
-        // Update the changed section
-        tempWeights[sectionId] = newValue
-        
-        // Distribute the difference proportionally among other sections
-        let otherSections = enabledSections.filter { $0.stableId != sectionId }
-        let totalOtherWeight = otherSections.reduce(0.0) { sum, item in
-            sum + (tempWeights[item.stableId] ?? 0.0)
+
+    private func weightsFromImportances() -> [String: Double] {
+        let total = enabledSections.reduce(0) { sum, item in
+            sum + Double(importances[item.stableId] ?? 3)
         }
-        
-        if totalOtherWeight > 0 && !otherSections.isEmpty {
-            // Proportionally adjust other sections
-            for item in otherSections {
-                let currentWeight = tempWeights[item.stableId] ?? 0.0
-                let proportion = currentWeight / totalOtherWeight
-                let adjustment = -difference * proportion
-                tempWeights[item.stableId] = max(0, min(1, currentWeight + adjustment))
-            }
-        } else if !otherSections.isEmpty {
-            // If other sections have no weight, distribute equally
-            let equalAdjustment = -difference / Double(otherSections.count)
-            for item in otherSections {
-                tempWeights[item.stableId] = max(0, min(1, (tempWeights[item.stableId] ?? 0.0) + equalAdjustment))
-            }
+        guard total > 0 else {
+            let equal = 1.0 / Double(max(enabledSections.count, 1))
+            return Dictionary(uniqueKeysWithValues: enabledSections.map { ($0.stableId, equal) })
         }
-        
-        // Ensure the changed section stays within bounds
-        tempWeights[sectionId] = max(0, min(1, newValue))
+        return Dictionary(uniqueKeysWithValues: enabledSections.map { item in
+            (item.stableId, Double(importances[item.stableId] ?? 3) / total)
+        })
     }
-    
-    private func saveWeights() {
-        guard totalWeight == 1.0 else { return }
-        
-        // Normalize to ensure exact 1.0
-        let normalizedWeights = tempWeights.mapValues { weight in
-            weight / totalWeight
-        }
-        
-        dataManager.preferences.sectionWeights = normalizedWeights
+
+    private func persistWeights() {
+        dataManager.preferences.sectionWeights = weightsFromImportances()
         dataManager.savePreferences()
-        
-        // Recalculate all program scores with new weights
         dataManager.recalculateAllScores()
+    }
+}
+
+// MARK: - Importance Slider
+
+private struct ImportanceSliderRow: View {
+    let title: String
+    @Binding var importance: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.arial(size: 15, weight: .medium))
+
+            HStack {
+                Text("Not important")
+                    .font(.arial(size: 11))
+                    .foregroundColor(.secondary)
+
+                Spacer()
+
+                Text(Self.label(for: importance))
+                    .font(.arial(size: 12, weight: .semibold))
+                    .foregroundColor(AppColors.primaryBlue)
+
+                Spacer()
+
+                Text("Most important")
+                    .font(.arial(size: 11))
+                    .foregroundColor(.secondary)
+            }
+
+            Slider(
+                value: Binding(
+                    get: { Double(importance) },
+                    set: { importance = Int($0.rounded()) }
+                ),
+                in: 1...5,
+                step: 1
+            )
+            .tint(AppColors.primaryBlue)
+        }
+        .padding(.vertical, 4)
+    }
+
+    static func label(for value: Int) -> String {
+        switch value {
+        case 1: return "Not important"
+        case 2: return "Low"
+        case 3: return "Medium"
+        case 4: return "High"
+        default: return "Most important"
+        }
     }
 }
 
@@ -340,4 +272,3 @@ struct QuestionnaireWeightsView: View {
             .environmentObject(DataManager.shared)
     }
 }
-

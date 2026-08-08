@@ -260,7 +260,7 @@ struct DashboardView: View {
                 unit: overviewHeroUnit,
                 title: "Your Interview Season",
                 subtitle: overviewHeroSubtitle,
-                nextInterview: overviewHeroNextInterview,
+                nextInterviewProgram: upcomingInterviews.first,
                 ringSegments: overviewHeroRingSegments,
                 stats: overviewHeroStats,
                 accentTint: overviewHeroAccentTint
@@ -340,30 +340,7 @@ struct DashboardView: View {
 
     // MARK: - Overview: Needs Attention
 
-    /// Contextual one-liner under the hero title — season status (next interview uses its own callout).
-    private var overviewHeroNextInterview: DashboardNextInterviewCallout? {
-        guard let next = upcomingInterviews.first, let date = next.interviewDate else { return nil }
-
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d"
-        let name = HospitalNameFormatter.format(next.hospital.isEmpty ? next.name : next.hospital)
-
-        let prefix: String
-        if Calendar.current.isDateInToday(date) {
-            prefix = "Today"
-        } else if Calendar.current.isDateInTomorrow(date) {
-            prefix = "Tomorrow"
-        } else {
-            prefix = "Next Interview"
-        }
-
-        return DashboardNextInterviewCallout(
-            prefix: prefix,
-            programName: name,
-            dateText: formatter.string(from: date)
-        )
-    }
-
+    /// Contextual one-liner under the hero title — season status (next interview uses InterviewRow).
     private var overviewHeroSubtitle: String {
         let programCount = dataManager.programs.count
         guard programCount > 0 else {
@@ -375,7 +352,7 @@ struct DashboardView: View {
             parts.append("Top score \(String(format: "%.1f", topProgramMaxScore))")
         }
 
-        if overviewHeroNextInterview == nil {
+        if upcomingInterviews.first == nil {
             if programsNeedingInterviewDateCount > 0 {
                 parts.append("Log interview dates so you can prep and score after each visit")
             } else if postInterviewNeedingScoreCount > 0 {
@@ -444,54 +421,35 @@ struct DashboardView: View {
         let programCount = dataManager.programs.count
         guard programCount > 0 else { return [] }
 
-        let scored = dataManager.programs.filter { $0.finalScore > 0 }.count
-
-        return [
-            DashboardSnapshotStat(
-                id: "needDate",
-                value: "\(programsNeedingInterviewDateCount)",
-                label: "Need Date",
-                tint: AppColors.accentOrange
-            ),
-            DashboardSnapshotStat(
-                id: "upcoming",
-                value: "\(upcomingInterviews.count)",
-                label: "Upcoming",
-                tint: AppColors.accentAmber
-            ),
-            DashboardSnapshotStat(
-                id: "scored",
-                value: "\(scored)",
-                label: "Scored",
-                tint: AppColors.accentGreen
-            ),
-            DashboardSnapshotStat(
-                id: "toReview",
-                value: "\(programsNeedingReview)",
-                label: "To Review",
-                tint: programsNeedingReview > 0 ? AppColors.accentRed : .secondary
+        let counts = pipelineStageCounts
+        return InterviewSeasonStage.allCases.map { stage in
+            let count = counts[stage] ?? 0
+            return DashboardSnapshotStat(
+                id: stage.rawValue,
+                value: "\(count)",
+                label: stage.label,
+                tint: stage == .toReview && count == 0 ? .secondary : stage.color
             )
-        ]
+        }
     }
 
-    /// Multi-color ring slices matching the stat row (proportional to each count).
-    private var overviewHeroRingSegments: [DashboardSnapshotRingSegment] {
-        let buckets: [(String, Int, Color)] = [
-            ("needDate", programsNeedingInterviewDateCount, AppColors.accentOrange),
-            ("upcoming", upcomingInterviews.count, AppColors.accentYellow),
-            ("scored", dataManager.programs.filter { $0.finalScore > 0 }.count, AppColors.accentGreen),
-            ("toReview", programsNeedingReview, AppColors.accentRed)
-        ]
+    private var pipelineStageCounts: [InterviewSeasonStage: Int] {
+        InterviewSeasonStage.counts(for: dataManager.programs, preferences: dataManager.preferences)
+    }
 
-        let total = buckets.reduce(0) { $0 + $1.1 }
+    /// One arc per pipeline stage; fractions sum to 100% of tracked programs.
+    private var overviewHeroRingSegments: [DashboardSnapshotRingSegment] {
+        let total = dataManager.programs.count
         guard total > 0 else { return [] }
 
-        return buckets.compactMap { id, count, color in
+        let counts = pipelineStageCounts
+        return InterviewSeasonStage.allCases.compactMap { stage in
+            let count = counts[stage] ?? 0
             guard count > 0 else { return nil }
             return DashboardSnapshotRingSegment(
-                id: id,
+                id: stage.rawValue,
                 fraction: Double(count) / Double(total),
-                color: color
+                color: stage.color
             )
         }
     }

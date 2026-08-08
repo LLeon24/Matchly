@@ -8,21 +8,18 @@ import SwiftUI
 
 enum RankListPDFExporter {
     struct Configuration {
-        let programs: [Program]
-        let redFlaggedPrograms: [Program]
+        let orderedPrograms: [Program]
         let applicantName: String?
         let aamcID: String?
         let generatedAt: Date
 
         init(
-            programs: [Program],
-            redFlaggedPrograms: [Program] = [],
+            orderedPrograms: [Program],
             applicantName: String? = nil,
             aamcID: String? = nil,
             generatedAt: Date = Date()
         ) {
-            self.programs = programs
-            self.redFlaggedPrograms = redFlaggedPrograms
+            self.orderedPrograms = orderedPrograms
             self.applicantName = applicantName
             self.aamcID = aamcID
             self.generatedAt = generatedAt
@@ -77,22 +74,53 @@ private struct DrawState {
         beginPage()
         drawHeader()
 
-        let grouped = Dictionary(grouping: configuration.programs) { $0.specialty }
-        for specialty in grouped.keys.sorted() {
-            guard let programs = grouped[specialty] else { continue }
-            drawSpecialtySection(specialty: specialty, programs: programs)
-        }
-
-        if !configuration.redFlaggedPrograms.isEmpty {
-            y += 6
-            drawSpecialtyHeader(title: "Red Flagged Programs", accent: Colors.red)
-            for (index, program) in configuration.redFlaggedPrograms.enumerated() {
-                let rank = configuration.redFlaggedPrograms.count > 1 ? index + 1 : 1
-                drawProgramRow(rank: rank, program: program, isRedFlagged: true)
+        let programs = configuration.orderedPrograms
+        for (index, program) in programs.enumerated() {
+            if shouldShowSpecialtyHeader(at: index, in: programs) {
+                let specialty = program.specialty
+                let displayName = specialty.isEmpty
+                    ? "Programs"
+                    : SpecialtyFormatter.displayNameWithAbbreviation(specialty)
+                drawSectionHeader(title: displayName, accent: specialtyUIColor(for: specialty), icon: "stethoscope")
             }
+
+            if shouldShowRedFlaggedBanner(at: index, in: programs) {
+                y += 2
+                drawSectionHeader(title: "Red Flagged Programs", accent: Colors.red, icon: "exclamationmark.triangle.fill")
+            }
+
+            let elevated = elevatedRedFlag(at: index, in: programs)
+            drawProgramRow(
+                rank: index + 1,
+                program: program,
+                isRedFlagged: program.hasRedFlags(),
+                showsElevatedRedFlag: elevated
+            )
         }
 
         drawFooter()
+    }
+
+    private func shouldShowSpecialtyHeader(at index: Int, in programs: [Program]) -> Bool {
+        let program = programs[index]
+        guard !program.hasRedFlags() else { return false }
+        guard !program.specialty.isEmpty else { return false }
+        if index == 0 { return true }
+        let previous = programs[index - 1]
+        if previous.hasRedFlags() { return true }
+        return previous.specialty != program.specialty
+    }
+
+    private func shouldShowRedFlaggedBanner(at index: Int, in programs: [Program]) -> Bool {
+        guard programs[index].hasRedFlags() else { return false }
+        guard index > 0 else { return false }
+        guard !programs[index - 1].hasRedFlags() else { return false }
+        return programs[index...].allSatisfy(\.hasRedFlags)
+    }
+
+    private func elevatedRedFlag(at index: Int, in programs: [Program]) -> Bool {
+        guard programs[index].hasRedFlags() else { return false }
+        return programs[(index + 1)...].contains { !$0.hasRedFlags() }
     }
 
     mutating func beginPage() {
@@ -174,7 +202,7 @@ private struct DrawState {
         let dateFormatter = DateFormatter()
         dateFormatter.dateStyle = .long
         dateFormatter.timeStyle = .none
-        let totalCount = configuration.programs.count + configuration.redFlaggedPrograms.count
+        let totalCount = configuration.orderedPrograms.count
         let meta = "Generated \(dateFormatter.string(from: configuration.generatedAt))  •  \(totalCount) program\(totalCount == 1 ? "" : "s")"
         let metaAttributes: [NSAttributedString.Key: Any] = [
             .font: Fonts.regular(9),
@@ -187,25 +215,15 @@ private struct DrawState {
         y += headerHeight + 16
     }
 
-    mutating func drawSpecialtySection(specialty: String, programs: [Program]) {
-        let displayName = specialty.isEmpty
-            ? "Programs"
-            : SpecialtyFormatter.displayNameWithAbbreviation(specialty)
-        drawSpecialtyHeader(title: displayName, accent: specialtyUIColor(for: specialty))
-        for (index, program) in programs.enumerated() {
-            drawProgramRow(rank: index + 1, program: program, isRedFlagged: false)
-        }
-        y += 4
-    }
-
-    mutating func drawSpecialtyHeader(title: String, accent: UIColor) {
+    mutating func drawSectionHeader(title: String, accent: UIColor, icon: String) {
         ensureSpace(30)
         y += 4
-        let iconConfig = UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
-        if let icon = UIImage(systemName: "stethoscope", withConfiguration: iconConfig)?
-            .withTintColor(accent, renderingMode: .alwaysOriginal) {
-            icon.draw(in: CGRect(x: margin, y: y + 1, width: 14, height: 14))
-        }
+        PDFSymbolRenderer.draw(
+            systemName: icon,
+            pointSize: 11,
+            color: accent,
+            in: CGRect(x: margin, y: y + 1, width: 14, height: 14)
+        )
         let attributes: [NSAttributedString.Key: Any] = [
             .font: Fonts.semibold(12),
             .foregroundColor: accent
@@ -214,7 +232,7 @@ private struct DrawState {
         y += 22
     }
 
-    mutating func drawProgramRow(rank: Int, program: Program, isRedFlagged: Bool) {
+    mutating func drawProgramRow(rank: Int, program: Program, isRedFlagged: Bool, showsElevatedRedFlag: Bool = false) {
         let hospital = HospitalNameFormatter.format(
             program.hospital.isEmpty ? (program.name.isEmpty ? "Unnamed Program" : program.name) : program.hospital
         )
@@ -238,11 +256,12 @@ private struct DrawState {
             .foregroundColor: Colors.secondaryText
         ]
 
-        let titleWidth = contentWidth - 118
+        let badgeColumnWidth: CGFloat = 56
+        let titleWidth = contentWidth - badgeColumnWidth - 24
         let titleHeight = height(for: hospital, width: titleWidth, attributes: titleAttributes)
         let metaHeight = metaLine.isEmpty ? 0 : height(for: metaLine, width: titleWidth, attributes: metaAttributes) + 2
         let specialtyPillHeight: CGFloat = program.specialty.isEmpty ? 0 : 18
-        let rowHeight = max(58, 14 + titleHeight + specialtyPillHeight + metaHeight + 14)
+        let rowHeight = max(showsElevatedRedFlag ? 92 : 78, 14 + titleHeight + specialtyPillHeight + metaHeight + 14)
 
         ensureSpace(rowHeight + 6)
 
@@ -257,28 +276,45 @@ private struct DrawState {
                 byRoundingCorners: [.topLeft, .bottomLeft],
                 cornerRadii: CGSize(width: 10, height: 10)
             )
-            Colors.red.setFill()
+            (showsElevatedRedFlag ? Colors.red : Colors.red.withAlphaComponent(0.85)).setFill()
             accent.fill()
         }
 
-        let badgeCenter = CGPoint(x: rect.minX + 34, y: rect.minY + 28)
-        drawRankBadge(rank: rank, center: badgeCenter, isRedFlagged: isRedFlagged)
+        if showsElevatedRedFlag {
+            let bannerRect = CGRect(x: rect.minX + 8, y: rect.minY + 6, width: contentWidth - 16, height: 14)
+            let banner = UIBezierPath(roundedRect: bannerRect, cornerRadius: 4)
+            Colors.red.withAlphaComponent(0.08).setFill()
+            banner.fill()
+            let bannerAttributes: [NSAttributedString.Key: Any] = [
+                .font: Fonts.semibold(8),
+                .foregroundColor: Colors.red.withAlphaComponent(0.9)
+            ]
+            "Flagged program ranked here".draw(
+                in: bannerRect.insetBy(dx: 6, dy: 2),
+                withAttributes: bannerAttributes
+            )
+        }
+
+        let badgeOriginY = rect.minY + (showsElevatedRedFlag ? 24 : 10)
+        _ = drawRankBadgeColumn(rank: rank, originX: rect.minX + 8, originY: badgeOriginY)
 
         let scoreText = String(format: "%.1f", program.finalScore)
         let scoreSize = scoreText.size(withAttributes: scoreAttributes)
+        let scoreCenterX = rect.minX + 8 + badgeColumnWidth / 2
+        let scoreY = badgeOriginY + 52
         scoreText.draw(
-            at: CGPoint(x: badgeCenter.x - scoreSize.width / 2, y: rect.minY + 46),
+            at: CGPoint(x: scoreCenterX - scoreSize.width / 2, y: scoreY),
             withAttributes: scoreAttributes
         )
         let ptsText = "pts"
         let ptsSize = ptsText.size(withAttributes: ptsAttributes)
         ptsText.draw(
-            at: CGPoint(x: badgeCenter.x - ptsSize.width / 2, y: rect.minY + 60),
+            at: CGPoint(x: scoreCenterX - ptsSize.width / 2, y: scoreY + 14),
             withAttributes: ptsAttributes
         )
 
-        var textY = rect.minY + 12
-        let textX = rect.minX + 68
+        var textY = rect.minY + (showsElevatedRedFlag ? 24 : 12)
+        let textX = rect.minX + badgeColumnWidth + 12
         hospital.draw(
             in: CGRect(x: textX, y: textY, width: titleWidth, height: titleHeight + 2),
             withAttributes: titleAttributes
@@ -316,11 +352,15 @@ private struct DrawState {
         y += rowHeight + 6
     }
 
-    func drawRankBadge(rank: Int, center: CGPoint, isRedFlagged: Bool) {
-        let badgeColor = isRedFlagged ? Colors.red : rankUIColor(rank)
-        let radius: CGFloat = 20
+    @discardableResult
+    func drawRankBadgeColumn(rank: Int, originX: CGFloat, originY: CGFloat) -> CGFloat {
+        let columnWidth: CGFloat = 56
+        let circleCenter = CGPoint(x: originX + columnWidth / 2, y: originY + 22)
+        let radius: CGFloat = 22
+        let badgeColor = rankUIColor(rank)
+
         let circle = UIBezierPath(
-            arcCenter: center,
+            arcCenter: circleCenter,
             radius: radius,
             startAngle: 0,
             endAngle: .pi * 2,
@@ -329,23 +369,32 @@ private struct DrawState {
         badgeColor.withAlphaComponent(0.15).setFill()
         circle.fill()
 
-        let symbolName = rank <= 3 && !isRedFlagged ? "trophy.fill" : "star.fill"
-        let iconConfig = UIImage.SymbolConfiguration(pointSize: 9, weight: .semibold)
-        if let icon = UIImage(systemName: symbolName, withConfiguration: iconConfig)?
-            .withTintColor(badgeColor, renderingMode: .alwaysOriginal) {
-            icon.draw(in: CGRect(x: center.x - 5, y: center.y - 12, width: 10, height: 10))
-        }
+        let symbolName = rank <= 3 ? "trophy.fill" : "star.fill"
+        let iconSize: CGFloat = 12
+        PDFSymbolRenderer.draw(
+            systemName: symbolName,
+            pointSize: 11,
+            color: badgeColor,
+            in: CGRect(
+                x: circleCenter.x - iconSize / 2,
+                y: circleCenter.y - 13,
+                width: iconSize,
+                height: iconSize
+            )
+        )
 
         let rankAttributes: [NSAttributedString.Key: Any] = [
-            .font: Fonts.bold(12),
+            .font: Fonts.bold(14),
             .foregroundColor: badgeColor
         ]
         let rankText = "\(rank)"
         let rankSize = rankText.size(withAttributes: rankAttributes)
         rankText.draw(
-            at: CGPoint(x: center.x - rankSize.width / 2, y: center.y - 1),
+            at: CGPoint(x: circleCenter.x - rankSize.width / 2, y: circleCenter.y + 1),
             withAttributes: rankAttributes
         )
+
+        return columnWidth
     }
 
     @discardableResult
@@ -447,6 +496,36 @@ private struct DrawState {
     func height(for text: String, width: CGFloat, attributes: [NSAttributedString.Key: Any]) -> CGFloat {
         let rect = CGRect(x: 0, y: 0, width: width, height: .greatestFiniteMagnitude)
         return ceil(text.boundingRect(with: rect.size, options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: attributes, context: nil).height)
+    }
+}
+
+// MARK: - Symbol rendering
+
+/// Renders SF Symbols crisply in PDF output (small direct draws often appear as solid blobs).
+private enum PDFSymbolRenderer {
+    static func draw(systemName: String, pointSize: CGFloat, color: UIColor, in rect: CGRect) {
+        guard let image = renderedImage(systemName: systemName, pointSize: pointSize, color: color) else { return }
+        image.draw(in: rect)
+    }
+
+    private static func renderedImage(systemName: String, pointSize: CGFloat, color: UIColor) -> UIImage? {
+        let config = UIImage.SymbolConfiguration(pointSize: pointSize, weight: .semibold)
+        guard let symbol = UIImage(systemName: systemName, withConfiguration: config) else {
+            return nil
+        }
+
+        let size = symbol.size
+        guard size.width > 0, size.height > 0 else { return nil }
+
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 4
+        format.opaque = false
+
+        let renderer = UIGraphicsImageRenderer(size: size, format: format)
+        return renderer.image { _ in
+            symbol.withTintColor(color, renderingMode: .alwaysOriginal)
+                .draw(in: CGRect(origin: .zero, size: size))
+        }
     }
 }
 

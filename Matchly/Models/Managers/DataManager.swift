@@ -715,7 +715,7 @@ class DataManager: ObservableObject {
     }
     
     func getRankedPrograms() -> [Program] {
-        return programs.sorted { $0.finalScore > $1.finalScore }
+        programs.filter { $0.finalScore > 0 }.sorted { $0.finalScore > $1.finalScore }
     }
     
     // MARK: - Couples Matching
