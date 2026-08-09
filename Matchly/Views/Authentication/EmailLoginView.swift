@@ -23,24 +23,25 @@ struct EmailLoginView: View {
         MatchlyNavigationView {
             Form {
                 Section {
-                    VStack(spacing: 12) {
-                        TextField("Email", text: $email)
-                            .textContentType(.emailAddress)
-                            .autocapitalization(.none)
-                            .keyboardType(.emailAddress)
-                            .textInputAutocapitalization(.never)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
-                            .glassEffect(.regular, in: .capsule)
-                        
-                        SecureField("Password", text: $password)
-                            .textContentType(.password)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
-                            .glassEffect(.regular, in: .capsule)
-                    }
-                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                    .listRowBackground(Color.clear)
+                    TextField("Email", text: $email)
+                        .textContentType(.username)
+                        .autocapitalization(.none)
+                        .keyboardType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .glassEffect(.regular, in: .capsule)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
+                        .listRowBackground(Color.clear)
+                    
+                    SecureField("Password", text: $password)
+                        .textContentType(.password)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .glassEffect(.regular, in: .capsule)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
+                        .listRowBackground(Color.clear)
                 } header: {
                     Text("Sign In")
                 } footer: {

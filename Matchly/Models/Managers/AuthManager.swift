@@ -368,6 +368,9 @@ class AuthManager: ObservableObject {
         self.cloudAccountStatus = .couldNotDetermine
         self.currentAppleNonce = nil
         self.isAppLocked = false
+        self.isBiometricUnlockInFlight = false
+        self.shouldShowBiometricRetry = false
+        self.biometricUnlockError = nil
         UserDefaults.standard.removeObject(forKey: authKey)
 
         if !isBiometricLoginEnabled {

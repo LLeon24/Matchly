@@ -72,7 +72,7 @@ struct SettingsView: View {
             } message: {
                 Text(
                     authManager.isBiometricLoginEnabled
-                        ? "You'll sign out of this session. Sign back in with \(authManager.biometricDisplayName) or Apple Sign In."
+                        ? "You'll sign out of this session. Tap Sign in with \(authManager.biometricDisplayName) when you're ready to return."
                         : "Are you sure you want to sign out? You'll need to sign in again to access your data."
                 )
             }

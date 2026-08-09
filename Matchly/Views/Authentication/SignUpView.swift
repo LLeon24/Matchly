@@ -21,38 +21,48 @@ struct SignUpView: View {
         MatchlyNavigationView {
             Form {
                 Section {
-                    VStack(spacing: 12) {
-                        TextField("Display Name (Optional)", text: $displayName)
-                            .textContentType(.name)
-                            .autocapitalization(.words)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
-                            .glassEffect(.regular, in: .capsule)
-                        
-                        TextField("Email", text: $email)
-                            .textContentType(.emailAddress)
-                            .autocapitalization(.none)
-                            .keyboardType(.emailAddress)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
-                            .glassEffect(.regular, in: .capsule)
-                        
-                        SecureField("Password", text: $password)
-                            .textContentType(.newPassword)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
-                            .glassEffect(.regular, in: .capsule)
-                        
-                        SecureField("Confirm Password", text: $confirmPassword)
-                            .textContentType(.newPassword)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
-                            .glassEffect(.regular, in: .capsule)
-                    }
-                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                    .listRowBackground(Color.clear)
+                    TextField("Display Name (Optional)", text: $displayName)
+                        .textContentType(.name)
+                        .autocapitalization(.words)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .glassEffect(.regular, in: .capsule)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                        .listRowBackground(Color.clear)
                 } header: {
-                    Text("Create Account")
+                    Text("Profile")
+                }
+
+                Section {
+                    TextField("Email", text: $email)
+                        .textContentType(.username)
+                        .autocapitalization(.none)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.emailAddress)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .glassEffect(.regular, in: .capsule)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
+                        .listRowBackground(Color.clear)
+
+                    SecureField("Password", text: $password)
+                        .textContentType(.newPassword)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .glassEffect(.regular, in: .capsule)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                        .listRowBackground(Color.clear)
+
+                    SecureField("Confirm Password", text: $confirmPassword)
+                        .textContentType(.password)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .glassEffect(.regular, in: .capsule)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
+                        .listRowBackground(Color.clear)
+                } header: {
+                    Text("Sign-In Details")
                 } footer: {
                     VStack(alignment: .leading, spacing: 4) {
                         if let error = errorMessage {
@@ -148,4 +158,3 @@ struct SignUpView: View {
 #Preview {
     SignUpView()
 }
-
