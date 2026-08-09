@@ -356,21 +356,16 @@ struct ProgramEntryView: View {
                         }
                 }
 
-                // Surface the scoring impact relative to the applicant's preferred EMR.
                 if preferredIsSpecific, selectedIsSpecific, let preferred = preferred {
                     if emr == preferred {
-                        Label("Matches your preferred EMR", systemImage: "checkmark.circle.fill")
+                        Label("Uses your preferred EMR", systemImage: "checkmark.circle.fill")
                             .font(.arial(size: 12, weight: .medium))
                             .foregroundColor(.green)
                     } else {
-                        Label("Differs from your preferred EMR (\(preferred))", systemImage: "exclamationmark.circle")
+                        Label("Uses \(emrMenuLabel) — you prefer \(preferred)", systemImage: "info.circle")
                             .font(.arial(size: 12, weight: .medium))
-                            .foregroundColor(.orange)
+                            .foregroundColor(.secondary)
                     }
-                } else if !preferredIsSpecific {
-                    Text("Set your preferred EMR in Settings ▸ Scoring & Questionnaire.")
-                        .font(.arial(size: 11))
-                        .foregroundColor(.secondary)
                 }
             }
             .padding(.horizontal, 20)

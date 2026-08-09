@@ -15,7 +15,6 @@ struct SettingsView: View {
     @State private var showResetAlert = false
     @State private var showSignOutAlert = false
     @State private var showSpecialtyChange = false
-    @State private var showWeights = false
     @State private var showLinkEmailPassword = false
     
     var body: some View {
@@ -339,7 +338,7 @@ struct SettingsView: View {
         } header: {
             MatchlyFormSectionHeader(title: "Scoring & Questionnaire")
         } footer: {
-            Text("Every enabled questionnaire section counts equally toward program scores. Preferred EMR adds a bonus factor when both your preference and the program's EMR are known.")
+            Text("Customize which questionnaire sections appear above. Preferred EMR is optional and used for quick reference when comparing programs.")
         }
     }
     

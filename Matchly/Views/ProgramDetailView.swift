@@ -180,13 +180,13 @@ struct ProgramDetailView: View {
               let programSystem = EMRSystem(rawValue: programRaw),
               programSystem.isSpecific else {
             // Program EMR unknown / "Other" / "Not sure" -> neutral, not scored.
-            return ("Not scored — EMR unknown for this program", "minus.circle", .secondary)
+            return ("EMR not recorded for this program", "minus.circle", .secondary)
         }
         
         if programSystem == preferred {
-            return ("Matches your preferred EMR", "checkmark.circle.fill", .green)
+            return ("Uses your preferred EMR", "checkmark.circle.fill", .green)
         } else {
-            return ("Different from your preferred EMR (\(preferred.displayName))", "exclamationmark.circle", .orange)
+            return ("Uses \(programSystem.displayName) — you prefer \(preferred.displayName)", "info.circle", .secondary)
         }
     }
     

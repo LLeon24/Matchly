@@ -492,7 +492,7 @@ struct OnboardingFlowView: View {
                                 }
                             }
                             .pickerStyle(.menu)
-                            Text("Programs using your preferred EMR score higher on the EMR factor.")
+                            Text("Optional — we'll note when a program uses the EMR you're most familiar with.")
                                 .font(.arial(size: 13))
                                 .foregroundColor(.secondary)
                         }
