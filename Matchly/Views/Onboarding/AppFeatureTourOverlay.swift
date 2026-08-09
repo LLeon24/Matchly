@@ -119,8 +119,8 @@ enum AppFeatureTourSteps {
                 anchorID: FeatureTourAnchorID.settingsTab,
                 title: "Settings",
                 message: showCouple
-                    ? "Adjust specialties, questionnaire weights, dashboard layout, calendar sync, and couples preferences."
-                    : "Adjust specialties, questionnaire weights, dashboard layout, and calendar sync.",
+                    ? "Adjust specialties, questionnaire sections, dashboard layout, calendar sync, and couples preferences."
+                    : "Adjust specialties, questionnaire sections, dashboard layout, and calendar sync.",
                 placesBubbleAboveSpotlight: true
             ),
             FeatureTourStep(

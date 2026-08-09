@@ -229,7 +229,8 @@ struct RankListView: View {
             }
             .padding(.horizontal, 4)
         }
-        .padding()
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
     }
     
     private var specialtyFilterMenu: some View {
@@ -320,6 +321,8 @@ struct RankListView: View {
             unrankedSection
         }
         .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .listSectionSpacing(12)
         .matchlyReadableWidth()
         .matchlyScrollTabBarClearance()
         .environment(\.editMode, isEditing ? .constant(.active) : .constant(.inactive))
@@ -328,34 +331,22 @@ struct RankListView: View {
     private var rankedProgramsSection: some View {
         Section {
             ForEach(Array(orderedScoredPrograms.enumerated()), id: \.element.id) { index, program in
-                if !isEditing && shouldShowSpecialtyHeader(at: index) {
-                    MatchlySpecialtySectionHeader(specialty: program.specialty)
-                        .padding(.top, index == 0 ? 0 : 6)
-                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 0, trailing: 16))
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                }
-
-                if !isEditing && shouldShowRedFlaggedBanner(at: index) {
-                    redFlaggedHeader
-                        .padding(.top, 6)
-                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 0, trailing: 16))
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                }
-
                 Group {
                     if isEditing {
-                        RankListItemView(
+                        RankListProgramRow(
                             rank: index + 1,
                             program: program,
+                            specialtyHeader: shouldShowSpecialtyHeader(at: index) ? program.specialty : nil,
+                            showsRedFlaggedSectionBanner: shouldShowRedFlaggedBanner(at: index),
                             showsElevatedRedFlag: elevatedRedFlag(at: index)
                         )
                     } else {
                         NavigationLink(destination: ProgramEntryView(program: program)) {
-                            RankListItemView(
+                            RankListProgramRow(
                                 rank: index + 1,
                                 program: program,
+                                specialtyHeader: shouldShowSpecialtyHeader(at: index) ? program.specialty : nil,
+                                showsRedFlaggedSectionBanner: shouldShowRedFlaggedBanner(at: index),
                                 showsElevatedRedFlag: elevatedRedFlag(at: index)
                             )
                         }
@@ -394,17 +385,6 @@ struct RankListView: View {
             Text("Not Ranked Yet (\(unrankedPrograms.count))")
                 .font(.arial(size: 13, weight: .semibold))
                 .foregroundColor(AppColors.pipelineToReview)
-        }
-    }
-    
-    private var redFlaggedHeader: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.arial(size: 12))
-                .foregroundColor(.red)
-            Text("Red Flagged Programs")
-                .font(.arial(size: 13, weight: .semibold))
-                .foregroundColor(.red)
         }
     }
     
@@ -464,6 +444,39 @@ struct RankListView: View {
     private func loadManualOrder() {
         if let saved = UserDefaults.standard.array(forKey: "manual_rank_order") as? [String] {
             manualOrder = saved
+        }
+    }
+}
+
+struct RankListProgramRow: View {
+    let rank: Int
+    let program: Program
+    var specialtyHeader: String? = nil
+    var showsRedFlaggedSectionBanner: Bool = false
+    var showsElevatedRedFlag: Bool = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let specialty = specialtyHeader {
+                MatchlySpecialtySectionHeader(specialty: specialty)
+            }
+
+            if showsRedFlaggedSectionBanner {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.arial(size: 12))
+                        .foregroundColor(.red)
+                    Text("Red Flagged Programs")
+                        .font(.arial(size: 13, weight: .semibold))
+                        .foregroundColor(.red)
+                }
+            }
+
+            RankListItemView(
+                rank: rank,
+                program: program,
+                showsElevatedRedFlag: showsElevatedRedFlag
+            )
         }
     }
 }

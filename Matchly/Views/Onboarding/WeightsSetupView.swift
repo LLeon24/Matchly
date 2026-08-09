@@ -24,7 +24,7 @@ struct WeightsSetupView: View {
                     Text("You're All Set!")
                         .font(.arial(size: 28, weight: .bold))
                     
-                    Text("We'll use balanced weights for scoring. You can adjust them later in Settings if needed.")
+                    Text("We'll score every questionnaire section equally. You can adjust which sections are included anytime in Settings.")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)

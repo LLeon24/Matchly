@@ -144,7 +144,7 @@ struct AppColors {
     // cast) so it reads light & happy; white cards still separate via shadow.
     // Dark: a proper near-black so elevated cards stand out clearly.
     static let dashboardCanvas = Color(
-        light: Color(red: 0.985, green: 0.988, blue: 0.992),
+        light: Color(red: 1.0, green: 1.0, blue: 1.0),
         dark: Color(red: 0.071, green: 0.071, blue: 0.078)
     )
 

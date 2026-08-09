@@ -149,8 +149,8 @@ struct DashboardView: View {
             .accessibilityLabel("Customize dashboard")
         }
         .padding(.horizontal, 20)
-        .padding(.top, screenLayout == .compactVertical ? 4 : 6)
-        .padding(.bottom, screenLayout.headerVerticalPadding)
+        .padding(.top, screenLayout == .compactVertical ? 8 : 10)
+        .padding(.bottom, screenLayout.headerVerticalPadding + 4)
     }
 
     /// Profile photo if set, otherwise the user's initials in a clean tinted

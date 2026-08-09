@@ -40,14 +40,12 @@ struct UserPreferences: Codable, Hashable {
     var customSections: [CustomQuestionnaireSection] = [] // User-created custom sections
     var customQuestionsInSections: [String: [CustomQuestionnaireItem]] = [:] // Custom questions added to standard sections (key = section ID)
     
-    // Section weights (0.0-1.0, should sum to 1.0 for all enabled sections)
-    // Key is section ID, value is weight (0.0-1.0)
-    // The EMR factor stores its importance here too, under EMRScoring.weightKey.
-    var sectionWeights: [String: Double] = [:] // Empty = equal weights for all sections
+    // Legacy section weights — no longer used; kept for backward-compatible decoding only.
+    var sectionWeights: [String: Double] = [:]
     
     // Applicant's preferred / most familiar EMR (an EMRSystem.rawValue).
     // Optional for backward compatibility. When set, programs are scored on how
-    // well their EMR matches this preference (weighted via sectionWeights[EMRScoring.weightKey]).
+    // well their EMR matches this preference (equal weight with other scored factors).
     var preferredEMR: String?
     
     // Calendar sync preference

@@ -251,19 +251,8 @@ struct Questionnaire: Codable, Equatable {
                 stableId = section.id
             }
             
-            // Get weight for this section (default to equal weight if not set)
-            let weight: Double
-            if preferences.sectionWeights.isEmpty {
-                weight = 1.0 // Rebalanced across scored sections below
-            } else {
-                // Use custom weight, or equal weight if not specified
-                // Try both stableId and section.id for backward compatibility
-                weight = preferences.sectionWeights[stableId] ?? 
-                         preferences.sectionWeights[section.id] ?? 
-                         (1.0 / Double(max(sectionScores.count + 1, enabledSections.count)))
-            }
-            
-            sectionScores.append((sectionId: stableId, averageScore: averageScore, weight: weight))
+            // Each scored section contributes equally to the final score.
+            sectionScores.append((sectionId: stableId, averageScore: averageScore, weight: 1.0))
         }
         
         // EMR factor — treated as one more weighted "section". Scored only when the
@@ -271,25 +260,13 @@ struct Questionnaire: Codable, Equatable {
         // + neither side is "Other"/"Not sure"); otherwise it drops out like an
         // unrated section.
         if let emrRating = EMRScoring.rating(programEMR: programEMR, preferredEMR: preferences.preferredEMR) {
-            // Default to an equal share (matching the per-section default) so the EMR
-            // factor weighs the same as each section until the user customizes weights.
-            let defaultWeight = enabledSections.isEmpty ? 1.0 : (1.0 / Double(enabledSections.count))
-            let emrWeight: Double
-            if preferences.sectionWeights.isEmpty {
-                emrWeight = defaultWeight
-            } else {
-                emrWeight = preferences.sectionWeights[EMRScoring.weightKey] ?? defaultWeight
-            }
-            sectionScores.append((sectionId: EMRScoring.weightKey, averageScore: emrRating, weight: emrWeight))
+            sectionScores.append((sectionId: EMRScoring.weightKey, averageScore: emrRating, weight: 1.0))
         }
         
         guard !sectionScores.isEmpty else { return 0 }
 
-        // Equal weights apply only to sections that actually have ratings.
-        if preferences.sectionWeights.isEmpty {
-            let equalWeight = 1.0 / Double(sectionScores.count)
-            sectionScores = sectionScores.map { ($0.sectionId, $0.averageScore, equalWeight) }
-        }
+        let equalWeight = 1.0 / Double(sectionScores.count)
+        sectionScores = sectionScores.map { ($0.sectionId, $0.averageScore, equalWeight) }
         
         // Normalize weights to sum to 1.0
         let totalWeight = sectionScores.reduce(0) { $0 + $1.weight }

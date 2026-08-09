@@ -64,9 +64,7 @@ enum EMRSystem: String, CaseIterable, Identifiable, Codable {
 /// 1–5 rating scale the rest of the questionnaire uses, so EMR can flow
 /// through the existing weighted-section scoring mechanism.
 enum EMRScoring {
-    /// Stable key used both as the row title in the weights UI and as the
-    /// key into `UserPreferences.sectionWeights`. Mirrors how standard
-    /// questionnaire sections key their weight by their (stable) title.
+    /// Stable identifier for the EMR scoring factor in weighted section calculations.
     static let weightKey = "Electronic Medical Record (EMR)"
 
     /// Rating when the program's EMR matches the applicant's preferred EMR.

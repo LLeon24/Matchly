@@ -60,8 +60,8 @@ enum AppGuidePages {
                 icon: "gearshape.fill",
                 title: "Settings",
                 description: FeatureFlags.couplesMatchEnabled
-                    ? "Adjust specialties, questionnaire weights, calendar sync, dashboard layout, and couples preferences anytime."
-                    : "Adjust specialties, questionnaire weights, calendar sync, and dashboard layout anytime.",
+                    ? "Adjust specialties, questionnaire sections, calendar sync, dashboard layout, and couples preferences anytime."
+                    : "Adjust specialties, questionnaire sections, calendar sync, and dashboard layout anytime.",
                 tint: AppColors.accentPurple
             )
         )

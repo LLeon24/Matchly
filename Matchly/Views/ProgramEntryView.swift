@@ -368,7 +368,7 @@ struct ProgramEntryView: View {
                             .foregroundColor(.orange)
                     }
                 } else if !preferredIsSpecific {
-                    Text("Set your preferred EMR and how much it matters in Settings ▸ Section Weights.")
+                    Text("Set your preferred EMR in Settings ▸ Scoring & Questionnaire.")
                         .font(.arial(size: 11))
                         .foregroundColor(.secondary)
                 }

@@ -24,39 +24,16 @@ struct SettingsView: View {
                 MatchlyListPageTitleRow(title: "Settings")
 
                 Form {
+                    aboutSection
                     profileSection
-                    appInformationSection
+                    questionnaireSection
+                    preferencesSection
                     if FeatureFlags.couplesMatchEnabled {
                         couplesMatchingSection
                     }
-                    questionnaireSection
-                    calendarSection
                     dataManagementSection
                     accountSection
-
-                    Section {
-                        VStack(spacing: 14) {
-                            MatchlyBrandLockup(style: .about, showsTagline: false)
-
-                            Text("Matchly helps medical students organize residency interview information and generate personalized rank lists.")
-                                .font(.arial(size: MatchlyEditorialTypography.captionSize, weight: .light))
-                                .foregroundColor(.secondary)
-                                .multilineTextAlignment(.center)
-                                .lineSpacing(3)
-                                .frame(maxWidth: .infinity)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-
-                        HStack {
-                            Text("Version")
-                            Spacer()
-                            Text(MatchlyBuildInfo.version)
-                                .foregroundColor(.secondary)
-                        }
-                    } header: {
-                        MatchlyFormSectionHeader(title: "About")
-                    }
+                    versionSection
                 }
                 .scrollContentBackground(.hidden)
             }
@@ -94,6 +71,34 @@ struct SettingsView: View {
         }
     }
     
+    private var aboutSection: some View {
+        Section {
+            VStack(spacing: 14) {
+                MatchlyBrandLockup(style: .about, showsTagline: false)
+
+                Text("Matchly helps medical students organize residency interview information and generate personalized rank lists.")
+                    .font(.arial(size: MatchlyEditorialTypography.captionSize, weight: .light))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(3)
+                    .frame(maxWidth: .infinity)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+        }
+    }
+
+    private var versionSection: some View {
+        Section {
+            HStack {
+                Text("Version")
+                Spacer()
+                Text(MatchlyBuildInfo.version)
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+
     private var profileSection: some View {
         Section {
                     NavigationLink(destination: ProfileEditView()) {
@@ -161,68 +166,90 @@ struct SettingsView: View {
         }
     }
     
-    private var appInformationSection: some View {
+    private var preferencesSection: some View {
         Section {
-                    Button {
-                        NotificationCenter.default.post(name: NSNotification.Name("ShowFeatureTour"), object: nil)
-                    } label: {
-                        Label("Replay Guided Tour", systemImage: "hand.point.up.left.fill")
-                    }
+            Button {
+                NotificationCenter.default.post(name: NSNotification.Name("ShowFeatureTour"), object: nil)
+            } label: {
+                Label("Replay Guided Tour", systemImage: "hand.point.up.left.fill")
+            }
 
-                    NavigationLink(destination: AppGuideView(showsNavigationChrome: true)) {
-                        Label("Feature Overview", systemImage: "book.fill")
-                    }
+            NavigationLink(destination: AppGuideView(showsNavigationChrome: true)) {
+                Label("Feature Overview", systemImage: "book.fill")
+            }
 
-                    Picker("Applying To", selection: Binding(
-                        get: {
-                            ProgramTrainingLevelFilter(rawValue: dataManager.preferences.applyingTrack) ?? .residency
-                        },
-                        set: { newValue in
-                            dataManager.preferences.applyingTrack = newValue.rawValue
-                            dataManager.savePreferences()
-                        }
-                    )) {
-                        ForEach(ProgramTrainingLevelFilter.allCases) { track in
-                            Text(track.rawValue).tag(track)
-                        }
-                    }
+            Picker("Applying To", selection: Binding(
+                get: {
+                    ProgramTrainingLevelFilter(rawValue: dataManager.preferences.applyingTrack) ?? .residency
+                },
+                set: { newValue in
+                    dataManager.preferences.applyingTrack = newValue.rawValue
+                    dataManager.savePreferences()
+                }
+            )) {
+                ForEach(ProgramTrainingLevelFilter.allCases) { track in
+                    Text(track.rawValue).tag(track)
+                }
+            }
 
-                    if !dataManager.preferences.specialties.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Specialties")
-                                .font(.headline)
-                            ForEach(dataManager.preferences.specialties, id: \.self) { specialty in
-                                HStack {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundColor(.blue)
-                                    Text(specialty)
-                                }
-                                .font(.subheadline)
-                            }
-                        }
-                    } else {
+            if !dataManager.preferences.specialties.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Specialties")
+                        .font(.headline)
+                    ForEach(dataManager.preferences.specialties, id: \.self) { specialty in
                         HStack {
-                            Text("Specialty")
-                            Spacer()
-                            Text(dataManager.preferences.specialty ?? "Not set")
-                                .foregroundColor(.secondary)
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(.blue)
+                            Text(specialty)
                         }
+                        .font(.subheadline)
                     }
-                    
-                    Button(action: {
-                        showSpecialtyChange = true
-                    }) {
-                        Text(dataManager.preferences.specialties.isEmpty ? "Change Specialty" : "Edit Specialties")
-                            .frame(maxWidth: .infinity)
+                }
+            } else {
+                HStack {
+                    Text("Specialty")
+                    Spacer()
+                    Text(dataManager.preferences.specialty ?? "Not set")
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            Button(action: {
+                showSpecialtyChange = true
+            }) {
+                Text(dataManager.preferences.specialties.isEmpty ? "Change Specialty" : "Edit Specialties")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.glassProminent)
+            .tint(AppColors.primaryBlue)
+            .listRowBackground(Color.clear)
+
+            Toggle(isOn: Binding(
+                get: { dataManager.preferences.enableCalendarSync },
+                set: { newValue in
+                    dataManager.preferences.enableCalendarSync = newValue
+                    dataManager.savePreferences()
+                }
+            )) {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "calendar.badge.plus")
+                            .foregroundColor(.blue)
+                        Text("Sync Interviews to Calendar")
+                            .font(.arial(size: 15, weight: .medium))
                     }
-                    .buttonStyle(.glassProminent)
-                    .tint(AppColors.primaryBlue)
-                    .listRowBackground(Color.clear)
+                    Text("Add interview dates to a Matchly calendar on your device")
+                        .font(.arial(size: 13))
+                        .foregroundColor(.secondary)
+                }
+            }
         } header: {
-            MatchlyFormSectionHeader(title: "App Information")
+            MatchlyFormSectionHeader(title: "Preferences")
+        } footer: {
+            Text("Sync interviews from the Interviews tab when calendar sync is on.")
         }
     }
-    
+
     private var couplesMatchingSection: some View {
         Section {
                     if let couple = dataManager.preferences.couple {
@@ -274,22 +301,21 @@ struct SettingsView: View {
                     NavigationLink(destination: QuestionnaireCustomizationView()) {
                         Text("Customize Questionnaire")
                     }
-                    
-                    NavigationLink(destination: QuestionnaireWeightsView()) {
-                        HStack {
-                            Text("Set Section Weights")
-                            Spacer()
-                            if !dataManager.preferences.sectionWeights.isEmpty {
-                                Text("Custom")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            } else {
-                                Text("Equal")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
+
+                    Picker("Preferred EMR", selection: Binding(
+                        get: { dataManager.preferences.preferredEMR ?? "" },
+                        set: { newValue in
+                            dataManager.preferences.preferredEMR = newValue.isEmpty ? nil : newValue
+                            dataManager.savePreferences()
+                            dataManager.recalculateAllScores()
+                        }
+                    )) {
+                        Text("Not set").tag("")
+                        ForEach(EMRSystem.allCases) { system in
+                            Text(system.displayName).tag(system.rawValue)
                         }
                     }
+                    .pickerStyle(.menu)
                     
                     Toggle(isOn: Binding(
                         get: { dataManager.preferences.includeRedFlaggedProgramsInRankList },
@@ -311,36 +337,10 @@ struct SettingsView: View {
                         }
                     }
         } header: {
-            MatchlyFormSectionHeader(title: "Questionnaire")
+            MatchlyFormSectionHeader(title: "Scoring & Questionnaire")
+        } footer: {
+            Text("Every enabled questionnaire section counts equally toward program scores. Preferred EMR adds a bonus factor when both your preference and the program's EMR are known.")
         }
-    }
-    
-    private var calendarSection: some View {
-        Section {
-                    Toggle(isOn: Binding(
-                        get: { dataManager.preferences.enableCalendarSync },
-                        set: { newValue in
-                            dataManager.preferences.enableCalendarSync = newValue
-                            dataManager.savePreferences()
-                        }
-                    )) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "calendar.badge.plus")
-                                    .foregroundColor(.blue)
-                                Text("Sync Interviews to Calendar")
-                                    .font(.arial(size: 15, weight: .medium))
-                            }
-                            Text("Automatically add interview dates to your device calendar")
-                                .font(.arial(size: 13))
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                } header: {
-                    MatchlyFormSectionHeader(title: "Calendar")
-                } footer: {
-                    Text("When enabled, your interview dates will be synced to a \"Matchly Interviews\" calendar in your device calendar app. You can sync interviews from the Interviews page.")
-                }
     }
     
     private var dataManagementSection: some View {

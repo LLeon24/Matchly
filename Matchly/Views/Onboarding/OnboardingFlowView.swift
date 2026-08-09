@@ -474,7 +474,7 @@ struct OnboardingFlowView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Label("Program Scoring", systemImage: "slider.horizontal.3")
                                 .font(.arial(size: 16, weight: .semibold))
-                            Text("Programs are scored using the questionnaire. Matchly starts with balanced weights — customize them anytime under Settings → Set Section Weights.")
+                            Text("Programs are scored using the questionnaire. Every enabled section counts equally toward your score.")
                                 .font(.arial(size: 14))
                                 .foregroundColor(.secondary)
                         }

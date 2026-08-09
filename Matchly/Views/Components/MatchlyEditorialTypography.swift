@@ -43,15 +43,14 @@ enum MatchlyEditorialTypography {
 
 // MARK: - Brand (splash-aligned)
 
-/// List-tab page title — light, tracked, title case.
+/// List-tab page title — semibold, title case.
 struct MatchlyPageTitleText: View {
     let title: String
 
     var body: some View {
         Text(title)
-            .font(.arial(size: MatchlyEditorialTypography.pageTitleSize, weight: .light))
+            .font(.arial(size: MatchlyEditorialTypography.pageTitleSize, weight: .semibold))
             .foregroundStyle(AppColors.primaryText)
-            .kerning(MatchlyEditorialTypography.pageTitleKerning)
             .lineLimit(1)
             .minimumScaleFactor(0.85)
     }
@@ -110,14 +109,14 @@ extension MatchlyEditorialPageHeader where Trailing == EmptyView {
     }
 }
 
-/// Dashboard greeting — light weight with subtle tracking to match splash brand tone.
+/// Dashboard greeting — semibold for clear hierarchy above the subtitle.
 struct MatchlyDashboardGreeting: View {
     let text: String
     var size: CGFloat
 
     var body: some View {
         Text(text)
-            .font(.arial(size: size, weight: .light))
+            .font(.arial(size: size, weight: .bold))
             .foregroundStyle(AppColors.primaryText)
             .kerning(MatchlyEditorialTypography.greetingKerning)
             .lineLimit(1)
