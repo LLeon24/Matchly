@@ -39,9 +39,10 @@ struct SettingsView: View {
                             MatchlyBrandLockup(style: .about, showsTagline: false)
 
                             Text("Matchly helps medical students organize residency interview information and generate personalized rank lists.")
-                                .font(.arial(size: 12))
+                                .font(.arial(size: MatchlyEditorialTypography.captionSize, weight: .light))
                                 .foregroundColor(.secondary)
                                 .multilineTextAlignment(.center)
+                                .lineSpacing(3)
                                 .frame(maxWidth: .infinity)
                         }
                         .frame(maxWidth: .infinity)

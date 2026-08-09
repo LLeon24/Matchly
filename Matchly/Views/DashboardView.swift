@@ -46,8 +46,6 @@ struct DashboardView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Persistent compact header (greeting + profile + customize) that stays
-            // pinned above the swipeable section pages — the premium "command bar".
             headerBar
                 .id(dashboardCustomizationToken)
 
@@ -124,19 +122,18 @@ struct DashboardView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Edit profile")
 
-            VStack(alignment: .leading, spacing: screenLayout == .compactVertical ? 1 : 3) {
-                Text(getGreeting())
-                    .font(.arial(size: screenLayout.headerGreetingFont, weight: .bold))
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+            VStack(alignment: .leading, spacing: screenLayout == .compactVertical ? 2 : 4) {
+                MatchlyDashboardGreeting(
+                    text: getGreeting(),
+                    size: screenLayout.headerGreetingFont
+                )
 
-                Text(headerSubtitle)
-                    .font(.arial(size: screenLayout.headerSubtitleFont, weight: .medium))
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                MatchlyFunctionalSubtitle(
+                    text: headerSubtitle,
+                    size: screenLayout.headerSubtitleFont
+                )
             }
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
 
             Spacer(minLength: 8)
 
@@ -152,7 +149,7 @@ struct DashboardView: View {
             .accessibilityLabel("Customize dashboard")
         }
         .padding(.horizontal, 20)
-        .padding(.top, screenLayout == .compactVertical ? 6 : 10)
+        .padding(.top, screenLayout == .compactVertical ? 4 : 6)
         .padding(.bottom, screenLayout.headerVerticalPadding)
     }
 
@@ -1169,20 +1166,21 @@ struct DashboardView: View {
     }
 
     private var phoneEmptyStateSection: some View {
-        VStack(spacing: 24) {
-            emptyStateIcon
+        VStack(spacing: 22) {
+            MatchlyBrandMark(size: .feature)
 
-            VStack(spacing: 10) {
+            MatchlyBrandHairline(width: 44)
+
+            VStack(spacing: 12) {
                 Text("Get Started")
-                    .font(.arial(size: 24, weight: .semibold))
+                    .font(.arial(size: 24, weight: .light))
                     .foregroundColor(.primary)
+                    .kerning(1)
 
-                Text("Add your first residency program to begin building your rank list")
-                    .font(.arial(size: 15, weight: .regular))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 40)
-                    .lineSpacing(2)
+                MatchlyEditorialBody(
+                    text: "Add your first residency program to begin building your rank list."
+                )
+                .padding(.horizontal, 28)
             }
 
             emptyStateAddButton
@@ -1192,18 +1190,19 @@ struct DashboardView: View {
 
     private var iPadEmptyStateSection: some View {
         HStack(alignment: .center, spacing: 40) {
-            emptyStateIcon
+            MatchlyBrandMark(size: .onboarding)
 
             VStack(alignment: .leading, spacing: 16) {
                 Text("Get Started")
-                    .font(.arial(size: 28, weight: .semibold))
+                    .font(.arial(size: 28, weight: .light))
                     .foregroundColor(.primary)
+                    .kerning(1)
 
-                Text("Add your first residency program to begin building your rank list")
-                    .font(.arial(size: 17, weight: .regular))
-                    .foregroundColor(.secondary)
-                    .lineSpacing(2)
-                    .frame(maxWidth: 420, alignment: .leading)
+                MatchlyEditorialBody(
+                    text: "Add your first residency program to begin building your rank list.",
+                    alignment: .leading
+                )
+                .frame(maxWidth: 420, alignment: .leading)
 
                 emptyStateAddButton
             }
@@ -1211,18 +1210,6 @@ struct DashboardView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 36)
         .padding(.horizontal, 24)
-    }
-
-    private var emptyStateIcon: some View {
-        ZStack {
-            Circle()
-                .fill(Color(.systemGray6))
-                .frame(width: MatchlyDeviceLayout.isPad ? 120 : 100, height: MatchlyDeviceLayout.isPad ? 120 : 100)
-
-            Image(systemName: "cross.case.fill")
-                .font(.arial(size: MatchlyDeviceLayout.isPad ? 54 : 48, weight: .light))
-                .foregroundColor(Color(white: 0.3))
-        }
     }
 
     private var emptyStateAddButton: some View {
@@ -1712,8 +1699,11 @@ struct DashboardSectionHeader<Trailing: View>: View {
             }
             
             Text(title)
-                .font(.arial(size: 17, weight: .bold))
+                .font(MatchlyEditorialTypography.displayFont(size: 16))
                 .foregroundColor(.primary)
+                .kerning(MatchlyEditorialTypography.heroTitleKerning(for: 16))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
             
             Spacer(minLength: 8)
             

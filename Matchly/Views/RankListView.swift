@@ -878,7 +878,7 @@ struct ExportView: View {
 
     private var exportPreviewHeader: some View {
         HStack(alignment: .center, spacing: 14) {
-            MatchlyBrandLockup(style: .exportHeader, palette: .onDark)
+            MatchlyBrandLockup(style: .exportHeader, palette: .canvas)
 
             Spacer(minLength: 12)
 
@@ -886,12 +886,12 @@ struct ExportView: View {
                 if !applicantName.isEmpty {
                     Text(applicantName)
                         .font(.arial(size: 13, weight: .medium))
-                        .foregroundColor(.white)
+                        .foregroundColor(AppColors.primaryText)
                 }
                 if let aamcID = applicantAAMCID {
                     Text("AAMC ID \(aamcID)")
                         .font(.arial(size: 10, weight: .regular))
-                        .foregroundColor(.white.opacity(0.82))
+                        .foregroundColor(AppColors.secondaryText)
                         .kerning(0.8)
                 }
             }
@@ -900,7 +900,18 @@ struct ExportView: View {
         .padding(.vertical, 14)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(AppColors.primaryGradient)
+                .fill(Color.white)
+                .overlay(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .fill(AppColors.primaryBlue)
+                        .frame(width: 3)
+                        .padding(.vertical, 12)
+                        .padding(.leading, 10)
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(AppColors.secondaryText.opacity(0.18), lineWidth: 0.5)
+                }
         )
         .padding(.horizontal)
     }

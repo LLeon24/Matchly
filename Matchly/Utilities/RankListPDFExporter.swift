@@ -150,11 +150,11 @@ private struct DrawState {
 
         guard let cgContext = UIGraphicsGetCurrentContext() else { return }
         cgContext.saveGState()
-        drawBrandGradient(in: headerRect, cornerRadius: 14)
+        drawExportHeaderBackground(in: headerRect, cornerRadius: 14)
 
         let logoSize: CGFloat = 52
         let logoRect = CGRect(
-            x: headerRect.minX + 16,
+            x: headerRect.minX + 18,
             y: headerRect.midY - logoSize / 2,
             width: logoSize,
             height: logoSize
@@ -165,21 +165,21 @@ private struct DrawState {
         let textWidth = headerRect.maxX - textX - 12
         let titleAttributes: [NSAttributedString.Key: Any] = [
             .font: Fonts.regular(17),
-            .foregroundColor: UIColor.white,
+            .foregroundColor: Colors.primaryText,
             .kern: 3.5
         ]
         let subtitleAttributes: [NSAttributedString.Key: Any] = [
             .font: Fonts.regular(10),
-            .foregroundColor: UIColor.white.withAlphaComponent(0.82),
+            .foregroundColor: Colors.secondaryText,
             .kern: 1.4
         ]
         let applicantAttributes: [NSAttributedString.Key: Any] = [
             .font: Fonts.semibold(11),
-            .foregroundColor: UIColor.white
+            .foregroundColor: Colors.primaryText
         ]
         let aamcAttributes: [NSAttributedString.Key: Any] = [
             .font: Fonts.regular(10),
-            .foregroundColor: UIColor.white.withAlphaComponent(0.92)
+            .foregroundColor: Colors.secondaryText
         ]
 
         "MATCHLY".draw(at: CGPoint(x: textX, y: headerRect.minY + 18), withAttributes: titleAttributes)
@@ -208,7 +208,7 @@ private struct DrawState {
         let meta = "Generated \(dateFormatter.string(from: configuration.generatedAt))  •  \(totalCount) program\(totalCount == 1 ? "" : "s")"
         let metaAttributes: [NSAttributedString.Key: Any] = [
             .font: Fonts.regular(9),
-            .foregroundColor: UIColor.white.withAlphaComponent(0.88)
+            .foregroundColor: Colors.secondaryText
         ]
         let metaRect = CGRect(x: textX, y: headerRect.maxY - 20, width: textWidth, height: 16)
         meta.draw(in: metaRect, withAttributes: metaAttributes)
@@ -417,6 +417,26 @@ private struct DrawState {
         return pillRect.width
     }
 
+    func drawExportHeaderBackground(in rect: CGRect, cornerRadius: CGFloat) {
+        let path = UIBezierPath(roundedRect: rect, cornerRadius: cornerRadius)
+        Colors.cardBackground.setFill()
+        path.fill()
+
+        Colors.headerBorder.setStroke()
+        path.lineWidth = 0.5
+        path.stroke()
+
+        let accentRect = CGRect(
+            x: rect.minX + 10,
+            y: rect.minY + 12,
+            width: 3,
+            height: rect.height - 24
+        )
+        let accent = UIBezierPath(roundedRect: accentRect, cornerRadius: 1.5)
+        Colors.brandBlue.setFill()
+        accent.fill()
+    }
+
     func drawBrandGradient(in rect: CGRect, cornerRadius: CGFloat) {
         let path = UIBezierPath(roundedRect: rect, cornerRadius: cornerRadius)
         path.addClip()
@@ -528,6 +548,7 @@ private enum Colors {
     static let brandTeal = UIColor(red: 0.2, green: 0.7, blue: 0.8, alpha: 1.0)
     static let pageBackground = UIColor(white: 0.98, alpha: 1.0)
     static let cardBackground = UIColor.white
+    static let headerBorder = UIColor(white: 0.82, alpha: 1.0)
     static let primaryText = UIColor(white: 0.12, alpha: 1.0)
     static let secondaryText = UIColor(white: 0.45, alpha: 1.0)
     static let red = UIColor.systemRed

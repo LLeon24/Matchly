@@ -277,7 +277,7 @@ struct CompactProgramRowView: View {
             VStack(alignment: .leading, spacing: 3) {
                 // Hospital name
                 Text(HospitalNameFormatter.format(program.hospital.isEmpty ? (program.name.isEmpty ? "Unnamed Program" : program.name) : program.hospital))
-                    .font(.arial(size: 15, weight: .semibold))
+                    .font(MatchlyEditorialTypography.headlineFont(size: 15))
                     .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
                 

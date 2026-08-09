@@ -26,7 +26,8 @@ struct SplashView: View {
                     VStack(spacing: 0) {
                         Spacer()
 
-                        MatchlyBrandLockup(style: .splash)
+                        MatchlyBrandInlineLockup(glyphSize: .feature)
+                            .frame(maxWidth: .infinity)
                             .scaleEffect(0.97 + (0.03 * revealProgress))
                             .opacity(revealProgress)
 

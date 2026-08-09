@@ -65,8 +65,9 @@ struct DashboardSectionTabBar: View {
             }
         } label: {
             Text(titles[index])
-                .font(.arial(size: layout.sectionTabFont, weight: isSelected ? .bold : .medium))
-                .foregroundColor(isSelected ? tabColor.opacity(0.82) : Color.primary.opacity(0.48))
+                .font(.arial(size: layout.sectionTabFont, weight: isSelected ? .regular : .light))
+                .foregroundColor(isSelected ? tabColor.opacity(0.82) : Color.primary.opacity(0.45))
+                .kerning(isSelected ? 0.5 : 0.3)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
                 .padding(.vertical, layout == .compactVertical ? 10 : 12)
@@ -320,9 +321,7 @@ struct DashboardRingHero: View {
             }
 
             VStack(spacing: layout == .compactVertical ? 3 : 5) {
-                Text(title)
-                    .font(.arial(size: layout.heroTitleFont, weight: .bold))
-                    .foregroundColor(.primary)
+                MatchlyHeroTitle(title: title, size: layout.heroTitleFont)
                 Text(subtitle)
                     .font(.arial(size: layout.heroSubtitleFont))
                     .foregroundColor(.secondary)
@@ -365,6 +364,23 @@ struct DashboardSnapshotHero: View {
     var accentTint: Color = AppColors.accentGreen
     @Environment(\.matchlyLayout) private var layout
 
+    /// Editorial card rhythm — left-aligned, action-first.
+    private enum HeroSpacing {
+        static let brandToHeader: CGFloat = 10
+        static let headerToContent: CGFloat = 16
+        static let contentToGuidance: CGFloat = 10
+        static let contentToStats: CGFloat = 12
+        static let inset: CGFloat = 14
+        static let labelToRow: CGFloat = 10
+        static let headerText: CGFloat = 6
+        static let statsDividerBottom: CGFloat = 10
+    }
+
+    private var compactRingSize: CGFloat { layout == .compactVertical ? 56 : 76 }
+    private var compactRingLineWidth: CGFloat { layout == .compactVertical ? 6 : 8 }
+    private var compactRingNumberFont: CGFloat { layout == .compactVertical ? 22 : 28 }
+    private var compactRingUnitFont: CGFloat { layout == .compactVertical ? 8 : 9 }
+
     private var usesSegmentedRing: Bool { !ringSegments.isEmpty }
     private let segmentBlendFraction: Double = 0.055
 
@@ -386,93 +402,86 @@ struct DashboardSnapshotHero: View {
     }
 
     var body: some View {
-        Group {
-            if layout == .compactVertical {
-                compactBody
-            } else {
-                standardBody
+        VStack(alignment: .leading, spacing: 0) {
+            heroBrandBlock
+                .padding(.bottom, HeroSpacing.headerToContent)
+
+            if nextInterviewProgram != nil {
+                nextInterviewCard
+                    .padding(.bottom, trailingContentBottomPadding)
             }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 2)
-    }
 
-    private var standardBody: some View {
-        let heroMidSpacing: CGFloat = 8
-        return VStack(spacing: 0) {
-            heroRing
-
-            Text(progressCaption)
-                .font(.arial(size: layout.heroCaptionFont, weight: .medium))
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-                .minimumScaleFactor(0.85)
-                .padding(.top, heroMidSpacing)
-                .padding(.bottom, 6)
-
-            VStack(spacing: 10) {
-                Text(title)
-                    .font(.arial(size: layout.heroTitleFont, weight: .bold))
-                    .foregroundColor(.primary)
-
-                nextInterviewSection
-
-                if !subtitle.isEmpty {
-                    Text(subtitle)
-                        .font(.arial(size: layout.heroSubtitleFont))
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+            if !subtitle.isEmpty {
+                seasonGuidanceText
+                    .padding(.bottom, HeroSpacing.contentToStats)
             }
 
             statsRow
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var compactBody: some View {
-        HStack(alignment: .center, spacing: 16) {
-            ringBlock
-                .frame(width: layout.heroRingSize + 8)
+    private var trailingContentBottomPadding: CGFloat {
+        subtitle.isEmpty ? HeroSpacing.contentToStats : HeroSpacing.contentToGuidance
+    }
 
-            VStack(alignment: .leading, spacing: 8) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(title)
-                        .font(.arial(size: layout.heroTitleFont, weight: .bold))
-                        .foregroundColor(.primary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
+    private var heroBrandBlock: some View {
+        VStack(alignment: .leading, spacing: HeroSpacing.brandToHeader) {
+            MatchlyBrandInlineWordmark(glyphSize: .micro)
+            seasonHeaderRow
+        }
+    }
 
-                    nextInterviewSectionContent(alignment: .leading)
+    /// Title + progress copy on the left, bottom-aligned with the season ring.
+    private var seasonHeaderRow: some View {
+        HStack(alignment: .bottom, spacing: 16) {
+            VStack(alignment: .leading, spacing: HeroSpacing.headerText) {
+                MatchlyContentSectionTitle(title: title)
 
-                    if !subtitle.isEmpty {
-                        Text(subtitle)
-                            .font(.arial(size: layout.heroSubtitleFont))
-                            .foregroundColor(.secondary)
-                            .lineLimit(2)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-
-                statsGrid
+                Text(progressCaption)
+                    .font(.arial(size: layout.heroCaptionFont, weight: .regular))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+
+            Spacer(minLength: 8)
+
+            compactSeasonRing
+        }
+    }
+
+    @ViewBuilder
+    private var nextInterviewCard: some View {
+        if let program = nextInterviewProgram {
+            VStack(alignment: .leading, spacing: HeroSpacing.labelToRow) {
+                MatchlySectionHeaderText(title: "Next Interview")
+
+                NavigationLink(destination: ProgramEntryView(program: program)) {
+                    InterviewRow(program: program, isUpcoming: true)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(HeroSpacing.inset)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color.secondary.opacity(0.06))
+            )
         }
     }
 
-    private var ringBlock: some View {
-        VStack(spacing: 8) {
-            heroRing
-            progressCaptionLabel
-        }
+    private var seasonGuidanceText: some View {
+        Text(subtitle)
+            .font(.arial(size: layout.heroSubtitleFont, weight: .regular))
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
-    private var heroRing: some View {
+    private var compactSeasonRing: some View {
         ZStack {
             Circle()
-                .stroke(Color.secondary.opacity(0.14), lineWidth: layout.heroRingLineWidth)
-                .frame(width: layout.heroRingSize, height: layout.heroRingSize)
+                .stroke(Color.secondary.opacity(0.14), lineWidth: compactRingLineWidth)
+                .frame(width: compactRingSize, height: compactRingSize)
 
             if usesSegmentedRing {
                 segmentedRingArcs
@@ -481,30 +490,32 @@ struct DashboardSnapshotHero: View {
                     .trim(from: 0, to: min(max(progress, 0), 1))
                     .stroke(
                         ringGradient,
-                        style: StrokeStyle(lineWidth: layout.heroRingLineWidth, lineCap: .round)
+                        style: StrokeStyle(lineWidth: compactRingLineWidth, lineCap: .round)
                     )
-                    .frame(width: layout.heroRingSize, height: layout.heroRingSize)
+                    .frame(width: compactRingSize, height: compactRingSize)
                     .rotationEffect(.degrees(-90))
                     .animation(.spring(response: 0.7, dampingFraction: 0.85), value: progress)
             }
 
             VStack(spacing: 0) {
                 Text(bigNumber)
-                    .font(.arial(size: layout.heroBigNumberFont, weight: .bold))
+                    .font(.arial(size: compactRingNumberFont, weight: .bold))
                     .foregroundStyle(centerNumberStyle)
                     .minimumScaleFactor(0.5)
                     .lineLimit(1)
                 if !unit.isEmpty {
                     Text(unit)
-                        .font(.arial(size: layout.heroUnitFont, weight: .semibold))
+                        .font(.arial(size: compactRingUnitFont, weight: .semibold))
                         .foregroundColor(usesSegmentedRing ? .secondary : accentTint.opacity(0.9))
                         .textCase(.uppercase)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                 }
             }
-            .padding(.horizontal, 4)
+            .padding(.horizontal, 2)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(bigNumber) \(unit). \(progressCaption)")
     }
 
     private var centerNumberStyle: AnyShapeStyle {
@@ -525,9 +536,9 @@ struct DashboardSnapshotHero: View {
             .trim(from: 0, to: segmentedRingFill)
             .stroke(
                 blendedSegmentGradient(),
-                style: StrokeStyle(lineWidth: layout.heroRingLineWidth, lineCap: .round)
+                style: StrokeStyle(lineWidth: compactRingLineWidth, lineCap: .round)
             )
-            .frame(width: layout.heroRingSize, height: layout.heroRingSize)
+            .frame(width: compactRingSize, height: compactRingSize)
             .rotationEffect(.degrees(-90))
             .animation(.spring(response: 0.7, dampingFraction: 0.85), value: segmentedRingFill)
     }
@@ -585,68 +596,14 @@ struct DashboardSnapshotHero: View {
     }
 
     @ViewBuilder
-    private var nextInterviewSection: some View {
-        nextInterviewSectionContent(alignment: .center)
-    }
-
-    @ViewBuilder
-    private func nextInterviewSectionContent(alignment: HorizontalAlignment) -> some View {
-        if let program = nextInterviewProgram {
-            VStack(alignment: alignment, spacing: 8) {
-                Text("Next Interview")
-                    .font(.arial(size: 12, weight: .semibold))
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, alignment: alignment == .center ? .center : .leading)
-
-                NavigationLink(destination: ProgramEntryView(program: program)) {
-                    InterviewRow(program: program, isUpcoming: true)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
-
-    private var progressCaptionLabel: some View {
-        Text(progressCaption)
-            .font(.arial(size: layout.heroCaptionFont, weight: .medium))
-            .foregroundColor(.secondary)
-            .multilineTextAlignment(.center)
-            .lineLimit(2)
-            .minimumScaleFactor(0.85)
-    }
-
-    @ViewBuilder
     private var statsRow: some View {
         if !stats.isEmpty {
             Divider()
-                .padding(.top, 14)
-                .padding(.bottom, 10)
+                .padding(.bottom, HeroSpacing.statsDividerBottom)
 
             HStack(spacing: 0) {
                 ForEach(stats) { stat in
                     statCell(stat)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var statsGrid: some View {
-                if !stats.isEmpty {
-                    Divider()
-                        .padding(.top, 6)
-                        .padding(.bottom, 4)
-
-                    LazyVGrid(
-                columns: [
-                    GridItem(.flexible(), spacing: 8),
-                    GridItem(.flexible(), spacing: 8)
-                ],
-                spacing: 8
-            ) {
-                ForEach(stats) { stat in
-                    statCell(stat)
-                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }
@@ -733,8 +690,9 @@ struct DashboardNumberHero: View {
                             }
                         }
                         Text(title)
-                            .font(.arial(size: titleFont, weight: .bold))
+                            .font(MatchlyEditorialTypography.displayFont(size: titleFont))
                             .foregroundColor(.primary)
+                            .kerning(MatchlyEditorialTypography.heroTitleKerning(for: titleFont))
                             .lineLimit(1)
                         Text(subtitle)
                             .font(.arial(size: subtitleFont))
@@ -769,9 +727,7 @@ struct DashboardNumberHero: View {
                     }
 
                     VStack(spacing: 5) {
-                        Text(title)
-                            .font(.arial(size: titleFont, weight: .bold))
-                            .foregroundColor(.primary)
+                        MatchlyHeroTitle(title: title, size: titleFont)
                         Text(subtitle)
                             .font(.arial(size: subtitleFont))
                             .foregroundColor(.secondary)

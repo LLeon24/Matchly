@@ -75,23 +75,18 @@ extension View {
 
 // MARK: - Form section headers
 
-/// Black, left-aligned section title for Settings and Backup & Sync forms.
-/// Uses 17pt bold so titles match (not shrink below) primary form row text.
+/// Small tracked section labels for Settings and grouped forms.
 struct MatchlyFormSectionHeader: View {
     let title: String
 
     var body: some View {
         HStack(spacing: 0) {
-            Text(title)
-                .font(.arial(size: 17, weight: .bold))
-                .foregroundStyle(Color.black)
-                .textCase(nil)
+            MatchlySectionHeaderText(title: title)
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        // Counteract Form's default section-header inset so titles sit flush
-        // with the leading edge of the grouped card below.
         .padding(.leading, -16)
+        .padding(.bottom, 2)
     }
 }
 
@@ -111,8 +106,9 @@ struct MatchlySpecialtySectionHeader: View {
                     ? SpecialtyFormatter.displayNameWithAbbreviation(specialty)
                     : SpecialtyFormatter.abbreviation(for: specialty)
             )
-            .font(.arial(size: 13, weight: .semibold))
+            .font(.arial(size: 13, weight: .regular))
             .foregroundColor(color)
+            .kerning(0.3)
         }
     }
 }
@@ -134,11 +130,13 @@ enum MatchlyLayoutStyle: Equatable {
     case standard
     case compactVertical
 
-    var heroRingSize: CGFloat { self == .compactVertical ? 96 : 172 }
-    var heroRingLineWidth: CGFloat { self == .compactVertical ? 9 : 13 }
-    var heroBigNumberFont: CGFloat { self == .compactVertical ? 36 : 64 }
-    var heroUnitFont: CGFloat { self == .compactVertical ? 11 : 13 }
+    var heroRingSize: CGFloat { self == .compactVertical ? 82 : 144 }
+    var heroRingLineWidth: CGFloat { self == .compactVertical ? 8 : 11 }
+    var heroBigNumberFont: CGFloat { self == .compactVertical ? 30 : 52 }
+    var heroUnitFont: CGFloat { self == .compactVertical ? 10 : 12 }
     var heroTitleFont: CGFloat { self == .compactVertical ? 17 : 24 }
+    /// Section label under the progress ring (e.g. “Your Interview Season”).
+    var heroSectionTitleFont: CGFloat { self == .compactVertical ? 15 : 18 }
     var heroSubtitleFont: CGFloat { self == .compactVertical ? 12 : 14 }
     var heroCaptionFont: CGFloat { self == .compactVertical ? 11 : 12 }
     var heroStatValueFont: CGFloat { self == .compactVertical ? 16 : 20 }
@@ -363,32 +361,13 @@ enum MatchlyListPageToolbar {
     static func showsActions(hasContent: Bool) -> Bool { hasContent }
 }
 
-/// Typography for list-tab page headers (My Programs, Rank List, Settings).
-enum MatchlyListPageTypography {
-    /// Between dashboard greeting (20pt) and legacy large title (34pt).
-    static let titleSize: CGFloat = 28
-}
-
-/// Second row on list tabs: page title flush left; optional trailing action (e.g. Export PDF).
+/// List-tab page header with luxury title + hairline.
 struct MatchlyListPageTitleRow<Trailing: View>: View {
     let title: String
     @ViewBuilder var trailing: () -> Trailing
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Text(title)
-                .font(.arial(size: MatchlyListPageTypography.titleSize, weight: .bold))
-                .foregroundColor(.primary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-
-            Spacer(minLength: 8)
-
-            trailing()
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 6)
-        .padding(.bottom, 10)
+        MatchlyEditorialPageHeader(title: title, trailing: trailing)
     }
 }
 
