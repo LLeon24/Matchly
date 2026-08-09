@@ -34,19 +34,11 @@ struct AuthenticationView: View {
                     Spacer()
                         .frame(height: 40)
                     
-                    // App Logo and Title
+                    // Brand lockup
                     VStack(spacing: 16) {
-                        MatchlyBrandMark(size: .auth)
-                        
-                        Text("Matchly")
-                            .font(.arial(size: 32, weight: .bold))
-                            .foregroundColor(.primary)
-                        
-                        Text("Residency Match Management")
-                            .font(.arial(size: 14))
-                            .foregroundColor(.secondary)
+                        MatchlyBrandLockup(style: .auth)
                     }
-                    .padding(.bottom, 20)
+                    .padding(.bottom, 28)
                     
                     // Sign In Options
                     VStack(spacing: 16) {
@@ -68,19 +60,21 @@ struct AuthenticationView: View {
                             .tint(AppColors.primaryBlue)
                             .disabled(isBiometricSigningIn)
 
-                            HStack {
+                            HStack(spacing: 14) {
                                 Rectangle()
-                                    .fill(Color.secondary.opacity(0.3))
-                                    .frame(height: 1)
+                                    .fill(AppColors.secondaryText.opacity(0.35))
+                                    .frame(height: 0.5)
+                                    .frame(maxWidth: .infinity)
                                 Text("OR")
-                                    .font(.arial(size: 12, weight: .medium))
+                                    .font(.arial(size: 11, weight: .regular))
                                     .foregroundColor(.secondary)
-                                    .padding(.horizontal, 12)
+                                    .kerning(1.8)
                                 Rectangle()
-                                    .fill(Color.secondary.opacity(0.3))
-                                    .frame(height: 1)
+                                    .fill(AppColors.secondaryText.opacity(0.35))
+                                    .frame(height: 0.5)
+                                    .frame(maxWidth: .infinity)
                             }
-                            .padding(.vertical, 4)
+                            .padding(.vertical, 6)
                         }
 
                         // Email + Google when `allowsNonAppleProviders` is true; Apple always shown.

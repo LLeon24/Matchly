@@ -12,8 +12,7 @@ struct SplashView: View {
     @ObservedObject private var dataManager = DataManager.shared
     @Environment(\.scenePhase) private var scenePhase
     @State private var showSplash = true
-    @State private var scale: CGFloat = 0.8
-    @State private var opacity: Double = 0
+    @State private var revealProgress: Double = 0
     @State private var showBiometricSetupAlert = false
     
     var body: some View {
@@ -24,41 +23,26 @@ struct SplashView: View {
                     AppColors.dashboardCanvas
                         .ignoresSafeArea()
                     
-                    VStack(spacing: 20) {
+                    VStack(spacing: 0) {
                         Spacer()
-                        
-                        MatchlyBrandMark(size: .splash)
-                            .scaleEffect(scale)
-                            .opacity(opacity)
-                        
-                        // App name - clean, professional typography
-                        Text("Matchly")
-                            .font(.arial(size: 36, weight: .semibold, design: .default))
-                            .foregroundColor(.primary)
-                            .opacity(opacity)
-                        
-                        // Tagline - subtle and professional
-                        Text("Residency Match Management")
-                            .font(.arial(size: 15, weight: .regular))
-                            .foregroundColor(.secondary)
-                            .opacity(opacity)
-                        
+
+                        MatchlyBrandLockup(style: .splash)
+                            .scaleEffect(0.97 + (0.03 * revealProgress))
+                            .opacity(revealProgress)
+
                         Spacer()
                     }
                 }
                 .onAppear {
-                    // Smooth fade-in animation
-                    withAnimation(.easeOut(duration: 0.6)) {
-                        scale = 1.0
-                        opacity = 1.0
+                    withAnimation(.easeOut(duration: 1.0)) {
+                        revealProgress = 1
                     }
-                    
-                    // Navigate after brief display
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                        withAnimation(.easeIn(duration: 0.3)) {
-                            opacity = 0
+
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+                        withAnimation(.easeInOut(duration: 0.55)) {
+                            revealProgress = 0
                         }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) {
                             showSplash = false
                         }
                     }

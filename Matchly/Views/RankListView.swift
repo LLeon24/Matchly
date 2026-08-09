@@ -877,33 +877,24 @@ struct ExportView: View {
     }
 
     private var exportPreviewHeader: some View {
-        HStack(spacing: 14) {
-            MatchlyBrandMark(size: .inline)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(Color.white.opacity(0.25), lineWidth: 1)
-                )
+        HStack(alignment: .center, spacing: 14) {
+            MatchlyBrandLockup(style: .exportHeader, palette: .onDark)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Matchly")
-                    .font(.arial(size: 18, weight: .bold))
-                    .foregroundColor(.white)
-                Text("Residency Rank List")
-                    .font(.arial(size: 12))
-                    .foregroundColor(.white.opacity(0.9))
+            Spacer(minLength: 12)
+
+            VStack(alignment: .trailing, spacing: 3) {
                 if !applicantName.isEmpty {
                     Text(applicantName)
-                        .font(.arial(size: 13, weight: .semibold))
+                        .font(.arial(size: 13, weight: .medium))
                         .foregroundColor(.white)
                 }
                 if let aamcID = applicantAAMCID {
-                    Text("AAMC ID: \(aamcID)")
-                        .font(.arial(size: 11))
-                        .foregroundColor(.white.opacity(0.92))
+                    Text("AAMC ID \(aamcID)")
+                        .font(.arial(size: 10, weight: .regular))
+                        .foregroundColor(.white.opacity(0.82))
+                        .kerning(0.8)
                 }
             }
-
-            Spacer()
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)

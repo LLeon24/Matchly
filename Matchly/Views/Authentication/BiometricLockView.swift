@@ -17,15 +17,11 @@ struct BiometricLockView: View {
             AppColors.dashboardCanvas
                 .ignoresSafeArea()
 
-            Color.black.opacity(0.35)
+            Color.black.opacity(0.22)
                 .ignoresSafeArea()
 
-            VStack(spacing: 24) {
-                MatchlyBrandMark(size: .lock)
-
-                Text("Matchly is Locked")
-                    .font(.arial(size: 24, weight: .semibold))
-                    .foregroundColor(.primary)
+            VStack(spacing: 28) {
+                MatchlyBrandLockup(style: .lock)
 
                 HStack(spacing: 10) {
                     Image(systemName: biometric.systemImageName)

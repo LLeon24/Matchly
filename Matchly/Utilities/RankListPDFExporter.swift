@@ -164,12 +164,14 @@ private struct DrawState {
         let textX = logoRect.maxX + 14
         let textWidth = headerRect.maxX - textX - 12
         let titleAttributes: [NSAttributedString.Key: Any] = [
-            .font: Fonts.bold(20),
-            .foregroundColor: UIColor.white
+            .font: Fonts.regular(17),
+            .foregroundColor: UIColor.white,
+            .kern: 3.5
         ]
         let subtitleAttributes: [NSAttributedString.Key: Any] = [
-            .font: Fonts.regular(12),
-            .foregroundColor: UIColor.white.withAlphaComponent(0.92)
+            .font: Fonts.regular(10),
+            .foregroundColor: UIColor.white.withAlphaComponent(0.82),
+            .kern: 1.4
         ]
         let applicantAttributes: [NSAttributedString.Key: Any] = [
             .font: Fonts.semibold(11),
@@ -180,8 +182,8 @@ private struct DrawState {
             .foregroundColor: UIColor.white.withAlphaComponent(0.92)
         ]
 
-        "Matchly".draw(at: CGPoint(x: textX, y: headerRect.minY + 16), withAttributes: titleAttributes)
-        "Residency Rank List".draw(at: CGPoint(x: textX, y: headerRect.minY + 40), withAttributes: subtitleAttributes)
+        "MATCHLY".draw(at: CGPoint(x: textX, y: headerRect.minY + 18), withAttributes: titleAttributes)
+        "RESIDENCY RANK LIST".draw(at: CGPoint(x: textX, y: headerRect.minY + 40), withAttributes: subtitleAttributes)
 
         var detailY = headerRect.minY + 58
         if !trimmedName.isEmpty {
@@ -435,17 +437,7 @@ private struct DrawState {
 
     func drawMatchlyLogo(in rect: CGRect) {
         guard let image = UIImage(named: "MatchlyGlyph") else { return }
-        guard let cgContext = UIGraphicsGetCurrentContext() else { return }
-        cgContext.saveGState()
-        let clipPath = UIBezierPath(roundedRect: rect, cornerRadius: 12)
-        clipPath.addClip()
         image.draw(in: rect)
-        cgContext.restoreGState()
-
-        let border = UIBezierPath(roundedRect: rect, cornerRadius: 12)
-        UIColor.white.withAlphaComponent(0.25).setStroke()
-        border.lineWidth = 1
-        border.stroke()
     }
 
     mutating func drawFooter() {
@@ -454,7 +446,7 @@ private struct DrawState {
             .font: Fonts.regular(9),
             .foregroundColor: Colors.secondaryText
         ]
-        let left = "Matchly — Confidential rank list"
+        let left = "MATCHLY — CONFIDENTIAL RANK LIST"
         let right = "Page \(pageNumber)"
         left.draw(at: CGPoint(x: margin, y: footerY), withAttributes: attributes)
         let rightSize = right.size(withAttributes: attributes)

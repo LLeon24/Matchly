@@ -19,7 +19,6 @@ struct OnboardingFlowView: View {
     @State private var cropImageItem: CropImageItem?
     @State private var isLoadingPhoto = false
     @State private var showMainApp = false
-    @State private var iconScale: CGFloat = 1.0
     @State private var enableCalendarSync: Bool = false
     @State private var includeRedFlaggedInRankList: Bool = true
     @State private var preferredEMR: String = ""
@@ -148,49 +147,15 @@ struct OnboardingFlowView: View {
         VStack(spacing: 0) {
             Spacer()
             
-            VStack(spacing: 32) {
-                // Matchly App Icon with animation
-                ZStack {
-                    // Glow effect
-                    Circle()
-                        .fill(
-                            RadialGradient(
-                                colors: [
-                                    Color.blue.opacity(0.3),
-                                    Color.purple.opacity(0.2),
-                                    Color.clear
-                                ],
-                                center: .center,
-                                startRadius: 20,
-                                endRadius: 80
-                            )
-                        )
-                        .frame(width: 160, height: 160)
-                        .blur(radius: 20)
-                    
-                    MatchlyBrandMark(size: .onboarding)
-                        .shadow(color: .black.opacity(0.15), radius: 20, x: 0, y: 10)
-                }
-                .scaleEffect(iconScale)
-                .onAppear {
-                    withAnimation(.spring(response: 0.6, dampingFraction: 0.7).repeatForever(autoreverses: true)) {
-                        iconScale = 1.05
-                    }
-                }
-                
-                // Welcome text with animation
-                VStack(spacing: 16) {
-                    Text("Welcome to Matchly")
-                        .font(.arial(size: 36, weight: .bold))
-                        .foregroundColor(.primary)
-                    
-                    Text("Your Residency Match Companion")
-                        .font(.arial(size: 18, weight: .medium))
+            VStack(spacing: 36) {
+                MatchlyBrandLockup(style: .onboarding)
+
+                VStack(spacing: 18) {
+                    Text("YOUR MATCH COMPANION")
+                        .font(.arial(size: 12, weight: .regular))
                         .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 20)
-                    
-                    // Feature highlights
+                        .kerning(2.2)
+
                     VStack(spacing: 12) {
                         FeatureRow(icon: "list.bullet.clipboard.fill", text: "Track & Score Programs")
                         FeatureRow(icon: "chart.bar.fill", text: "Build Your NRMP Rank List")
@@ -200,7 +165,7 @@ struct OnboardingFlowView: View {
                             FeatureRow(icon: "heart.fill", text: "Couples Match with Your Partner")
                         }
                     }
-                    .padding(.top, 24)
+                    .padding(.top, 8)
                 }
             }
             

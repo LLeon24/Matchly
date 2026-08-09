@@ -35,16 +35,24 @@ struct SettingsView: View {
                     accountSection
 
                     Section {
+                        VStack(spacing: 14) {
+                            MatchlyBrandLockup(style: .about, showsTagline: false)
+
+                            Text("Matchly helps medical students organize residency interview information and generate personalized rank lists.")
+                                .font(.arial(size: 12))
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+
                         HStack {
                             Text("Version")
                             Spacer()
                             Text(MatchlyBuildInfo.version)
                                 .foregroundColor(.secondary)
                         }
-
-                        Text("Matchly helps medical students organize residency interview information and generate personalized rank lists.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
                     } header: {
                         MatchlyFormSectionHeader(title: "About")
                     }
