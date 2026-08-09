@@ -130,7 +130,7 @@ struct MatchlyBrandLockup: View {
 
     private var stackSpacing: CGFloat {
         switch style {
-        case .splash, .onboarding: return 22
+        case .splash, .onboarding: return 24
         case .auth: return 20
         case .lock: return 18
         case .about: return 10
