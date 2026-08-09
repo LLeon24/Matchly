@@ -57,6 +57,16 @@ struct UserPreferences: Codable, Hashable {
     // Dashboard customization
     var dashboardLayout: DashboardLayout = DashboardLayout()
     var dashboardPreferences: DashboardPreferences = DashboardPreferences()
+
+    /// Per-program interview prep selections (questions, top 3, checklist).
+    var interviewPrepByProgram: [String: InterviewPrepState] = [:]
+}
+
+struct InterviewPrepState: Codable, Hashable {
+    var selectedQuestionIds: Set<String> = []
+    /// Up to three must-answer questions, in priority order.
+    var priorityQuestionIds: [String] = []
+    var checkedChecklistItems: Set<String> = []
 }
 
 struct DashboardPreferences: Codable, Hashable {
@@ -250,6 +260,7 @@ extension UserPreferences {
         self.includeRedFlaggedProgramsInRankList = try container.decodeIfPresent(Bool.self, forKey: .includeRedFlaggedProgramsInRankList) ?? true
         self.dashboardLayout = try container.decodeIfPresent(DashboardLayout.self, forKey: .dashboardLayout) ?? DashboardLayout()
         self.dashboardPreferences = try container.decodeIfPresent(DashboardPreferences.self, forKey: .dashboardPreferences) ?? DashboardPreferences()
+        self.interviewPrepByProgram = try container.decodeIfPresent([String: InterviewPrepState].self, forKey: .interviewPrepByProgram) ?? [:]
     }
 }
 

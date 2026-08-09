@@ -181,6 +181,10 @@ struct ProgramEntryView: View {
                 // EMR selection - white card design
                 emrSelectionCard
 
+                if canOpenInterviewPrep {
+                    interviewPrepReferenceCard
+                }
+
                 // Standard questionnaire sections - white card design
                 questionnaireSections
                 
@@ -391,6 +395,109 @@ struct ProgramEntryView: View {
             emr = system.rawValue
             emrOtherDetail = ""
         }
+    }
+
+    // MARK: - Interview Prep
+
+    private var canOpenInterviewPrep: Bool {
+        hasInterviewDate && !hospital.isEmpty
+    }
+
+    private var isQuestionnaireComplete: Bool {
+        questionnaire.questionnaireCompletionRatio(preferences: dataManager.preferences) >= 1.0
+    }
+
+    private var interviewPrepSummary: String {
+        let prep = dataManager.preferences.interviewPrepByProgram[currentProgramId]
+        if let prep, !prep.priorityQuestionIds.isEmpty {
+            let count = prep.priorityQuestionIds.count
+            return "\(count) must-ask question\(count == 1 ? "" : "s") saved"
+        }
+        if isQuestionnaireComplete {
+            return "Review your questions and day-before checklist"
+        }
+        return "Pick questions, star your top 3, and run the checklist"
+    }
+
+    private var currentProgramId: String {
+        program?.id ?? draftProgramId
+    }
+
+    private var interviewPrepReferenceCard: some View {
+        NavigationLink(destination: InterviewPrepView(program: currentProgramSnapshot())) {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(AppColors.accentGreen.opacity(0.15))
+                        .frame(width: 40, height: 40)
+                    Image(systemName: "calendar.badge.clock")
+                        .font(.arial(size: 17, weight: .semibold))
+                        .foregroundColor(AppColors.accentGreen)
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(isQuestionnaireComplete ? "Interview Prep Reference" : "Interview Prep")
+                        .font(.arial(size: 16, weight: .semibold))
+                        .foregroundColor(.primary)
+                    Text(interviewPrepSummary)
+                        .font(.arial(size: 12))
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.leading)
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "chevron.right")
+                    .font(.arial(size: 12, weight: .semibold))
+                    .foregroundColor(.secondary.opacity(0.6))
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .glassEffect(.regular, in: .rect(cornerRadius: 16))
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 20)
+    }
+
+    private func currentProgramSnapshot() -> Program {
+        let programId = currentProgramId
+        let normalizedSpecialty = SpecialtyFormatter.normalizedUserSpecialty(
+            !specialty.isEmpty
+                ? specialty
+                : (program?.specialty ?? dataManager.preferences.specialties.first ?? dataManager.preferences.specialty ?? "Unknown")
+        )
+
+        return Program(
+            id: programId,
+            specialty: normalizedSpecialty,
+            name: name,
+            hospital: hospital,
+            city: city,
+            state: state,
+            address: address.isEmpty ? nil : address,
+            type: type,
+            accreditationID: accreditationID,
+            programQuality: ProgramQuality(),
+            cultureFit: CultureFit(),
+            location: Location(),
+            logistics: Logistics(),
+            careerAlignment: CareerAlignment(),
+            redFlags: RedFlags(),
+            questionnaire: questionnaire,
+            notes: notes,
+            interviewDate: hasInterviewDate ? interviewDate : nil,
+            voiceMemoURL: currentVoiceMemoReference,
+            websiteURL: websiteURL.isEmpty ? nil : websiteURL,
+            contactEmail: contactEmail.isEmpty ? nil : contactEmail,
+            contactPhone: contactPhone.isEmpty ? nil : contactPhone,
+            programCoordinator: programCoordinator.isEmpty ? nil : programCoordinator,
+            programDirector: nil,
+            isIMGFriendly: isIMGFriendly,
+            emr: emr,
+            signalType: signalType,
+            signalNote: trimmedSignalNote,
+            finalScore: questionnaire.totalWeightedScore(preferences: dataManager.preferences, programEMR: emr)
+        )
     }
 
     // MARK: - Questionnaire Sections

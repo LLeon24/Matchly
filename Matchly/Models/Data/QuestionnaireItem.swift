@@ -346,6 +346,58 @@ struct Questionnaire: Codable, Equatable {
         }
     }
     
+    /// All enabled questionnaire prompts available for interview prep selection.
+    func allPrepPrompts(preferences: UserPreferences) -> [(id: String, sectionTitle: String, question: String)] {
+        let allSections = sections + customSections
+        let eligibleSections = allSections.filter { section in
+            let title = section.title.lowercased()
+            guard !title.contains("red flag") else { return false }
+            return sectionIsEnabled(section, preferences: preferences, allSections: allSections)
+        }
+
+        return eligibleSections.flatMap { section in
+            enabledItems(for: section, preferences: preferences).map { item in
+                (id: item.id, sectionTitle: section.title, question: item.question)
+            }
+        }
+    }
+
+    /// Questions to consider on interview day, spread across enabled questionnaire sections.
+    func prepPrompts(preferences: UserPreferences, maxCount: Int = 8) -> [(sectionTitle: String, question: String)] {
+        guard maxCount > 0 else { return [] }
+
+        let allSections = sections + customSections
+        let eligibleSections = allSections.filter { section in
+            let title = section.title.lowercased()
+            guard !title.contains("red flag") else { return false }
+            return sectionIsEnabled(section, preferences: preferences, allSections: allSections)
+        }
+
+        let sectionBuckets: [(title: String, items: [QuestionnaireItem])] = eligibleSections.compactMap { section in
+            let items = enabledItems(for: section, preferences: preferences)
+            guard !items.isEmpty else { return nil }
+            return (section.title, items)
+        }
+
+        var results: [(sectionTitle: String, question: String)] = []
+        var index = 0
+
+        while results.count < maxCount {
+            var addedAny = false
+            for bucket in sectionBuckets {
+                guard results.count < maxCount else { break }
+                if index < bucket.items.count {
+                    results.append((sectionTitle: bucket.title, question: bucket.items[index].question))
+                    addedAny = true
+                }
+            }
+            if !addedAny { break }
+            index += 1
+        }
+
+        return results
+    }
+
     // Calculate average score for a section (0-5)
     private func averageScore(for section: QuestionnaireSection) -> Double {
         let ratings = section.items.compactMap { $0.programRating > 0 ? $0.programRating : nil }

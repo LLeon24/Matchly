@@ -1508,7 +1508,7 @@ struct DashboardView: View {
                 subtitle: "Interview \(Calendar.current.isDateInToday(date) ? "today" : "on \(formatter.string(from: date))")",
                 icon: "calendar.badge.clock",
                 color: AppColors.accentGreen,
-                destination: AnyView(ProgramEntryView(program: soon))
+                destination: AnyView(InterviewPrepView(program: soon))
             ))
         }
 
