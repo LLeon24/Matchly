@@ -434,7 +434,7 @@ private struct DrawState {
     }
 
     func drawMatchlyLogo(in rect: CGRect) {
-        guard let image = UIImage(named: "MatchlyIcon") else { return }
+        guard let image = UIImage(named: "MatchlyGlyph") else { return }
         guard let cgContext = UIGraphicsGetCurrentContext() else { return }
         cgContext.saveGState()
         let clipPath = UIBezierPath(roundedRect: rect, cornerRadius: 12)

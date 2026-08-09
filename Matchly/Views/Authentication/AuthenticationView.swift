@@ -36,13 +36,7 @@ struct AuthenticationView: View {
                     
                     // App Logo and Title
                     VStack(spacing: 16) {
-                        // Matchly app icon
-                        Image("MatchlyIcon")
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(width: 100, height: 100)
-                            .cornerRadius(22) // iOS app icon corner radius
-                            .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
+                        MatchlyBrandMark(size: .auth)
                         
                         Text("Matchly")
                             .font(.arial(size: 32, weight: .bold))

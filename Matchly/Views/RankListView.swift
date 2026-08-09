@@ -878,11 +878,7 @@ struct ExportView: View {
 
     private var exportPreviewHeader: some View {
         HStack(spacing: 14) {
-            Image("MatchlyIcon")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 44, height: 44)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            MatchlyBrandMark(size: .inline)
                 .overlay(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .stroke(Color.white.opacity(0.25), lineWidth: 1)

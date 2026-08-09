@@ -27,13 +27,7 @@ struct SplashView: View {
                     VStack(spacing: 20) {
                         Spacer()
                         
-                        // Matchly app icon
-                        Image("MatchlyIcon")
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(width: 120, height: 120)
-                            .cornerRadius(26) // iOS app icon corner radius
-                            .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
+                        MatchlyBrandMark(size: .splash)
                             .scaleEffect(scale)
                             .opacity(opacity)
                         

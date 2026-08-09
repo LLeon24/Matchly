@@ -168,12 +168,7 @@ struct OnboardingFlowView: View {
                         .frame(width: 160, height: 160)
                         .blur(radius: 20)
                     
-                    // App Icon
-                    Image("MatchlyIcon")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 140, height: 140)
-                        .cornerRadius(30)
+                    MatchlyBrandMark(size: .onboarding)
                         .shadow(color: .black.opacity(0.15), radius: 20, x: 0, y: 10)
                 }
                 .scaleEffect(iconScale)

@@ -21,12 +21,7 @@ struct BiometricLockView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 24) {
-                Image("MatchlyIcon")
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 72, height: 72)
-                    .cornerRadius(16)
-                    .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
+                MatchlyBrandMark(size: .lock)
 
                 Text("Matchly is Locked")
                     .font(.arial(size: 24, weight: .semibold))
