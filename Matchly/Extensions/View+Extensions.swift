@@ -464,16 +464,19 @@ struct MatchlyToolbarAddInterviewDateButton: View {
 /// Specialty pill shared by program and interview list rows.
 struct MatchlyProgramSpecialtyBadge: View {
     let specialty: String
+    var useFullName: Bool = false
 
     var body: some View {
         let specialtyColor = SpecialtyFormatter.color(for: specialty)
-        let specialtyAbbrev = SpecialtyFormatter.abbreviation(for: specialty)
+        let label = useFullName ? specialty : SpecialtyFormatter.abbreviation(for: specialty)
 
         HStack(spacing: 3) {
             Image(systemName: "stethoscope")
                 .font(.arial(size: 8))
-            Text(specialtyAbbrev)
+            Text(label)
                 .font(.arial(size: 10, weight: .semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
         }
         .foregroundColor(specialtyColor)
         .padding(.horizontal, 6)

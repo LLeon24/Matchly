@@ -55,12 +55,15 @@ struct AppColors {
 
     // MARK: - Interview season pipeline (hero ring + stat row share these exactly)
 
-    /// Warm coral — program still needs an interview date.
-    static let pipelineNeedDate = accentOrange
-    /// Rich gold — readable on light backgrounds; matches ring arc.
+    /// Muted coral — program still needs an interview date.
+    static let pipelineNeedDate = Color(
+        light: Color(red: 0.88, green: 0.48, blue: 0.42),
+        dark: Color(red: 0.94, green: 0.58, blue: 0.52)
+    )
+    /// Soft purple — scheduled upcoming interview.
     static let pipelineUpcoming = Color(
-        light: Color(red: 0.86, green: 0.66, blue: 0.10),
-        dark: Color(red: 0.96, green: 0.78, blue: 0.28)
+        light: Color(red: 0.55, green: 0.42, blue: 0.88),
+        dark: Color(red: 0.68, green: 0.55, blue: 0.96)
     )
     /// Brand-success green — questionnaire scored and ready.
     static let pipelineScored = accentGreen

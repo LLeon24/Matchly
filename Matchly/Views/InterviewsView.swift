@@ -608,7 +608,7 @@ struct CompactInterviewCard: View {
 struct InterviewRow: View {
     enum Style {
         case standard
-        /// Dashboard hero — schedule column left of program details.
+        /// Dashboard hero — full-width program with inline schedule row.
         case featured
     }
 
@@ -621,10 +621,8 @@ struct InterviewRow: View {
     }
 
     var body: some View {
-        HStack(alignment: style == .featured ? .center : .top, spacing: style == .featured ? 14 : 12) {
-            if style == .featured {
-                featuredScheduleColumn
-            } else {
+        HStack(alignment: .top, spacing: 12) {
+            if style == .standard {
                 dateBadge
             }
 
@@ -632,7 +630,7 @@ struct InterviewRow: View {
 
             Spacer(minLength: 0)
         }
-        .padding(.vertical, style == .featured ? 4 : 6)
+        .padding(.vertical, style == .featured ? 2 : 6)
     }
 
     private var dateBadge: some View {
@@ -655,45 +653,26 @@ struct InterviewRow: View {
     }
 
     @ViewBuilder
-    private var featuredScheduleColumn: some View {
-        VStack(spacing: 6) {
-            dateBadge
-
-            if let date = program.interviewDate {
-                Text(Self.timeFormatter.string(from: date))
-                    .font(.arial(size: 13, weight: .semibold))
-                    .foregroundStyle(AppColors.primaryText)
-                    .multilineTextAlignment(.center)
-
-                if isUpcoming {
-                    let daysUntil = max(Calendar.current.dateComponents([.day], from: Date(), to: date).day ?? 0, 0)
-                    Text(daysUntil == 1 ? "1 day" : "\(daysUntil) days")
-                        .font(.arial(size: 11, weight: .bold))
-                        .foregroundColor(AppColors.accentTeal)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(AppColors.accentTeal.opacity(0.14))
-                        .clipShape(Capsule())
-                }
-            }
-        }
-        .frame(width: 56)
-    }
-
-    @ViewBuilder
     private var programDetailsColumn: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: style == .featured ? 4 : 3) {
             Text(HospitalNameFormatter.format(
                 program.hospital.isEmpty
                     ? (program.name.isEmpty ? "Unnamed Program" : program.name)
                     : program.hospital
             ))
             .font(.arial(size: 15, weight: .semibold))
-            .lineLimit(3)
+            .lineLimit(style == .featured ? 2 : 3)
             .fixedSize(horizontal: false, vertical: true)
 
+            if style == .featured, let date = program.interviewDate {
+                featuredScheduleLine(for: date)
+            }
+
             if !program.specialty.isEmpty {
-                MatchlyProgramSpecialtyBadge(specialty: program.specialty)
+                MatchlyProgramSpecialtyBadge(
+                    specialty: program.specialty,
+                    useFullName: style == .featured
+                )
             }
 
             MatchlyProgramLocationAndIDRow(program: program)
@@ -725,6 +704,46 @@ struct InterviewRow: View {
         }
     }
 
+    private func featuredScheduleLine(for date: Date) -> some View {
+        HStack(spacing: 6) {
+            featuredDateTimeChip(for: date)
+
+            if isUpcoming {
+                scheduleSeparator
+
+                let daysUntil = max(Calendar.current.dateComponents([.day], from: Date(), to: date).day ?? 0, 0)
+                Text(daysUntil == 1 ? "1 day" : "\(daysUntil) days")
+                    .font(.arial(size: 10, weight: .bold))
+                    .foregroundColor(AppColors.pipelineUpcoming)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(AppColors.pipelineUpcoming.opacity(0.12))
+                    .clipShape(Capsule())
+            }
+        }
+    }
+
+    private func featuredDateTimeChip(for date: Date) -> some View {
+        HStack(spacing: 4) {
+            Text(Self.featuredDateFormatter.string(from: date))
+            Text("·")
+                .foregroundColor(AppColors.accentTeal.opacity(0.55))
+            Text(Self.timeFormatter.string(from: date))
+        }
+        .font(.arial(size: 12, weight: .semibold))
+        .foregroundColor(AppColors.accentTeal)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(AppColors.accentTeal.opacity(0.12))
+        .clipShape(Capsule())
+    }
+
+    private var scheduleSeparator: some View {
+        Text("·")
+            .font(.arial(size: 12, weight: .medium))
+            .foregroundColor(.secondary)
+    }
+
     private static let dayFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "d"
@@ -734,6 +753,12 @@ struct InterviewRow: View {
     private static let monthFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM"
+        return formatter
+    }()
+
+    private static let featuredDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d"
         return formatter
     }()
 
