@@ -256,7 +256,6 @@ struct DashboardView: View {
                 bigNumber: overviewHeroBigNumber,
                 unit: overviewHeroUnit,
                 title: "Your Interview Season",
-                subtitle: overviewHeroSubtitle,
                 nextInterviewProgram: upcomingInterviews.first,
                 ringSegments: overviewHeroRingSegments,
                 stats: overviewHeroStats,
@@ -336,38 +335,6 @@ struct DashboardView: View {
     }
 
     // MARK: - Overview: Needs Attention
-
-    /// Contextual one-liner under the hero title — season status (next interview uses InterviewRow).
-    private var overviewHeroSubtitle: String {
-        let programCount = dataManager.programs.count
-        guard programCount > 0 else {
-            return "Add each program you've been invited to interview at"
-        }
-
-        var parts: [String] = []
-        if topProgramMaxScore > 0 {
-            parts.append("Top score \(String(format: "%.1f", topProgramMaxScore))")
-        }
-
-        if upcomingInterviews.first == nil {
-            if programsNeedingInterviewDateCount > 0 {
-                parts.append("Log interview dates so you can prep and score after each visit")
-            } else if postInterviewNeedingScoreCount > 0 {
-                parts.append("\(postInterviewNeedingScoreCount) completed interview\(postInterviewNeedingScoreCount == 1 ? "" : "s") ready to score")
-            } else if interviewCount > 0 && upcomingInterviews.isEmpty {
-                parts.append("All interviews done — finish scoring to finalize your rank list")
-            } else {
-                let ranked = dataManager.programs.filter { $0.finalScore > 0 }.count
-                if ranked > 0 {
-                    parts.append("\(ranked) program\(ranked == 1 ? "" : "s") scored and on your rank list")
-                } else {
-                    parts.append("Score each program after its interview to build your rank list")
-                }
-            }
-        }
-
-        return parts.joined(separator: " · ")
-    }
 
     /// Hero center: total programs tracked for the season.
     private var overviewHeroBigNumber: String {

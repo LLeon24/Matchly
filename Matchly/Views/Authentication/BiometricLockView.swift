@@ -21,7 +21,10 @@ struct BiometricLockView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 28) {
-                MatchlyBrandLockup(style: .lock)
+                MatchlyBrandInlineLockup(
+                    glyphSize: .lock,
+                    tagline: "UNLOCK TO CONTINUE"
+                )
 
                 HStack(spacing: 10) {
                     Image(systemName: biometric.systemImageName)

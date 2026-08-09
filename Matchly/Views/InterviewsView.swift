@@ -606,77 +606,123 @@ struct CompactInterviewCard: View {
 }
 
 struct InterviewRow: View {
+    enum Style {
+        case standard
+        /// Dashboard hero — schedule column left of program details.
+        case featured
+    }
+
     let program: Program
     let isUpcoming: Bool
+    var style: Style = .standard
 
     private var badgeColor: Color {
         isUpcoming ? AppColors.accentTeal : Color.secondary
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(badgeColor.opacity(0.15))
-                    .frame(width: 42, height: 42)
-
-                if let date = program.interviewDate {
-                    VStack(spacing: 0) {
-                        Text(Self.dayFormatter.string(from: date))
-                            .font(.arial(size: 15, weight: .bold))
-                            .foregroundColor(badgeColor)
-                        Text(Self.monthFormatter.string(from: date))
-                            .font(.arial(size: 9, weight: .medium))
-                            .foregroundColor(.secondary)
-                    }
-                }
+        HStack(alignment: style == .featured ? .center : .top, spacing: style == .featured ? 14 : 12) {
+            if style == .featured {
+                featuredScheduleColumn
+            } else {
+                dateBadge
             }
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(HospitalNameFormatter.format(
-                    program.hospital.isEmpty
-                        ? (program.name.isEmpty ? "Unnamed Program" : program.name)
-                        : program.hospital
-                ))
-                .font(.arial(size: 15, weight: .semibold))
-                .lineLimit(3)
-                .fixedSize(horizontal: false, vertical: true)
-
-                if !program.specialty.isEmpty {
-                    MatchlyProgramSpecialtyBadge(specialty: program.specialty)
-                }
-
-                MatchlyProgramLocationAndIDRow(program: program)
-
-                if let date = program.interviewDate {
-                    HStack(spacing: 8) {
-                        HStack(spacing: 3) {
-                            Image(systemName: "clock")
-                                .font(.arial(size: 9))
-                            Text(Self.timeFormatter.string(from: date))
-                                .font(.arial(size: 11, weight: .medium))
-                        }
-                        .foregroundColor(.secondary)
-
-                        if isUpcoming {
-                            let daysUntil = Calendar.current.dateComponents([.day], from: Date(), to: date).day ?? 0
-                            Text("\(daysUntil)d")
-                                .font(.arial(size: 10, weight: .semibold))
-                                .foregroundColor(AppColors.accentTeal)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(AppColors.accentTeal.opacity(0.12))
-                                .cornerRadius(4)
-                        }
-                    }
-                }
-
-                ProgramVoiceMemoBadge(program: program, iconSize: 9, textSize: 11)
-            }
+            programDetailsColumn
 
             Spacer(minLength: 0)
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, style == .featured ? 4 : 6)
+    }
+
+    private var dateBadge: some View {
+        ZStack {
+            Circle()
+                .fill(badgeColor.opacity(0.15))
+                .frame(width: 42, height: 42)
+
+            if let date = program.interviewDate {
+                VStack(spacing: 0) {
+                    Text(Self.dayFormatter.string(from: date))
+                        .font(.arial(size: 15, weight: .bold))
+                        .foregroundColor(badgeColor)
+                    Text(Self.monthFormatter.string(from: date))
+                        .font(.arial(size: 9, weight: .medium))
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var featuredScheduleColumn: some View {
+        VStack(spacing: 6) {
+            dateBadge
+
+            if let date = program.interviewDate {
+                Text(Self.timeFormatter.string(from: date))
+                    .font(.arial(size: 13, weight: .semibold))
+                    .foregroundStyle(AppColors.primaryText)
+                    .multilineTextAlignment(.center)
+
+                if isUpcoming {
+                    let daysUntil = max(Calendar.current.dateComponents([.day], from: Date(), to: date).day ?? 0, 0)
+                    Text(daysUntil == 1 ? "1 day" : "\(daysUntil) days")
+                        .font(.arial(size: 11, weight: .bold))
+                        .foregroundColor(AppColors.accentTeal)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(AppColors.accentTeal.opacity(0.14))
+                        .clipShape(Capsule())
+                }
+            }
+        }
+        .frame(width: 56)
+    }
+
+    @ViewBuilder
+    private var programDetailsColumn: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(HospitalNameFormatter.format(
+                program.hospital.isEmpty
+                    ? (program.name.isEmpty ? "Unnamed Program" : program.name)
+                    : program.hospital
+            ))
+            .font(.arial(size: 15, weight: .semibold))
+            .lineLimit(3)
+            .fixedSize(horizontal: false, vertical: true)
+
+            if !program.specialty.isEmpty {
+                MatchlyProgramSpecialtyBadge(specialty: program.specialty)
+            }
+
+            MatchlyProgramLocationAndIDRow(program: program)
+
+            if style == .standard, let date = program.interviewDate {
+                HStack(spacing: 8) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "clock")
+                            .font(.arial(size: 9))
+                        Text(Self.timeFormatter.string(from: date))
+                            .font(.arial(size: 11, weight: .medium))
+                    }
+                    .foregroundColor(.secondary)
+
+                    if isUpcoming {
+                        let daysUntil = Calendar.current.dateComponents([.day], from: Date(), to: date).day ?? 0
+                        Text("\(daysUntil)d")
+                            .font(.arial(size: 10, weight: .semibold))
+                            .foregroundColor(AppColors.accentTeal)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(AppColors.accentTeal.opacity(0.12))
+                            .cornerRadius(4)
+                    }
+                }
+            }
+
+            ProgramVoiceMemoBadge(program: program, iconSize: 9, textSize: 11)
+        }
     }
 
     private static let dayFormatter: DateFormatter = {

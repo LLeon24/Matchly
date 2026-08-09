@@ -375,6 +375,11 @@ struct MatchlyBrandInlineLockup: View {
     var glyphSize: MatchlyBrandMark.Size = .feature
     var hairlineWidth: CGFloat = 56
     var showsTagline: Bool = true
+    var tagline: String? = nil
+
+    private var resolvedTagline: String {
+        tagline ?? MatchlyBrandCopy.tagline
+    }
 
     var body: some View {
         VStack(spacing: glyphSize == .feature ? 20 : 24) {
@@ -383,13 +388,14 @@ struct MatchlyBrandInlineLockup: View {
             MatchlyBrandHairline(width: hairlineWidth)
 
             if showsTagline {
-                Text(MatchlyBrandCopy.tagline)
+                Text(resolvedTagline)
                     .font(.arial(size: 11, weight: .regular))
                     .foregroundStyle(AppColors.secondaryText)
                     .kerning(2.4)
                     .multilineTextAlignment(.center)
             }
         }
+        .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(MatchlyBrandCopy.accessibilityLabel)
     }

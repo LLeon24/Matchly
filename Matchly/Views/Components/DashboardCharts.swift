@@ -357,7 +357,6 @@ struct DashboardSnapshotHero: View {
     let bigNumber: String
     let unit: String
     let title: String
-    let subtitle: String
     var nextInterviewProgram: Program? = nil
     var ringSegments: [DashboardSnapshotRingSegment] = []
     let stats: [DashboardSnapshotStat]
@@ -366,14 +365,20 @@ struct DashboardSnapshotHero: View {
 
     /// Editorial card rhythm — left-aligned, action-first.
     private enum HeroSpacing {
-        static let brandToHeader: CGFloat = 10
-        static let headerToContent: CGFloat = 16
-        static let contentToGuidance: CGFloat = 10
-        static let contentToStats: CGFloat = 12
+        static let contentToStats: CGFloat = 16
         static let inset: CGFloat = 14
         static let labelToRow: CGFloat = 10
         static let headerText: CGFloat = 6
-        static let statsDividerBottom: CGFloat = 10
+
+        /// Card top→logo and season row→next interview.
+        static func sectionGap(for layout: MatchlyLayoutStyle) -> CGFloat {
+            layout == .compactVertical ? 10 : 12
+        }
+
+        /// Logo bottom→season title (tighter than section gap).
+        static func logoToSeasonGap(for layout: MatchlyLayoutStyle) -> CGFloat {
+            layout == .compactVertical ? 6 : 8
+        }
     }
 
     private var compactRingSize: CGFloat { layout == .compactVertical ? 56 : 76 }
@@ -404,49 +409,45 @@ struct DashboardSnapshotHero: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             heroBrandBlock
-                .padding(.bottom, HeroSpacing.headerToContent)
-
-            if nextInterviewProgram != nil {
-                nextInterviewCard
-                    .padding(.bottom, trailingContentBottomPadding)
-            }
-
-            if !subtitle.isEmpty {
-                seasonGuidanceText
-                    .padding(.bottom, HeroSpacing.contentToStats)
-            }
 
             statsRow
+                .padding(.top, HeroSpacing.contentToStats)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var trailingContentBottomPadding: CGFloat {
-        subtitle.isEmpty ? HeroSpacing.contentToStats : HeroSpacing.contentToGuidance
-    }
-
     private var heroBrandBlock: some View {
-        VStack(alignment: .leading, spacing: HeroSpacing.brandToHeader) {
-            MatchlyBrandInlineWordmark(glyphSize: .micro)
-            seasonHeaderRow
+        let gap = HeroSpacing.sectionGap(for: layout)
+        let logoGap = HeroSpacing.logoToSeasonGap(for: layout)
+
+        return VStack(alignment: .leading, spacing: 0) {
+            MatchlyBrandInlineWordmark(glyphSize: .inline)
+                .padding(.top, gap - layout.cardVerticalPadding)
+
+            ZStack(alignment: .bottomTrailing) {
+                seasonTitleBlock
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.trailing, compactRingSize + 12)
+
+                compactSeasonRing
+            }
+            .padding(.top, logoGap)
+
+            if nextInterviewProgram != nil {
+                nextInterviewCard
+                    .padding(.top, gap)
+            }
         }
     }
 
-    /// Title + progress copy on the left, bottom-aligned with the season ring.
-    private var seasonHeaderRow: some View {
-        HStack(alignment: .bottom, spacing: 16) {
-            VStack(alignment: .leading, spacing: HeroSpacing.headerText) {
-                MatchlyContentSectionTitle(title: title)
+    private var seasonTitleBlock: some View {
+        VStack(alignment: .leading, spacing: HeroSpacing.headerText) {
+            MatchlyContentSectionTitle(title: title)
 
-                Text(progressCaption)
-                    .font(.arial(size: layout.heroCaptionFont, weight: .regular))
-                    .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer(minLength: 8)
-
-            compactSeasonRing
+            Text(progressCaption)
+                .font(.arial(size: layout.heroCaptionFont, weight: .regular))
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -457,7 +458,7 @@ struct DashboardSnapshotHero: View {
                 MatchlySectionHeaderText(title: "Next Interview")
 
                 NavigationLink(destination: ProgramEntryView(program: program)) {
-                    InterviewRow(program: program, isUpcoming: true)
+                    InterviewRow(program: program, isUpcoming: true, style: .featured)
                 }
                 .buttonStyle(.plain)
             }
@@ -468,13 +469,6 @@ struct DashboardSnapshotHero: View {
                     .fill(Color.secondary.opacity(0.06))
             )
         }
-    }
-
-    private var seasonGuidanceText: some View {
-        Text(subtitle)
-            .font(.arial(size: layout.heroSubtitleFont, weight: .regular))
-            .foregroundColor(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
     }
 
     private var compactSeasonRing: some View {
@@ -598,9 +592,6 @@ struct DashboardSnapshotHero: View {
     @ViewBuilder
     private var statsRow: some View {
         if !stats.isEmpty {
-            Divider()
-                .padding(.bottom, HeroSpacing.statsDividerBottom)
-
             HStack(spacing: 0) {
                 ForEach(stats) { stat in
                     statCell(stat)
