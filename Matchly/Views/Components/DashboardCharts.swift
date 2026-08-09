@@ -375,9 +375,9 @@ struct DashboardSnapshotHero: View {
             layout == .compactVertical ? 10 : 12
         }
 
-        /// Logo bottom→season title (tighter than section gap).
+        /// Logo bottom→season title.
         static func logoToSeasonGap(for layout: MatchlyLayoutStyle) -> CGFloat {
-            layout == .compactVertical ? 6 : 8
+            -5
         }
     }
 
@@ -421,7 +421,7 @@ struct DashboardSnapshotHero: View {
         let logoGap = HeroSpacing.logoToSeasonGap(for: layout)
 
         return VStack(alignment: .leading, spacing: 0) {
-            MatchlyBrandInlineWordmark(glyphSize: .inline)
+            MatchlyBrandInlineWordmark(glyphSize: .hero)
                 .padding(.top, gap - layout.cardVerticalPadding)
 
             ZStack(alignment: .bottomTrailing) {

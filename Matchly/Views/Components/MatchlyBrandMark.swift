@@ -14,6 +14,7 @@ struct MatchlyBrandMark: View {
         case micro
         case ribbon
         case inline
+        case hero
         case feature
         case lock
         case auth
@@ -26,6 +27,7 @@ struct MatchlyBrandMark: View {
             case .micro: return 28
             case .ribbon: return 36
             case .inline: return 40
+            case .hero: return 44
             case .feature: return 56
             case .lock: return 56
             case .auth: return 76
@@ -323,6 +325,7 @@ struct MatchlyBrandInlineWordmark: View {
         case .micro: return 13
         case .ribbon: return 15
         case .inline: return 16
+        case .hero: return 17
         case .feature: return 20
         case .lock, .auth: return 22
         case .splash, .onboarding: return 24
@@ -335,6 +338,7 @@ struct MatchlyBrandInlineWordmark: View {
         case .micro: return 3.4
         case .ribbon: return 3.8
         case .inline: return 4.0
+        case .hero: return 4.1
         case .feature: return 4.4
         case .lock, .auth: return 4.8
         case .splash, .onboarding: return 5.2
@@ -345,7 +349,7 @@ struct MatchlyBrandInlineWordmark: View {
         switch glyphSize {
         case .statusBar: return 1
         case .micro, .ribbon: return 2
-        case .inline, .feature: return 3
+        case .inline, .hero, .feature: return 3
         default: return 4
         }
     }
