@@ -220,10 +220,8 @@ struct DashboardSignalsDetailBlock: View {
                         .font(.arial(size: style == .compact ? 12 : 13, weight: .semibold))
                         .foregroundColor(AppColors.primaryBlue)
                     Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.arial(size: 10))
-                        .foregroundColor(.secondary.opacity(0.5))
                 }
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 

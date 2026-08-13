@@ -58,15 +58,119 @@ struct UserPreferences: Codable, Hashable {
     var dashboardLayout: DashboardLayout = DashboardLayout()
     var dashboardPreferences: DashboardPreferences = DashboardPreferences()
 
-    /// Per-program interview prep selections (questions, top 3, checklist).
+    /// Per-program interview prep selections (questions, top must-ask, checklist).
     var interviewPrepByProgram: [String: InterviewPrepState] = [:]
+    /// One-time cleanup after interview prep switched to explicit add-only question lists.
+    var interviewPrepCuratedListMigrated: Bool = false
+    /// Reusable question list applied to new programs via Load default questions.
+    var interviewPrepDefaultQuestions: InterviewPrepDefaultQuestions?
+}
+
+struct InterviewPrepDefaultQuestions: Codable, Hashable {
+    var selectedQuestionIds: Set<String> = []
+    var customQuestions: [InterviewPrepCustomQuestion] = []
+    var priorityQuestionIds: [String] = []
+    var questionListOrder: [String] = []
+
+    var isEmpty: Bool {
+        questionListOrder.isEmpty
+    }
+
+    static func from(prepState: InterviewPrepState) -> InterviewPrepDefaultQuestions {
+        InterviewPrepDefaultQuestions(
+            selectedQuestionIds: prepState.selectedQuestionIds,
+            customQuestions: prepState.customQuestions,
+            priorityQuestionIds: prepState.priorityQuestionIds,
+            questionListOrder: prepState.questionListOrder
+        )
+    }
+
+    func prepState(matching validQuestionnaireIds: Set<String>) -> InterviewPrepState {
+        let validCustomIds = Set(customQuestions.map(\.id))
+        let allValidIds = validQuestionnaireIds.union(validCustomIds)
+
+        let order = questionListOrder.filter { allValidIds.contains($0) }
+        let selected = selectedQuestionIds
+            .intersection(validQuestionnaireIds)
+            .intersection(Set(order))
+        var priority = priorityQuestionIds.filter { allValidIds.contains($0) }
+        if priority.count > 5 {
+            priority = Array(priority.prefix(5))
+        }
+
+        return InterviewPrepState(
+            selectedQuestionIds: selected,
+            customQuestions: customQuestions,
+            priorityQuestionIds: priority,
+            questionListOrder: order,
+            askedQuestionIds: [],
+            checkedChecklistItems: []
+        )
+    }
+}
+
+struct InterviewPrepCustomQuestion: Codable, Hashable, Identifiable {
+    var id: String
+    var question: String
+
+    init(id: String = "prep-custom-\(UUID().uuidString)", question: String) {
+        self.id = id
+        self.question = question
+    }
 }
 
 struct InterviewPrepState: Codable, Hashable {
+    /// Questionnaire question IDs the user explicitly added to their prep list.
     var selectedQuestionIds: Set<String> = []
-    /// Up to three must-answer questions, in priority order.
+    /// User-written questions for this interview.
+    var customQuestions: [InterviewPrepCustomQuestion] = []
+    /// Up to five must-ask questions, in priority order (questionnaire or custom IDs).
     var priorityQuestionIds: [String] = []
+    /// Display order for questions on the prep list.
+    var questionListOrder: [String] = []
+    /// Questions marked as asked during the interview.
+    var askedQuestionIds: Set<String> = []
     var checkedChecklistItems: Set<String> = []
+}
+
+extension InterviewPrepState {
+    enum CodingKeys: String, CodingKey {
+        case selectedQuestionIds
+        case customQuestions
+        case priorityQuestionIds
+        case questionListOrder
+        case askedQuestionIds
+        case checkedChecklistItems
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        selectedQuestionIds = try container.decodeIfPresent(Set<String>.self, forKey: .selectedQuestionIds) ?? []
+        customQuestions = try container.decodeIfPresent([InterviewPrepCustomQuestion].self, forKey: .customQuestions) ?? []
+        priorityQuestionIds = try container.decodeIfPresent([String].self, forKey: .priorityQuestionIds) ?? []
+        questionListOrder = try container.decodeIfPresent([String].self, forKey: .questionListOrder) ?? []
+        askedQuestionIds = try container.decodeIfPresent(Set<String>.self, forKey: .askedQuestionIds) ?? []
+        checkedChecklistItems = try container.decodeIfPresent(Set<String>.self, forKey: .checkedChecklistItems) ?? []
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(selectedQuestionIds, forKey: .selectedQuestionIds)
+        try container.encode(customQuestions, forKey: .customQuestions)
+        try container.encode(priorityQuestionIds, forKey: .priorityQuestionIds)
+        try container.encode(questionListOrder, forKey: .questionListOrder)
+        try container.encode(askedQuestionIds, forKey: .askedQuestionIds)
+        try container.encode(checkedChecklistItems, forKey: .checkedChecklistItems)
+    }
+
+    /// Removes legacy auto-populated questionnaire questions; keeps only user-typed custom questions.
+    mutating func migrateToCuratedQuestionListOnly() {
+        let customIds = Set(customQuestions.map(\.id))
+        questionListOrder = questionListOrder.filter { customIds.contains($0) }
+        selectedQuestionIds = []
+        priorityQuestionIds = priorityQuestionIds.filter { customIds.contains($0) }
+        askedQuestionIds = askedQuestionIds.filter { customIds.contains($0) }
+    }
 }
 
 struct DashboardPreferences: Codable, Hashable {
@@ -261,6 +365,19 @@ extension UserPreferences {
         self.dashboardLayout = try container.decodeIfPresent(DashboardLayout.self, forKey: .dashboardLayout) ?? DashboardLayout()
         self.dashboardPreferences = try container.decodeIfPresent(DashboardPreferences.self, forKey: .dashboardPreferences) ?? DashboardPreferences()
         self.interviewPrepByProgram = try container.decodeIfPresent([String: InterviewPrepState].self, forKey: .interviewPrepByProgram) ?? [:]
+        self.interviewPrepCuratedListMigrated = try container.decodeIfPresent(Bool.self, forKey: .interviewPrepCuratedListMigrated) ?? false
+        self.interviewPrepDefaultQuestions = try container.decodeIfPresent(InterviewPrepDefaultQuestions.self, forKey: .interviewPrepDefaultQuestions)
+    }
+
+    /// Clears old auto-filled interview prep question lists once per install/profile.
+    @discardableResult
+    mutating func migrateInterviewPrepCuratedListsIfNeeded() -> Bool {
+        guard !interviewPrepCuratedListMigrated else { return false }
+        for programID in interviewPrepByProgram.keys {
+            interviewPrepByProgram[programID]?.migrateToCuratedQuestionListOnly()
+        }
+        interviewPrepCuratedListMigrated = true
+        return true
     }
 }
 

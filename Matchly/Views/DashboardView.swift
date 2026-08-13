@@ -17,6 +17,8 @@ struct DashboardView: View {
     @State private var showAddProgram = false
     @State private var showCustomization = false
     @State private var showProfileEdit = false
+    @State private var showNeedDatesFromHero = false
+    @State private var showNeedReviewFromHero = false
     @Binding var selectedTab: Int
     
     init(selectedTab: Binding<Int> = .constant(0)) {
@@ -259,9 +261,22 @@ struct DashboardView: View {
                 nextInterviewProgram: upcomingInterviews.first,
                 ringSegments: overviewHeroRingSegments,
                 stats: overviewHeroStats,
-                accentTint: overviewHeroAccentTint
+                accentTint: overviewHeroAccentTint,
+                onStatTap: handleHeroStatTap
             )
             .dashboardCardStyle()
+            .background {
+                Group {
+                    NavigationLink(destination: SetInterviewDatesView(), isActive: $showNeedDatesFromHero) {
+                        EmptyView()
+                    }
+                    .hidden()
+                    NavigationLink(destination: ProgramsNeedingReviewView(), isActive: $showNeedReviewFromHero) {
+                        EmptyView()
+                    }
+                    .hidden()
+                }
+            }
         case "needsAttention":
             needsAttentionCard
         case "analytics":
@@ -401,6 +416,19 @@ struct DashboardView: View {
         InterviewSeasonStage.counts(for: dataManager.programs, preferences: dataManager.preferences)
     }
 
+    private func handleHeroStatTap(_ stage: InterviewSeasonStage) {
+        switch stage {
+        case .needDate:
+            showNeedDatesFromHero = true
+        case .upcoming:
+            selectedTab = MainTabLayout.interviewsIndex
+        case .scored:
+            selectedTab = MainTabLayout.rankListIndex(isCoupleLinked: isCoupleLinked)
+        case .toReview:
+            showNeedReviewFromHero = true
+        }
+    }
+
     /// One arc per pipeline stage; fractions sum to 100% of tracked programs.
     private var overviewHeroRingSegments: [DashboardSnapshotRingSegment] {
         let total = dataManager.programs.count
@@ -534,10 +562,6 @@ struct DashboardView: View {
             }
 
             Spacer(minLength: 0)
-
-            Image(systemName: "chevron.right")
-                .font(.arial(size: 12, weight: .semibold))
-                .foregroundColor(.secondary.opacity(0.5))
         }
         .padding(.vertical, 10)
         .padding(.horizontal, 12)
@@ -545,6 +569,7 @@ struct DashboardView: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(step.color.opacity(0.08))
         )
+        .contentShape(Rectangle())
     }
 
     // MARK: - Derived Metrics for Pages
@@ -1058,10 +1083,10 @@ struct DashboardView: View {
     
     // MARK: - Quick Actions
     private var quickActionsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             DashboardSectionHeader(title: "Quick Actions", icon: "bolt.fill", tint: AppColors.accentOrange)
             
-            HStack(spacing: 12) {
+            HStack(spacing: 8) {
                 QuickActionButton(
                     title: "Add Program",
                     icon: "plus.circle.fill",
@@ -1345,13 +1370,10 @@ struct DashboardView: View {
             }
 
             Spacer(minLength: 8)
-
-            Image(systemName: "chevron.right")
-                .font(.arial(size: 10))
-                .foregroundColor(.secondary.opacity(0.5))
         }
         .padding(.horizontal, 2)
         .padding(.vertical, 6)
+        .contentShape(Rectangle())
     }
     
     // MARK: - Next Steps Section
@@ -1509,17 +1531,6 @@ struct DashboardView: View {
                 icon: "calendar.badge.clock",
                 color: AppColors.accentGreen,
                 destination: AnyView(InterviewPrepView(program: soon))
-            ))
-        }
-
-        // Red flags (genuine warning — keep red)
-        if redFlaggedProgramsCount > 0 {
-            steps.append(NextStep(
-                title: "Review \(redFlaggedProgramsCount) red flag\(redFlaggedProgramsCount == 1 ? "" : "s")",
-                subtitle: "Important considerations",
-                icon: "flag.fill",
-                color: .red,
-                destination: AnyView(RedFlaggedProgramsView())
             ))
         }
 
@@ -1756,25 +1767,25 @@ struct QuickActionContent: View {
     let color: Color
     
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 6) {
             ZStack {
                 Circle()
                     .fill(color.opacity(0.15))
-                    .frame(width: 48, height: 48)
+                    .frame(width: 40, height: 40)
                 Image(systemName: icon)
-                    .font(.arial(size: 22, weight: .semibold))
+                    .font(.arial(size: 18, weight: .semibold))
                     .foregroundColor(color)
                     .symbolRenderingMode(.hierarchical)
             }
             
             Text(title)
-                .font(.arial(size: 14, weight: .semibold))
+                .font(.arial(size: 12, weight: .semibold))
                 .foregroundColor(.primary)
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 18)
-        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
+        .padding(.vertical, 12)
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 14))
     }
 }
 

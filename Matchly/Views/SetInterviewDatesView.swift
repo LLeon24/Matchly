@@ -47,8 +47,10 @@ struct SetInterviewDatesView: View {
             .presentationDragIndicator(.visible)
         }
         .sheet(item: $programForFullEdit) { program in
-            ProgramEntryView(program: program)
-                .environmentObject(dataManager)
+            MatchlyNavigationView {
+                ProgramEntryView(program: program)
+            }
+            .environmentObject(dataManager)
         }
     }
 

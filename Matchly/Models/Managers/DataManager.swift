@@ -293,6 +293,19 @@ class DataManager: ObservableObject {
                 }
             }
         }
+        applyInterviewPrepListMigrationIfNeeded(persist: true)
+    }
+
+    @discardableResult
+    private func applyInterviewPrepListMigrationIfNeeded(persist: Bool) -> Bool {
+        var prefs = preferences
+        guard prefs.migrateInterviewPrepCuratedListsIfNeeded() else { return false }
+        preferences = prefs
+        if persist {
+            persistPreferencesToDisk()
+        }
+        Self.logger.info("Migrated interview prep question lists to explicit add-only model")
+        return true
     }
     
     func loadData() {
@@ -435,6 +448,7 @@ class DataManager: ObservableObject {
 
         if pulledPreferences, let cloudPreferences = cloud.preferences {
             preferences = cloudPreferences
+            applyInterviewPrepListMigrationIfNeeded(persist: false)
             persistPreferencesToDisk()
             setLocalPreferencesTimestamp(cloudPreferencesAt == .distantPast ? Date() : cloudPreferencesAt)
         }
@@ -525,6 +539,7 @@ class DataManager: ObservableObject {
             if !meaningful || remotePreferencesAt > localPreferencesAt {
                 await MainActor.run {
                     self.preferences = remotePreferences
+                    self.applyInterviewPrepListMigrationIfNeeded(persist: false)
                     self.persistPreferencesToDisk()
                     self.setLocalPreferencesTimestamp(remotePreferencesAt == .distantPast ? Date() : remotePreferencesAt)
                 }

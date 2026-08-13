@@ -163,7 +163,10 @@ struct ProgramDetailView: View {
             }
         }
         .sheet(isPresented: $showEdit) {
-            ProgramEntryView(program: program)
+            MatchlyNavigationView {
+                ProgramEntryView(program: program)
+            }
+            .environmentObject(dataManager)
         }
     }
     

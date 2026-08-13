@@ -361,6 +361,7 @@ struct DashboardSnapshotHero: View {
     var ringSegments: [DashboardSnapshotRingSegment] = []
     let stats: [DashboardSnapshotStat]
     var accentTint: Color = AppColors.accentGreen
+    var onStatTap: ((InterviewSeasonStage) -> Void)? = nil
     @Environment(\.matchlyLayout) private var layout
 
     /// Editorial card rhythm — left-aligned, action-first.
@@ -600,8 +601,9 @@ struct DashboardSnapshotHero: View {
         }
     }
 
+    @ViewBuilder
     private func statCell(_ stat: DashboardSnapshotStat) -> some View {
-        VStack(spacing: 2) {
+        let content = VStack(spacing: 2) {
             Text(stat.value)
                 .font(.arial(size: layout.heroStatValueFont, weight: .bold))
                 .foregroundColor(stat.tint)
@@ -614,6 +616,18 @@ struct DashboardSnapshotHero: View {
                 .minimumScaleFactor(0.8)
         }
         .frame(maxWidth: .infinity)
+
+        if let stage = InterviewSeasonStage(rawValue: stat.id), let onStatTap {
+            Button {
+                onStatTap(stage)
+            } label: {
+                content
+            }
+            .buttonStyle(.plain)
+            .contentShape(Rectangle())
+        } else {
+            content
+        }
     }
 }
 

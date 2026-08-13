@@ -11,31 +11,75 @@ struct InterviewPrepView: View {
 
     @State private var prepState = InterviewPrepState()
     @State private var didLoadPrepState = false
+    @State private var showQuestionnairePicker = false
+    @State private var newCustomQuestionText = ""
+    @State private var isReorderMode = false
+    @State private var isSelectMode = false
+    @State private var reorderEditMode: EditMode = .inactive
+    @State private var selectedForRemoval: Set<String> = []
+    @State private var showClearQuestionsConfirmation = false
+    @State private var showDeleteSelectedConfirmation = false
+    @State private var showSaveDefaultQuestionsConfirmation = false
+    @State private var showShareSheet = false
+    @State private var pdfURL: URL?
+
+    private struct PrepListItem: Identifiable {
+        let id: String
+        let sectionTitle: String
+        let question: String
+        let isCustom: Bool
+    }
+
+    private typealias PrepPrompt = (id: String, sectionTitle: String, question: String)
 
     private var liveProgram: Program {
         dataManager.programs.first { $0.id == program.id } ?? program
     }
 
-    private var availablePrompts: [(id: String, sectionTitle: String, question: String)] {
+    private var availablePrompts: [PrepPrompt] {
         liveProgram.questionnaire.allPrepPrompts(preferences: dataManager.preferences)
     }
 
-    private var selectedPrompts: [(id: String, sectionTitle: String, question: String)] {
-        availablePrompts.filter { prepState.selectedQuestionIds.contains($0.id) }
+    private var listItems: [PrepListItem] {
+        prepState.questionListOrder.compactMap { id in
+            if let custom = prepState.customQuestions.first(where: { $0.id == id }) {
+                return PrepListItem(id: id, sectionTitle: "Custom", question: custom.question, isCustom: true)
+            }
+            if let prompt = availablePrompts.first(where: { $0.id == id }) {
+                return PrepListItem(id: id, sectionTitle: prompt.sectionTitle, question: prompt.question, isCustom: false)
+            }
+            return nil
+        }
     }
 
-    private var priorityPrompts: [(id: String, sectionTitle: String, question: String)] {
+    private var orderedListItems: [PrepListItem] {
+        let byId = Dictionary(uniqueKeysWithValues: listItems.map { ($0.id, $0) })
+        var result: [PrepListItem] = prepState.priorityQuestionIds.compactMap { byId[$0] }
+        let prioritySet = Set(prepState.priorityQuestionIds)
+        for id in prepState.questionListOrder where !prioritySet.contains(id) {
+            if let item = byId[id] {
+                result.append(item)
+            }
+        }
+        return result
+    }
+
+    private var priorityItems: [PrepListItem] {
         prepState.priorityQuestionIds.compactMap { id in
-            availablePrompts.first { $0.id == id }
+            listItems.first { $0.id == id }
         }
     }
 
-    private var groupedPrompts: [(sectionTitle: String, prompts: [(id: String, sectionTitle: String, question: String)])] {
-        let grouped = Dictionary(grouping: availablePrompts, by: \.sectionTitle)
-        return grouped.keys.sorted().map { title in
-            (sectionTitle: title, prompts: grouped[title] ?? [])
-        }
+    private var hasAnyListItems: Bool {
+        !listItems.isEmpty
     }
+
+    private var hasSavedDefaultQuestions: Bool {
+        !(dataManager.preferences.interviewPrepDefaultQuestions?.isEmpty ?? true)
+    }
+
+    private static let maxPriorityCount = 5
+    private static let rowActionColumnWidth: CGFloat = 72
 
     private static let checklistItems = [
         "Confirm interview time and location",
@@ -53,41 +97,98 @@ struct InterviewPrepView: View {
     ]
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                snapshotCard
+        VStack(spacing: 0) {
+            snapshotCard
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 12)
+                .background(Color(.systemBackground).opacity(0.98))
+                .shadow(color: Color.black.opacity(0.04), radius: 6, y: 2)
 
-                if liveProgram.hasRedFlags() {
-                    redFlagsReminderCard
-                }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    if liveProgram.hasRedFlags() {
+                        redFlagsReminderCard
+                    }
 
-                if !availablePrompts.isEmpty {
-                    topThreeCard
                     questionsCard
+
+                    quickTipsCard
+
+                    if !liveProgram.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        notesCard
+                    }
+
+                    checklistCard
+                    scoreAfterButton
                 }
-
-                quickTipsCard
-
-                if !liveProgram.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    notesCard
-                }
-
-                checklistCard
-                scoreAfterButton
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 32)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .padding(.bottom, 32)
         }
         .matchlyScrollTabBarClearance()
         .navigationTitle("Interview Prep")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    exportPDF()
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .accessibilityLabel("Export PDF")
+            }
+        }
         .appCanvasBackground()
         .onAppear {
             loadPrepStateIfNeeded()
         }
         .onChange(of: availablePrompts.map(\.id)) { _, _ in
             sanitizePrepState()
+        }
+        .sheet(isPresented: $showShareSheet, onDismiss: { pdfURL = nil }) {
+            if let pdfURL {
+                ShareSheet(activityItems: [pdfURL])
+            }
+        }
+        .sheet(isPresented: $showQuestionnairePicker) {
+            InterviewPrepQuestionnairePickerSheet(
+                program: liveProgram,
+                availablePrompts: availablePrompts,
+                alreadyAddedIds: Set(prepState.questionListOrder),
+                onAdd: { ids in
+                    for id in ids where !prepState.questionListOrder.contains(id) {
+                        prepState.selectedQuestionIds.insert(id)
+                        prepState.questionListOrder.append(id)
+                    }
+                    persistPrepState()
+                }
+            )
+        }
+        .alert("Clear all questions?", isPresented: $showClearQuestionsConfirmation) {
+            Button("Clear All", role: .destructive) {
+                clearAllQuestions()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes every question from your list for this program.")
+        }
+        .alert("Remove selected questions?", isPresented: $showDeleteSelectedConfirmation) {
+            Button("Remove", role: .destructive) {
+                deleteSelectedQuestions()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes \(selectedForRemoval.count) question\(selectedForRemoval.count == 1 ? "" : "s") from your list.")
+        }
+        .alert("Save as default questions?", isPresented: $showSaveDefaultQuestionsConfirmation) {
+            Button("Save") {
+                saveAsDefaultQuestions()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Your current list will replace any previously saved default questions.")
         }
     }
 
@@ -134,7 +235,6 @@ struct InterviewPrepView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .dashboardCardStyle()
     }
 
     private var displayHospitalName: String {
@@ -194,149 +294,338 @@ struct InterviewPrepView: View {
         return "EMR: \(emr)"
     }
 
-    // MARK: - Top 3
-
-    private var topThreeCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            prepSectionHeader(title: "Top 3 Must-Ask", icon: "star.fill", tint: .yellow)
-
-            if priorityPrompts.isEmpty {
-                Text("Star up to 3 questions below — these are the ones you most want answered on interview day.")
-                    .font(.arial(size: 13))
-                    .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(Array(priorityPrompts.enumerated()), id: \.element.id) { index, prompt in
-                        HStack(alignment: .top, spacing: 10) {
-                            Text("\(index + 1)")
-                                .font(.arial(size: 13, weight: .bold))
-                                .foregroundColor(.white)
-                                .frame(width: 24, height: 24)
-                                .background(Circle().fill(Color.yellow.opacity(0.9)))
-
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(Self.shortSectionTitle(prompt.sectionTitle))
-                                    .font(.arial(size: 10, weight: .semibold))
-                                    .foregroundColor(.secondary)
-                                    .textCase(.uppercase)
-                                Text(prompt.question)
-                                    .font(.arial(size: 14, weight: .medium))
-                                    .foregroundColor(.primary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                        }
-                        .padding(12)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.yellow.opacity(0.08))
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    }
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .dashboardCardStyle()
-    }
-
     // MARK: - Questions
 
     private var questionsCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack {
                 prepSectionHeader(title: "Questions to Ask", icon: "text.bubble.fill", tint: AppColors.accentGreen)
                 Spacer(minLength: 8)
-                Text("\(selectedPrompts.count) selected")
-                    .font(.arial(size: 12, weight: .medium))
-                    .foregroundColor(.secondary)
-            }
-
-            Text("Tap to include a question. Star your top 3 must-ask items.")
-                .font(.arial(size: 12))
-                .foregroundColor(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            HStack(spacing: 12) {
-                Button("Select All") {
-                    prepState.selectedQuestionIds = Set(availablePrompts.map(\.id))
-                    persistPrepState()
-                }
-                .font(.arial(size: 12, weight: .semibold))
-                .foregroundColor(AppColors.primaryBlue)
-
-                Button("Clear") {
-                    prepState.selectedQuestionIds.removeAll()
-                    prepState.priorityQuestionIds.removeAll()
-                    persistPrepState()
-                }
-                .font(.arial(size: 12, weight: .semibold))
-                .foregroundColor(.secondary)
-            }
-
-            VStack(alignment: .leading, spacing: 14) {
-                ForEach(groupedPrompts, id: \.sectionTitle) { group in
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(Self.shortSectionTitle(group.sectionTitle))
-                            .font(.arial(size: 11, weight: .semibold))
-                            .foregroundColor(SpecialtyFormatter.color(for: liveProgram.specialty))
-                            .textCase(.uppercase)
-
-                        VStack(spacing: 8) {
-                            ForEach(group.prompts, id: \.id) { prompt in
-                                questionRow(prompt)
-                            }
+            HStack(spacing: 16) {
+                if hasAnyListItems {
+                    if isSelectMode {
+                        Button("Cancel") {
+                            exitSelectMode()
                         }
+                        .font(.arial(size: 13, weight: .semibold))
+                        .foregroundColor(AppColors.primaryBlue)
+
+                        Button("Delete (\(selectedForRemoval.count))") {
+                            showDeleteSelectedConfirmation = true
+                        }
+                        .font(.arial(size: 13, weight: .semibold))
+                        .foregroundColor(.red)
+                        .disabled(selectedForRemoval.isEmpty)
+                    } else if isReorderMode {
+                        Button("Done") {
+                            exitReorderMode()
+                        }
+                        .font(.arial(size: 13, weight: .semibold))
+                        .foregroundColor(AppColors.primaryBlue)
+                    } else {
+                        Button("Edit") {
+                            enterSelectMode()
+                        }
+                        .font(.arial(size: 13, weight: .semibold))
+                        .foregroundColor(AppColors.primaryBlue)
+
+                        Button("Reorder") {
+                            enterReorderMode()
+                        }
+                        .font(.arial(size: 13, weight: .semibold))
+                        .foregroundColor(AppColors.primaryBlue)
                     }
                 }
             }
+            }
+
+            addQuestionControls
+            yourListSection
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .dashboardCardStyle()
     }
 
-    private func questionRow(_ prompt: (id: String, sectionTitle: String, question: String)) -> some View {
-        let isSelected = prepState.selectedQuestionIds.contains(prompt.id)
-        let isPriority = prepState.priorityQuestionIds.contains(prompt.id)
-        let priorityIndex = prepState.priorityQuestionIds.firstIndex(of: prompt.id)
+    private var addQuestionControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Add a Question")
+                    .font(.arial(size: 13, weight: .semibold))
 
-        return HStack(alignment: .top, spacing: 10) {
-            Button {
-                toggleQuestionSelection(prompt.id)
-            } label: {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.arial(size: 20))
-                    .foregroundColor(isSelected ? AppColors.accentGreen : .secondary)
+                HStack(alignment: .center, spacing: 8) {
+                    TextField("Type your own question…", text: $newCustomQuestionText, axis: .vertical)
+                        .lineLimit(1...3)
+                        .font(.arial(size: 14))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(Color.primary.opacity(0.04))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                    Button("Add") {
+                        addCustomQuestion()
+                    }
+                    .font(.arial(size: 14, weight: .semibold))
+                    .foregroundColor(AppColors.primaryBlue)
+                    .disabled(newCustomQuestionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .frame(minHeight: 44)
+                }
             }
-            .buttonStyle(.plain)
 
-            Text(prompt.question)
-                .font(.arial(size: 14))
-                .foregroundColor(isSelected ? .primary : .secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            if !availablePrompts.isEmpty {
+                Button {
+                    showQuestionnairePicker = true
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "list.bullet.rectangle")
+                            .font(.arial(size: 15))
+                        Text("Browse Questionnaire Questions")
+                            .font(.arial(size: 14, weight: .semibold))
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.arial(size: 11, weight: .semibold))
+                            .foregroundColor(.secondary)
+                    }
+                    .foregroundColor(AppColors.accentGreen)
+                    .padding(12)
+                    .background(AppColors.accentGreen.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
 
-            Button {
-                togglePriority(prompt.id)
-            } label: {
-                ZStack {
-                    Image(systemName: isPriority ? "star.fill" : "star")
-                        .font(.arial(size: 16, weight: .semibold))
-                        .foregroundColor(isPriority ? .yellow : .secondary.opacity(isSelected ? 0.8 : 0.35))
-
-                    if let priorityIndex {
-                        Text("\(priorityIndex + 1)")
-                            .font(.arial(size: 8, weight: .bold))
-                            .foregroundColor(.white)
-                            .offset(y: 1)
+    private var yourListSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 8) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("Your List")
+                        .font(.arial(size: 14, weight: .semibold))
+                    if !priorityItems.isEmpty {
+                        Text("★ \(priorityItems.count)/\(Self.maxPriorityCount) pinned")
+                            .font(.arial(size: 11, weight: .semibold))
+                            .foregroundColor(.yellow.opacity(0.95))
                     }
                 }
-                .frame(width: 28, height: 28)
+
+                Spacer(minLength: 8)
+
+                if hasAnyListItems, !isSelectMode, !isReorderMode {
+                    Button("Clear All") {
+                        showClearQuestionsConfirmation = true
+                    }
+                    .font(.arial(size: 12, weight: .semibold))
+                    .foregroundColor(.red)
+                }
             }
-            .buttonStyle(.plain)
-            .disabled(!isSelected && !isPriority)
+
+            if hasAnyListItems, !isSelectMode, !isReorderMode {
+                Button("Save as default questions") {
+                    showSaveDefaultQuestionsConfirmation = true
+                }
+                .font(.arial(size: 12, weight: .semibold))
+                .foregroundColor(AppColors.primaryBlue)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            if hasAnyListItems {
+                Text(listHelperText)
+                    .font(.arial(size: 11))
+                    .foregroundColor(.secondary)
+            }
+
+            if orderedListItems.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Questions you type or pick from the questionnaire will show up here.")
+                        .font(.arial(size: 13))
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if hasSavedDefaultQuestions {
+                        Button("Load default questions") {
+                            loadDefaultQuestions()
+                        }
+                        .font(.arial(size: 14, weight: .semibold))
+                        .foregroundColor(AppColors.primaryBlue)
+                    }
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.primary.opacity(0.04))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            } else if isReorderMode {
+                List {
+                    ForEach(orderedListItems) { item in
+                        reorderRow(item)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                    }
+                    .onMove(perform: moveListItems)
+                }
+                .listStyle(.plain)
+                .scrollDisabled(true)
+                .environment(\.editMode, $reorderEditMode)
+                .frame(height: prepReorderListHeight(for: orderedListItems.count))
+            } else if isSelectMode {
+                VStack(spacing: 8) {
+                    ForEach(orderedListItems) { item in
+                        selectListRow(item)
+                    }
+                }
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(orderedListItems) { item in
+                        yourListRow(item)
+                    }
+                }
+            }
         }
-        .padding(12)
-        .background(isPriority ? Color.yellow.opacity(0.08) : Color.primary.opacity(isSelected ? 0.04 : 0.02))
+    }
+
+    private var listHelperText: String {
+        if isSelectMode {
+            return "Tap questions to select · Delete removes selected"
+        }
+        if isReorderMode {
+            return "Drag to reorder · tap Done when finished"
+        }
+        return "Tap ★ to pin up to \(Self.maxPriorityCount) to the top · tap row when asked"
+    }
+
+    private func prepReorderListHeight(for count: Int) -> CGFloat {
+        max(CGFloat(count) * 64 + 8, 0)
+    }
+
+    private func yourListRow(_ item: PrepListItem) -> some View {
+        let isAsked = prepState.askedQuestionIds.contains(item.id)
+        let isStarred = prepState.priorityQuestionIds.contains(item.id)
+        let starRank = prepState.priorityQuestionIds.firstIndex(of: item.id)
+        let starsFull = prepState.priorityQuestionIds.count >= Self.maxPriorityCount
+
+        return questionLabel(for: item, emphasized: isStarred, isAsked: isAsked)
+            .padding(12)
+            .padding(.trailing, Self.rowActionColumnWidth)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(isStarred ? Color.yellow.opacity(0.08) : Color.primary.opacity(0.04))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(alignment: .trailing) {
+                HStack(spacing: 10) {
+                    Button {
+                        toggleAsked(item.id)
+                    } label: {
+                        Image(systemName: isAsked ? "checkmark.circle.fill" : "circle")
+                            .font(.arial(size: 22))
+                            .foregroundColor(isAsked ? AppColors.accentGreen : .secondary.opacity(0.45))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(isAsked ? "Mark as not asked" : "Mark as asked")
+
+                    Button {
+                        togglePriority(item.id)
+                    } label: {
+                        ZStack {
+                            Image(systemName: isStarred ? "star.fill" : "star")
+                                .font(.arial(size: 20, weight: .semibold))
+                                .foregroundColor(isStarred ? .yellow : .secondary.opacity(0.45))
+
+                            if let starRank {
+                                Text("\(starRank + 1)")
+                                    .font(.arial(size: 8, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .offset(y: 1)
+                            }
+                        }
+                        .frame(width: 24, height: 24)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(starsFull && !isStarred)
+                    .accessibilityLabel(isStarred ? "Unpin question" : "Pin to top")
+                }
+                .padding(.trailing, 12)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .onTapGesture {
+                toggleAsked(item.id)
+            }
+            .contextMenu {
+                Button(role: .destructive) {
+                    removeFromList(item.id)
+                } label: {
+                    Label("Remove", systemImage: "trash")
+                }
+            }
+    }
+
+    private func selectListRow(_ item: PrepListItem) -> some View {
+        let isSelected = selectedForRemoval.contains(item.id)
+        let isStarred = prepState.priorityQuestionIds.contains(item.id)
+
+        return Button {
+            toggleSelectionForRemoval(item.id)
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.arial(size: 22))
+                    .foregroundColor(isSelected ? AppColors.primaryBlue : .secondary.opacity(0.45))
+                    .frame(width: 24, height: 24)
+
+                questionLabel(for: item, emphasized: isStarred, isAsked: false)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(12)
+            .background(
+                isSelected
+                    ? AppColors.primaryBlue.opacity(0.08)
+                    : (isStarred ? Color.yellow.opacity(0.08) : Color.primary.opacity(0.04))
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func reorderRow(_ item: PrepListItem) -> some View {
+        let isStarred = prepState.priorityQuestionIds.contains(item.id)
+
+        return HStack(spacing: 8) {
+            if isStarred {
+                Image(systemName: "star.fill")
+                    .font(.arial(size: 12))
+                    .foregroundColor(.yellow)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.isCustom ? "CUSTOM" : Self.shortSectionTitle(item.sectionTitle))
+                    .font(.arial(size: 10, weight: .semibold))
+                    .foregroundColor(.secondary)
+                    .textCase(.uppercase)
+
+                Text(item.question)
+                    .font(.arial(size: 14))
+                    .foregroundColor(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(isStarred ? Color.yellow.opacity(0.08) : Color.primary.opacity(0.04))
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func questionLabel(for item: PrepListItem, emphasized: Bool, isAsked: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(item.isCustom ? "CUSTOM" : Self.shortSectionTitle(item.sectionTitle))
+                .font(.arial(size: 10, weight: .semibold))
+                .foregroundColor(.secondary)
+                .textCase(.uppercase)
+
+            Text(item.question)
+                .font(.arial(size: 14, weight: emphasized ? .medium : .regular))
+                .foregroundColor(isAsked ? .secondary : .primary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Tips & Notes
@@ -420,6 +709,7 @@ struct InterviewPrepView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .padding(.vertical, 10)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
 
@@ -459,13 +749,11 @@ struct InterviewPrepView: View {
                         .foregroundColor(.secondary)
                 }
                 Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.arial(size: 12, weight: .semibold))
-                    .foregroundColor(.secondary)
             }
             .foregroundColor(.primary)
             .padding(16)
             .dashboardCardStyle()
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -477,45 +765,153 @@ struct InterviewPrepView: View {
         didLoadPrepState = true
 
         var state = dataManager.preferences.interviewPrepByProgram[program.id] ?? InterviewPrepState()
-        let validIds = Set(availablePrompts.map(\.id))
+        let validQuestionnaireIds = Set(availablePrompts.map(\.id))
+        let validCustomIds = Set(state.customQuestions.map(\.id))
+        let allValidIds = validQuestionnaireIds.union(validCustomIds)
 
-        if state.selectedQuestionIds.isEmpty, !validIds.isEmpty {
-            state.selectedQuestionIds = validIds
+        state.selectedQuestionIds = state.selectedQuestionIds.intersection(validQuestionnaireIds)
+        state.customQuestions.removeAll { $0.question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        state.priorityQuestionIds = state.priorityQuestionIds.filter { allValidIds.contains($0) }
+        state.askedQuestionIds = state.askedQuestionIds.intersection(allValidIds)
+        if state.priorityQuestionIds.count > Self.maxPriorityCount {
+            state.priorityQuestionIds = Array(state.priorityQuestionIds.prefix(Self.maxPriorityCount))
         }
-
-        state.selectedQuestionIds = state.selectedQuestionIds.intersection(validIds)
-        state.priorityQuestionIds = state.priorityQuestionIds.filter { validIds.contains($0) }
-        if state.priorityQuestionIds.count > 3 {
-            state.priorityQuestionIds = Array(state.priorityQuestionIds.prefix(3))
-        }
+        state.questionListOrder = state.questionListOrder.filter { allValidIds.contains($0) }
+        state.selectedQuestionIds = state.selectedQuestionIds
+            .intersection(validQuestionnaireIds)
+            .intersection(Set(state.questionListOrder))
 
         prepState = state
         persistPrepState()
     }
 
     private func sanitizePrepState() {
-        let validIds = Set(availablePrompts.map(\.id))
-        prepState.selectedQuestionIds = prepState.selectedQuestionIds.intersection(validIds)
-        prepState.priorityQuestionIds = prepState.priorityQuestionIds.filter { validIds.contains($0) }
+        let validQuestionnaireIds = Set(availablePrompts.map(\.id))
+        let validCustomIds = Set(prepState.customQuestions.map(\.id))
+        let allValidIds = validQuestionnaireIds.union(validCustomIds)
+
+        prepState.selectedQuestionIds = prepState.selectedQuestionIds
+            .intersection(validQuestionnaireIds)
+            .intersection(Set(prepState.questionListOrder))
+        prepState.questionListOrder = prepState.questionListOrder.filter { allValidIds.contains($0) }
+        prepState.priorityQuestionIds = prepState.priorityQuestionIds.filter { allValidIds.contains($0) }
+        prepState.askedQuestionIds = prepState.askedQuestionIds.intersection(allValidIds)
+        if prepState.priorityQuestionIds.count > Self.maxPriorityCount {
+            prepState.priorityQuestionIds = Array(prepState.priorityQuestionIds.prefix(Self.maxPriorityCount))
+        }
         persistPrepState()
     }
 
-    private func toggleQuestionSelection(_ id: String) {
-        if prepState.selectedQuestionIds.contains(id) {
+    private func removeFromList(_ id: String) {
+        removeFromList(Set([id]))
+    }
+
+    private func removeFromList(_ ids: Set<String>) {
+        guard !ids.isEmpty else { return }
+        for id in ids {
             prepState.selectedQuestionIds.remove(id)
+            prepState.customQuestions.removeAll { $0.id == id }
+            prepState.questionListOrder.removeAll { $0 == id }
             prepState.priorityQuestionIds.removeAll { $0 == id }
-        } else {
-            prepState.selectedQuestionIds.insert(id)
+            prepState.askedQuestionIds.remove(id)
         }
+        selectedForRemoval.subtract(ids)
+        persistPrepState()
+    }
+
+    private func clearAllQuestions() {
+        prepState.selectedQuestionIds = []
+        prepState.customQuestions = []
+        prepState.questionListOrder = []
+        prepState.priorityQuestionIds = []
+        prepState.askedQuestionIds = []
+        exitSelectMode()
+        exitReorderMode()
+        persistPrepState()
+    }
+
+    private func saveAsDefaultQuestions() {
+        dataManager.preferences.interviewPrepDefaultQuestions = InterviewPrepDefaultQuestions.from(prepState: prepState)
+        dataManager.savePreferences()
+    }
+
+    private func loadDefaultQuestions() {
+        guard let template = dataManager.preferences.interviewPrepDefaultQuestions,
+              !template.isEmpty else { return }
+        let validQuestionnaireIds = Set(availablePrompts.map(\.id))
+        prepState = template.prepState(matching: validQuestionnaireIds)
+        persistPrepState()
+    }
+
+    private func deleteSelectedQuestions() {
+        removeFromList(selectedForRemoval)
+        exitSelectMode()
+    }
+
+    private func enterSelectMode() {
+        exitReorderMode()
+        selectedForRemoval = []
+        isSelectMode = true
+    }
+
+    private func exitSelectMode() {
+        isSelectMode = false
+        selectedForRemoval = []
+    }
+
+    private func enterReorderMode() {
+        exitSelectMode()
+        isReorderMode = true
+        reorderEditMode = .active
+    }
+
+    private func exitReorderMode() {
+        isReorderMode = false
+        reorderEditMode = .inactive
+    }
+
+    private func toggleSelectionForRemoval(_ id: String) {
+        if selectedForRemoval.contains(id) {
+            selectedForRemoval.remove(id)
+        } else {
+            selectedForRemoval.insert(id)
+        }
+    }
+
+    private func addCustomQuestion() {
+        let trimmed = newCustomQuestionText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let question = InterviewPrepCustomQuestion(question: trimmed)
+        prepState.customQuestions.append(question)
+        prepState.questionListOrder.append(question.id)
+        newCustomQuestionText = ""
+        persistPrepState()
+    }
+
+    private func moveListItems(from source: IndexSet, to destination: Int) {
+        var ids = orderedListItems.map(\.id)
+        ids.move(fromOffsets: source, toOffset: destination)
+        prepState.priorityQuestionIds = ids.filter { prepState.priorityQuestionIds.contains($0) }
+        prepState.questionListOrder = ids
         persistPrepState()
     }
 
     private func togglePriority(_ id: String) {
         if prepState.priorityQuestionIds.contains(id) {
             prepState.priorityQuestionIds.removeAll { $0 == id }
-        } else if prepState.priorityQuestionIds.count < 3 {
-            prepState.selectedQuestionIds.insert(id)
+            persistPrepState()
+        } else if prepState.priorityQuestionIds.count < Self.maxPriorityCount,
+                  listItems.contains(where: { $0.id == id }) {
             prepState.priorityQuestionIds.append(id)
+            persistPrepState()
+        }
+    }
+
+    private func toggleAsked(_ id: String) {
+        if prepState.askedQuestionIds.contains(id) {
+            prepState.askedQuestionIds.remove(id)
+        } else {
+            prepState.askedQuestionIds.insert(id)
         }
         persistPrepState()
     }
@@ -532,6 +928,47 @@ struct InterviewPrepView: View {
     private func persistPrepState() {
         dataManager.preferences.interviewPrepByProgram[program.id] = prepState
         dataManager.savePreferences()
+    }
+
+    private func exportPDF() {
+        let location = [liveProgram.city, liveProgram.state]
+            .filter { !$0.isEmpty }
+            .joined(separator: ", ")
+
+        let priority = priorityItems.map {
+            (
+                sectionTitle: $0.sectionTitle,
+                question: $0.question,
+                asked: prepState.askedQuestionIds.contains($0.id)
+            )
+        }
+        let other = orderedListItems.filter { !prepState.priorityQuestionIds.contains($0.id) }.map {
+            (
+                sectionTitle: $0.sectionTitle,
+                question: $0.question,
+                asked: prepState.askedQuestionIds.contains($0.id)
+            )
+        }
+        let checklist = Self.checklistItems.map {
+            (title: $0, checked: prepState.checkedChecklistItems.contains($0))
+        }
+
+        let config = InterviewPrepPDFExporter.Configuration(
+            hospitalName: displayHospitalName,
+            specialty: liveProgram.specialty,
+            location: location,
+            interviewDate: liveProgram.interviewDate,
+            priorityQuestions: priority,
+            otherSelectedQuestions: other,
+            checklistItems: checklist,
+            notes: liveProgram.notes.isEmpty ? nil : liveProgram.notes,
+            generatedAt: Date()
+        )
+
+        if let url = InterviewPrepPDFExporter.generatePDF(configuration: config) {
+            pdfURL = url
+            showShareSheet = true
+        }
     }
 
     // MARK: - Helpers
@@ -571,6 +1008,138 @@ struct InterviewPrepView: View {
         formatter.dateFormat = "h:mm a"
         return formatter
     }()
+}
+
+// MARK: - Questionnaire picker sheet
+
+private struct InterviewPrepQuestionnairePickerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let program: Program
+    let availablePrompts: [(id: String, sectionTitle: String, question: String)]
+    let alreadyAddedIds: Set<String>
+    let onAdd: (Set<String>) -> Void
+
+    @State private var pendingSelection: Set<String> = []
+
+    private var addablePrompts: [(id: String, sectionTitle: String, question: String)] {
+        availablePrompts.filter { !alreadyAddedIds.contains($0.id) }
+    }
+
+    private var groupedPrompts: [(sectionTitle: String, prompts: [(id: String, sectionTitle: String, question: String)])] {
+        let grouped = Dictionary(grouping: addablePrompts, by: \.sectionTitle)
+        return grouped.keys.sorted().compactMap { title in
+            let prompts = grouped[title] ?? []
+            guard !prompts.isEmpty else { return nil }
+            return (sectionTitle: title, prompts: prompts)
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text(
+                        addablePrompts.isEmpty
+                            ? "Every questionnaire question is already on your list."
+                            : "Pick questions to add to your list."
+                    )
+                        .font(.arial(size: 13))
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
+
+                    if groupedPrompts.isEmpty {
+                        Text("Remove questions from Your List if you want to browse and re-add them here.")
+                            .font(.arial(size: 13))
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.primary.opacity(0.04))
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .padding(.horizontal, 16)
+                    } else {
+                        VStack(alignment: .leading, spacing: 14) {
+                            ForEach(groupedPrompts, id: \.sectionTitle) { group in
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text(shortSectionTitle(group.sectionTitle))
+                                        .font(.arial(size: 11, weight: .semibold))
+                                        .foregroundColor(SpecialtyFormatter.color(for: program.specialty))
+                                        .textCase(.uppercase)
+                                        .padding(.horizontal, 16)
+
+                                    VStack(spacing: 8) {
+                                        ForEach(group.prompts, id: \.id) { prompt in
+                                            pickerRow(prompt)
+                                        }
+                                    }
+                                    .padding(.horizontal, 16)
+                                }
+                            }
+                        }
+                        .padding(.bottom, 24)
+                    }
+                }
+            }
+            .appCanvasBackground()
+            .navigationTitle("Questionnaire")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Add") {
+                        onAdd(pendingSelection)
+                        dismiss()
+                    }
+                    .font(.arial(size: 16, weight: .semibold))
+                    .disabled(pendingSelection.isEmpty)
+                }
+            }
+        }
+    }
+
+    private func pickerRow(_ prompt: (id: String, sectionTitle: String, question: String)) -> some View {
+        let isSelected = pendingSelection.contains(prompt.id)
+
+        return Button {
+            if isSelected {
+                pendingSelection.remove(prompt.id)
+            } else {
+                pendingSelection.insert(prompt.id)
+            }
+        } label: {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.arial(size: 22))
+                    .foregroundColor(isSelected ? AppColors.accentGreen : Color.primary.opacity(0.35))
+
+                Text(prompt.question)
+                    .font(.arial(size: 14))
+                    .foregroundColor(.primary)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(12)
+            .background(Color.primary.opacity(isSelected ? 0.04 : 0.02))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func shortSectionTitle(_ title: String) -> String {
+        if let range = title.range(of: " — ") {
+            return String(title[range.upperBound...])
+        }
+        return title
+    }
 }
 
 #Preview {

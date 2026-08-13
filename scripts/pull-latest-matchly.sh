@@ -137,11 +137,11 @@ else
   FAIL=1
 fi
 
-if grep -q 'icons: \["square.grid.2x2.fill"' Matchly/Views/DashboardView.swift && \
-   grep -q "sectionTabIconFont" Matchly/Extensions/View+Extensions.swift; then
-  echo "  OK  Dashboard Overview/Programs/Interviews tabs use icons and larger labels"
+if grep -q "dashboardSectionAccents" Matchly/Views/DashboardView.swift && \
+   grep -q "sectionTabFont" Matchly/Extensions/View+Extensions.swift; then
+  echo "  OK  Dashboard section tabs are text-only with per-section accent colors"
 else
-  echo "  FAIL  Dashboard section tab visibility polish missing"
+  echo "  FAIL  Dashboard section tab polish missing"
   FAIL=1
 fi
 
@@ -171,7 +171,7 @@ echo "  1. Quit Xcode"
 echo "  2. rm -rf ~/Library/Developer/Xcode/DerivedData/Matchly-*"
 echo "  3. Open Matchly.xcodeproj from THIS folder (not an old iCloud copy)"
 echo "  4. Product → Clean Build Folder (⇧⌘K), then Run (⌘R)"
-echo "  5. Settings → About should show Version 1.0.0 and Build 1.0.0 · auth-baseline-9"
+echo "  5. Settings → About should show Version 1.0.0 and Build 1.0.0 · auth-baseline-10"
 echo "  6. Dashboard: Overview / Programs / Interviews tabs with page dots below; swipe between pages"
 echo "  7. My Programs empty: no Sort / + / Edit in nav bar; they appear once you add programs"
 echo "  8. Tab bar: 4 tabs (Dashboard, Programs, Rank List, Settings) — no Map"

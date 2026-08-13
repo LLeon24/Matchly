@@ -416,7 +416,7 @@ struct ProgramEntryView: View {
         if isQuestionnaireComplete {
             return "Review your questions and day-before checklist"
         }
-        return "Pick questions, star your top 3, and run the checklist"
+        return "Pick questions, star your top 5, and run the checklist"
     }
 
     private var currentProgramId: String {
@@ -446,14 +446,11 @@ struct ProgramEntryView: View {
                 }
 
                 Spacer(minLength: 8)
-
-                Image(systemName: "chevron.right")
-                    .font(.arial(size: 12, weight: .semibold))
-                    .foregroundColor(.secondary.opacity(0.6))
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
             .glassEffect(.regular, in: .rect(cornerRadius: 16))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 20)
@@ -799,6 +796,7 @@ struct ProgramEntryView: View {
     
     private var contentWithAlerts: some View {
         contentWithChangeTracking
+            .interactiveDismissDisabled(hasUnsavedChanges)
             .alert("Unsaved Changes", isPresented: $showUnsavedChangesAlert) {
                 Button("Discard", role: .destructive) {
                     hasUnsavedChanges = false
@@ -984,8 +982,7 @@ struct ProgramEntryView: View {
     }
     
     private var mainContentView: some View {
-        MatchlyNavigationView {
-            VStack(spacing: 0) {
+        VStack(spacing: 0) {
                 // Compact Header (if program is selected)
                 if !hospital.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
@@ -1119,27 +1116,28 @@ struct ProgramEntryView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .navigationTitle(program == nil ? (hospital.isEmpty ? "Add Program" : "") : "Edit Program")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(hasUnsavedChanges)
+            .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel") {
                         if hasUnsavedChanges {
                             showUnsavedChangesAlert = true
                         } else {
-                        dismiss()
+                            dismiss()
+                        }
                     }
                 }
-                }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("Save") {
-                            saveProgram()
-                        }
-                        .font(.arial(size: 16, weight: .medium))
-                        .buttonStyle(.glassProminent)
-                        .tint(.blue)
+                    Button("Save") {
+                        saveProgram()
+                    }
+                    .font(.arial(size: 16, weight: .medium))
+                    .buttonStyle(.glassProminent)
+                    .tint(.blue)
                 }
             }
-        }
+            .background(NavigationPopGestureBlocker(isBlocked: hasUnsavedChanges))
     }
     
     private func loadProgram(_ program: Program) {
@@ -1842,6 +1840,21 @@ extension ProgramEntryView {
             }
         }
         .glassEffect(.regular, in: .rect(cornerRadius: 16))
+    }
+}
+
+/// Disables swipe-back when there are unsaved changes so the alert can prompt first.
+private struct NavigationPopGestureBlocker: UIViewControllerRepresentable {
+    let isBlocked: Bool
+
+    func makeUIViewController(context: Context) -> UIViewController {
+        UIViewController()
+    }
+
+    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {
+        DispatchQueue.main.async {
+            uiViewController.navigationController?.interactivePopGestureRecognizer?.isEnabled = !isBlocked
+        }
     }
 }
 

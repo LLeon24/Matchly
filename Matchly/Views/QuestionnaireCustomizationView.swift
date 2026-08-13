@@ -255,6 +255,13 @@ struct QuestionnaireCustomizationView: View {
                         }
                     }
                 }
+                .onDelete { offsets in
+                    let removedIds = offsets.map { customSections[$0].id }
+                    customSections.remove(atOffsets: offsets)
+                    for removedId in removedIds {
+                        enabledSectionIds.remove(removedId)
+                    }
+                }
                 
                 Button(action: {
                     showAddCustomSection = true
@@ -283,73 +290,12 @@ struct QuestionnaireCustomizationView: View {
             cachedStandardSections = Questionnaire.makeStandardSections()
         }
         .onDisappear {
-            // Save preferences
             dataManager.preferences.enabledSectionIds = enabledSectionIds
             dataManager.preferences.enabledQuestionIds = enabledQuestionIds
             dataManager.preferences.customSections = customSections
             dataManager.preferences.customQuestionsInSections = customQuestionsInSections
             dataManager.savePreferences()
-            
-            // Merge custom questions into standard sections and update all programs
-            for program in dataManager.programs {
-                var updatedProgram = program
-                
-                // Add custom questions to their respective standard sections
-                for (sectionId, customQuestions) in customQuestionsInSections {
-                    if let sectionIndex = updatedProgram.questionnaire.sections.firstIndex(where: { $0.id == sectionId }) {
-                        // Add custom questions that don't already exist (check by both ID and question text to prevent duplicates)
-                        for customQuestion in customQuestions {
-                            let alreadyExists = updatedProgram.questionnaire.sections[sectionIndex].items.contains { item in
-                                item.id == customQuestion.id || item.question == customQuestion.question
-                            }
-                            if !alreadyExists {
-                                let newItem = QuestionnaireItem(id: customQuestion.id, question: customQuestion.question)
-                                updatedProgram.questionnaire.sections[sectionIndex].items.append(newItem)
-                            }
-                        }
-                    }
-                }
-                
-                // Convert CustomQuestionnaireSection to QuestionnaireSection
-                // Prevent duplicates by checking if custom section already exists
-                var existingCustomSectionIds = Set(updatedProgram.questionnaire.customSections.map { $0.id })
-                updatedProgram.questionnaire.customSections = customSections.compactMap { customSection in
-                    // Skip if this custom section already exists (prevent duplicates)
-                    if existingCustomSectionIds.contains(customSection.id) {
-                        // Update existing section instead of duplicating
-                        if let existingIndex = updatedProgram.questionnaire.customSections.firstIndex(where: { $0.id == customSection.id }) {
-                            var existingSection = updatedProgram.questionnaire.customSections[existingIndex]
-                            // Merge items, avoiding duplicates
-                            var mergedItems = existingSection.items
-                            for customItem in customSection.items {
-                                if !mergedItems.contains(where: { $0.id == customItem.id || $0.question == customItem.question }) {
-                                    mergedItems.append(QuestionnaireItem(id: customItem.id, question: customItem.question))
-                                }
-                            }
-                            existingSection.items = mergedItems
-                            updatedProgram.questionnaire.customSections[existingIndex] = existingSection
-                            return nil // Don't add duplicate
-                        }
-                    }
-                    existingCustomSectionIds.insert(customSection.id)
-                    return QuestionnaireSection(
-                        id: customSection.id,
-                        title: customSection.title,
-                        items: customSection.items.map { customItem in
-                            // Find existing item with same ID or create new one
-                            if let existingItem = updatedProgram.questionnaire.sections.flatMap({ $0.items }).first(where: { $0.id == customItem.id }) {
-                                return existingItem
-                            } else if let customItemInCustomSection = updatedProgram.questionnaire.customSections.flatMap({ $0.items }).first(where: { $0.id == customItem.id }) {
-                                return customItemInCustomSection
-                            } else {
-                                return QuestionnaireItem(id: customItem.id, question: customItem.question)
-                            }
-                        }
-                    )
-                }
-                updatedProgram.finalScore = updatedProgram.questionnaire.totalWeightedScore(preferences: dataManager.preferences, programEMR: updatedProgram.emr)
-                dataManager.updateProgram(updatedProgram)
-            }
+            syncQuestionnaireCustomizationsToPrograms()
         }
         .alert("Add Custom Section", isPresented: $showAddCustomSection) {
             TextField("Section Title", text: $newSectionTitle)
@@ -394,6 +340,91 @@ struct QuestionnaireCustomizationView: View {
                 Text("Enter your custom question")
             }
         }
+    }
+
+    private func syncQuestionnaireCustomizationsToPrograms() {
+        let standardSectionTemplates = cachedStandardSections.isEmpty
+            ? Questionnaire.makeStandardSections()
+            : cachedStandardSections
+        let standardQuestionIdsBySection = Dictionary(
+            uniqueKeysWithValues: standardSectionTemplates.map { ($0.id, Set($0.items.map(\.id))) }
+        )
+        let allowedCustomQuestionIdsBySection = customQuestionsInSections.mapValues { Set($0.map(\.id)) }
+        let prefCustomSectionIds = Set(customSections.map(\.id))
+        let prefCustomQuestionIdsBySection = Dictionary(
+            uniqueKeysWithValues: customSections.map { ($0.id, Set($0.items.map(\.id))) }
+        )
+
+        for program in dataManager.programs {
+            var updatedProgram = program
+
+            for sectionIndex in updatedProgram.questionnaire.sections.indices {
+                let sectionId = updatedProgram.questionnaire.sections[sectionIndex].id
+                let standardIds = standardQuestionIdsBySection[sectionId] ?? []
+                let allowedCustomIds = allowedCustomQuestionIdsBySection[sectionId] ?? []
+
+                updatedProgram.questionnaire.sections[sectionIndex].items =
+                    updatedProgram.questionnaire.sections[sectionIndex].items.filter { item in
+                        if standardIds.contains(item.id) { return true }
+                        return allowedCustomIds.contains(item.id)
+                    }
+
+                if let customQuestions = customQuestionsInSections[sectionId] {
+                    for customQuestion in customQuestions {
+                        let sectionItems = updatedProgram.questionnaire.sections[sectionIndex].items
+                        let alreadyExists = sectionItems.contains {
+                            $0.id == customQuestion.id || $0.question == customQuestion.question
+                        }
+                        if !alreadyExists {
+                            updatedProgram.questionnaire.sections[sectionIndex].items.append(
+                                QuestionnaireItem(id: customQuestion.id, question: customQuestion.question)
+                            )
+                        }
+                    }
+                }
+            }
+
+            updatedProgram.questionnaire.customSections = customSections.map { customSection in
+                let existingSection = program.questionnaire.customSections.first { $0.id == customSection.id }
+                return QuestionnaireSection(
+                    id: customSection.id,
+                    title: customSection.title,
+                    items: customSection.items.map { customItem in
+                        if let existingItem = existingSection?.items.first(where: { $0.id == customItem.id }) {
+                            return existingItem
+                        }
+                        if let existingItem = program.questionnaire.sections
+                            .flatMap(\.items)
+                            .first(where: { $0.id == customItem.id }) {
+                            return existingItem
+                        }
+                        return QuestionnaireItem(id: customItem.id, question: customItem.question)
+                    }
+                )
+            }
+
+            for existingSection in program.questionnaire.customSections where !prefCustomSectionIds.contains(existingSection.id) {
+                let removedQuestionIds = Set(existingSection.items.map(\.id))
+                enabledQuestionIds.subtract(removedQuestionIds)
+            }
+
+            for (sectionId, allowedIds) in prefCustomQuestionIdsBySection {
+                guard let existingSection = program.questionnaire.customSections.first(where: { $0.id == sectionId }) else {
+                    continue
+                }
+                let removedIds = Set(existingSection.items.map(\.id)).subtracting(allowedIds)
+                enabledQuestionIds.subtract(removedIds)
+            }
+
+            updatedProgram.finalScore = updatedProgram.questionnaire.totalWeightedScore(
+                preferences: dataManager.preferences,
+                programEMR: updatedProgram.emr
+            )
+            dataManager.updateProgram(updatedProgram)
+        }
+
+        dataManager.preferences.enabledQuestionIds = enabledQuestionIds
+        dataManager.savePreferences()
     }
 }
 

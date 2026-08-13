@@ -348,7 +348,29 @@ struct Questionnaire: Codable, Equatable {
     
     /// All enabled questionnaire prompts available for interview prep selection.
     func allPrepPrompts(preferences: UserPreferences) -> [(id: String, sectionTitle: String, question: String)] {
-        let allSections = sections + customSections
+        var mergedCustomSections = customSections
+        for prefSection in preferences.customSections {
+            if let index = mergedCustomSections.firstIndex(where: { $0.id == prefSection.id }) {
+                var section = mergedCustomSections[index]
+                let existingIds = Set(section.items.map(\.id))
+                for customItem in prefSection.items where !existingIds.contains(customItem.id) {
+                    section.items.append(QuestionnaireItem(id: customItem.id, question: customItem.question))
+                }
+                mergedCustomSections[index] = section
+            } else {
+                mergedCustomSections.append(
+                    QuestionnaireSection(
+                        id: prefSection.id,
+                        title: prefSection.title,
+                        items: prefSection.items.map {
+                            QuestionnaireItem(id: $0.id, question: $0.question)
+                        }
+                    )
+                )
+            }
+        }
+
+        let allSections = sections + mergedCustomSections
         let eligibleSections = allSections.filter { section in
             let title = section.title.lowercased()
             guard !title.contains("red flag") else { return false }
