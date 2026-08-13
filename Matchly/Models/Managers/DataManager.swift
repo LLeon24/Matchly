@@ -307,6 +307,32 @@ class DataManager: ObservableObject {
         Self.logger.info("Migrated interview prep question lists to explicit add-only model")
         return true
     }
+
+    /// Fills empty profile name fields from Apple/Google/email auth display names.
+    @MainActor
+    func applyAuthDisplayNameToProfileIfNeeded(_ displayName: String?) {
+        guard let displayName = displayName?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !displayName.isEmpty else { return }
+
+        let split = UserProfile.splitLegacyName(displayName)
+        var profile = preferences.profile
+        var changed = false
+
+        if profile.firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !split.first.isEmpty {
+            profile.firstName = split.first
+            changed = true
+        }
+        if profile.lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !split.last.isEmpty {
+            profile.lastName = split.last
+            changed = true
+        }
+
+        guard changed else { return }
+        preferences.profile = profile
+        savePreferences()
+        objectWillChange.send()
+        Self.logger.info("Applied auth display name to profile")
+    }
     
     func loadData() {
         loadPrograms()

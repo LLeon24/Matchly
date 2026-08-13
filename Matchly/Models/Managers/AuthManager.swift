@@ -243,6 +243,7 @@ class AuthManager: ObservableObject {
 
         Task {
             _ = await DataManager.shared.mergeWithAccountCloudIfNeeded(trigger: "signIn")
+            DataManager.shared.applyAuthDisplayNameToProfileIfNeeded(updatedUser.displayName)
         }
     }
 
@@ -486,7 +487,8 @@ class AuthManager: ObservableObject {
             let accessToken = gidResult.user.accessToken.tokenString
             let credential = GoogleAuthProvider.credential(withIDToken: idToken, accessToken: accessToken)
             let authResult = try await Auth.auth().signIn(with: credential)
-            let user = makeUser(from: authResult.user, provider: .google, existing: currentUser)
+            let googleName = gidResult.user.profile?.name
+            let user = makeUser(from: authResult.user, provider: .google, displayName: googleName, existing: currentUser)
             await MainActor.run { signIn(user: user) }
             await refreshCloudKitIdentity()
         } catch let error as AuthError {
