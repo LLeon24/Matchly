@@ -115,12 +115,38 @@ struct MatchlyDashboardGreeting: View {
     var size: CGFloat
 
     var body: some View {
-        Text(text)
+        Group {
+            if let split = greetingSplit {
+                VStack(alignment: .leading, spacing: 2) {
+                    greetingLine(split.lead, lineLimit: 1)
+                    greetingLine(split.trail, lineLimit: 2)
+                }
+            } else {
+                greetingLine(text, lineLimit: 2)
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// Splits "Good afternoon, Name!" so the salutation and name can wrap independently.
+    private var greetingSplit: (lead: String, trail: String)? {
+        guard let comma = text.firstIndex(of: ",") else { return nil }
+        let lead = String(text[...comma])
+        let trailStart = text.index(after: comma)
+        let trail = String(text[trailStart...]).trimmingCharacters(in: .whitespaces)
+        guard !trail.isEmpty else { return nil }
+        return (lead, trail)
+    }
+
+    private func greetingLine(_ string: String, lineLimit: Int) -> some View {
+        Text(string)
             .font(.arial(size: size, weight: .bold))
             .foregroundStyle(AppColors.primaryText)
             .kerning(MatchlyEditorialTypography.greetingKerning)
-            .lineLimit(1)
-            .minimumScaleFactor(0.7)
+            .multilineTextAlignment(.leading)
+            .lineLimit(lineLimit)
+            .minimumScaleFactor(0.75)
+            .allowsTightening(true)
     }
 }
 
@@ -177,6 +203,7 @@ struct MatchlyContentSectionTitle: View {
     VStack(alignment: .leading, spacing: 28) {
         MatchlyEditorialPageHeader(title: "Settings")
         MatchlySectionHeaderText(title: "Profile")
+        MatchlyDashboardGreeting(text: "Good afternoon, Christopher Alexander Montgomery!", size: 24)
         MatchlyFunctionalSubtitle(text: "Believe in yourself and your journey!")
         MatchlyHeroTitle(title: "Your Interview Season", alignment: .leading)
         MatchlyContentSectionTitle(title: "Key Metrics")

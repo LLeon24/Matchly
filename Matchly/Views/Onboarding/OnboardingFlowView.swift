@@ -223,7 +223,14 @@ struct OnboardingFlowView: View {
             subtitle: OnboardingStep.name.subtitle,
             content: {
                 VStack(spacing: 24) {
-                    TextField("Enter your name", text: $profile.name)
+                    TextField("First Name", text: $profile.firstName)
+                        .font(.arial(size: 18))
+                        .padding()
+                        .glassEffect(.regular, in: .rect(cornerRadius: 12))
+                        .autocapitalization(.words)
+                        .disableAutocorrection(true)
+
+                    TextField("Last Name", text: $profile.lastName)
                         .font(.arial(size: 18))
                         .padding()
                         .glassEffect(.regular, in: .rect(cornerRadius: 12))
@@ -238,7 +245,7 @@ struct OnboardingFlowView: View {
                     currentStep = .aamcID
                 }
             },
-            canContinue: !profile.name.trimmingCharacters(in: .whitespaces).isEmpty,
+            canContinue: !profile.firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
             onBack: {
                 withAnimation {
                     currentStep = .specialties

@@ -14,7 +14,8 @@ struct ProfileEditView: View {
     @EnvironmentObject var dataManager: DataManager
     @ObservedObject private var authManager = AuthManager.shared
     @Environment(\.dismiss) var dismiss
-    @State private var name: String = ""
+    @State private var firstName: String = ""
+    @State private var lastName: String = ""
     @State private var aamcID: String = ""
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var photoData: Data?
@@ -126,7 +127,16 @@ struct ProfileEditView: View {
             }
             
             Section {
-                TextField("Name", text: $name)
+                TextField("First Name", text: $firstName)
+                    .autocapitalization(.words)
+                    .disableAutocorrection(true)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .glassEffect(.regular, in: .capsule)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    .listRowBackground(Color.clear)
+
+                TextField("Last Name", text: $lastName)
                     .autocapitalization(.words)
                     .disableAutocorrection(true)
                     .padding(.horizontal, 16)
@@ -137,7 +147,7 @@ struct ProfileEditView: View {
             } header: {
                 Text("Personal Information")
             } footer: {
-                Text("Your name will be displayed in the dashboard welcome message")
+                Text("Your first name appears in the dashboard welcome message")
             }
             
             Section {
@@ -208,14 +218,16 @@ struct ProfileEditView: View {
     }
     
     private func loadProfile() {
-        name = dataManager.preferences.profile.name
+        firstName = dataManager.preferences.profile.firstName
+        lastName = dataManager.preferences.profile.lastName
         aamcID = dataManager.preferences.profile.aamcID ?? ""
         photoData = dataManager.preferences.profile.photoData
         avatarPresetID = dataManager.preferences.profile.avatarPresetID
     }
     
     private func saveProfile() {
-        dataManager.preferences.profile.name = name.trimmingCharacters(in: .whitespaces)
+        dataManager.preferences.profile.firstName = firstName.trimmingCharacters(in: .whitespacesAndNewlines)
+        dataManager.preferences.profile.lastName = lastName.trimmingCharacters(in: .whitespacesAndNewlines)
         dataManager.preferences.profile.aamcID = aamcID.trimmingCharacters(in: .whitespaces).isEmpty ? nil : aamcID.trimmingCharacters(in: .whitespaces)
         // Always save the photoData if it exists, even if it's nil (to allow removal)
         if photoData != nil {

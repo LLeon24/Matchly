@@ -117,12 +117,13 @@ struct DashboardView: View {
     /// Compact command bar that stays pinned above the swipeable pages:
     /// profile photo (opens profile editor), greeting, and the customize button.
     private var headerBar: some View {
-        HStack(spacing: screenLayout == .compactVertical ? 10 : 14) {
+        HStack(alignment: .top, spacing: screenLayout == .compactVertical ? 10 : 14) {
             Button(action: { showProfileEdit = true }) {
                 headerAvatar
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Edit profile")
+            .padding(.top, 2)
 
             VStack(alignment: .leading, spacing: screenLayout == .compactVertical ? 2 : 4) {
                 MatchlyDashboardGreeting(
@@ -149,6 +150,7 @@ struct DashboardView: View {
             .buttonStyle(.plain)
             .glassEffect(.clear.interactive(), in: .circle)
             .accessibilityLabel("Customize dashboard")
+            .padding(.top, 2)
         }
         .padding(.horizontal, 20)
         .padding(.top, screenLayout == .compactVertical ? 8 : 10)
@@ -193,13 +195,13 @@ struct DashboardView: View {
 
     /// Up to two uppercased initials derived from the profile name.
     private var profileInitials: String? {
-        let name = dataManager.preferences.profile.name.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty else { return nil }
+        let first = dataManager.preferences.profile.firstName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let last = dataManager.preferences.profile.lastName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !first.isEmpty || !last.isEmpty else { return nil }
 
-        let parts = name.split(separator: " ").filter { !$0.isEmpty }
-        let first = parts.first?.first.map(String.init) ?? ""
-        let last = parts.count > 1 ? (parts.last?.first.map(String.init) ?? "") : ""
-        let initials = (first + last).uppercased()
+        let firstInitial = first.first.map(String.init) ?? ""
+        let lastInitial = last.first.map(String.init) ?? ""
+        let initials = (firstInitial + lastInitial).uppercased()
         return initials.isEmpty ? nil : initials
     }
 
@@ -315,37 +317,27 @@ struct DashboardView: View {
     }
 
     private var programsCompareCard: some View {
-        NavigationLink(destination: ProgramComparisonView()) {
-            HStack(spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(AppColors.primaryBlue.opacity(0.15))
-                        .frame(width: 34, height: 34)
-                    Image(systemName: "square.grid.2x2")
-                        .font(.arial(size: 15, weight: .semibold))
-                        .foregroundColor(AppColors.primaryBlue)
-                }
+        VStack(alignment: .leading, spacing: 8) {
+            DashboardSectionHeader(
+                title: "Compare Programs",
+                icon: "square.grid.2x2",
+                tint: AppColors.primaryBlue
+            )
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Compare Programs")
-                        .font(.arial(size: 15, weight: .semibold))
-                        .foregroundColor(.primary)
+            NavigationLink(destination: ProgramComparisonView()) {
+                HStack {
                     Text("Side-by-side scores and details for 2–4 programs")
+                        .font(.arial(size: 12, weight: .semibold))
+                        .foregroundColor(AppColors.primaryBlue)
+                    Spacer()
+                    Image(systemName: "chevron.right")
                         .font(.arial(size: 12))
-                        .foregroundColor(.secondary)
-                        .lineLimit(2)
+                        .foregroundColor(.secondary.opacity(0.5))
                 }
-
-                Spacer(minLength: 8)
-
-                Image(systemName: "chevron.right")
-                    .font(.arial(size: 12))
-                    .foregroundColor(.secondary.opacity(0.5))
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, 4)
-            .padding(.vertical, 6)
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
         .dashboardCardStyle()
     }
 
@@ -943,7 +935,7 @@ struct DashboardView: View {
     
     private func getGreeting() -> String {
         let prefs = dashboardPreferences
-        let name = dataManager.preferences.profile.name
+        let name = dataManager.preferences.profile.greetingFirstName
         
         switch prefs.greetingStyle {
         case .timeBased:
