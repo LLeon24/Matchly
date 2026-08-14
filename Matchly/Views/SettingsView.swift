@@ -173,10 +173,6 @@ struct SettingsView: View {
                 Label("Replay Guided Tour", systemImage: "hand.point.up.left.fill")
             }
 
-            NavigationLink(destination: AppGuideView(showsNavigationChrome: true)) {
-                Label("Feature Overview", systemImage: "book.fill")
-            }
-
             Picker("Applying To", selection: Binding(
                 get: {
                     ProgramTrainingLevelFilter(rawValue: dataManager.preferences.applyingTrack) ?? .residency
@@ -223,29 +219,21 @@ struct SettingsView: View {
             .tint(AppColors.primaryBlue)
             .listRowBackground(Color.clear)
 
-            Toggle(isOn: Binding(
-                get: { dataManager.preferences.enableCalendarSync },
-                set: { newValue in
-                    dataManager.preferences.enableCalendarSync = newValue
-                    dataManager.savePreferences()
-                }
-            )) {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "calendar.badge.plus")
-                            .foregroundColor(.blue)
-                        Text("Sync Interviews to Calendar")
-                            .font(.arial(size: 15, weight: .medium))
+            SettingsLabeledToggle(
+                title: "Sync Interviews to Calendar",
+                infoMessage: "When enabled, sync interview dates to a Matchly calendar from the Interviews tab.",
+                systemImage: "calendar.badge.plus",
+                iconColor: .blue,
+                isOn: Binding(
+                    get: { dataManager.preferences.enableCalendarSync },
+                    set: { newValue in
+                        dataManager.preferences.enableCalendarSync = newValue
+                        dataManager.savePreferences()
                     }
-                    Text("Add interview dates to a Matchly calendar on your device")
-                        .font(.arial(size: 13))
-                        .foregroundColor(.secondary)
-                }
-            }
+                )
+            )
         } header: {
             MatchlyFormSectionHeader(title: "Preferences")
-        } footer: {
-            Text("Sync interviews from the Interviews tab when calendar sync is on.")
         }
     }
 
@@ -316,29 +304,21 @@ struct SettingsView: View {
                     }
                     .pickerStyle(.menu)
                     
-                    Toggle(isOn: Binding(
-                        get: { dataManager.preferences.includeRedFlaggedProgramsInRankList },
-                        set: { newValue in
-                            dataManager.preferences.includeRedFlaggedProgramsInRankList = newValue
-                            dataManager.savePreferences()
-                        }
-                    )) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .foregroundColor(.red)
-                                Text("Include Red Flagged Programs in Rank List")
-                                    .font(.arial(size: 15, weight: .medium))
+                    SettingsLabeledToggle(
+                        title: "Include Red Flagged Programs in Rank List",
+                        infoMessage: "When enabled, programs with red flags appear at the bottom of your rank list.",
+                        systemImage: "exclamationmark.triangle.fill",
+                        iconColor: .red,
+                        isOn: Binding(
+                            get: { dataManager.preferences.includeRedFlaggedProgramsInRankList },
+                            set: { newValue in
+                                dataManager.preferences.includeRedFlaggedProgramsInRankList = newValue
+                                dataManager.savePreferences()
                             }
-                            Text("When enabled, programs with red flags will appear at the bottom of your rank list")
-                                .font(.arial(size: 13))
-                                .foregroundColor(.secondary)
-                        }
-                    }
+                        )
+                    )
         } header: {
             MatchlyFormSectionHeader(title: "Scoring & Questionnaire")
-        } footer: {
-            Text("Customize which questionnaire sections appear above. Preferred EMR is optional and used for quick reference when comparing programs.")
         }
     }
     

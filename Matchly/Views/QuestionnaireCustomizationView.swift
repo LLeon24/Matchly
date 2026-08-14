@@ -298,7 +298,7 @@ struct QuestionnaireCustomizationView: View {
             syncQuestionnaireCustomizationsToPrograms()
         }
         .alert("Add Custom Section", isPresented: $showAddCustomSection) {
-            TextField("Section Title", text: $newSectionTitle)
+            ClearableTextField("Section Title", text: $newSectionTitle)
             Button("Cancel", role: .cancel) {
                 newSectionTitle = ""
             }
@@ -316,7 +316,7 @@ struct QuestionnaireCustomizationView: View {
             get: { showAddQuestionToSection != nil },
             set: { if !$0 { showAddQuestionToSection = nil } }
         )) {
-            TextField("Question", text: $newQuestionText, axis: .vertical)
+            ClearableTextField("Question", text: $newQuestionText, axis: .vertical)
             Button("Cancel", role: .cancel) {
                 newQuestionText = ""
                 showAddQuestionToSection = nil
@@ -449,7 +449,7 @@ struct EditCustomSectionView: View {
     var body: some View {
         Form {
             Section("Section Title") {
-                TextField("Section Title", text: $sectionTitle)
+                ClearableTextField("Section Title", text: $sectionTitle)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                     .glassEffect(.regular, in: .capsule)
@@ -501,7 +501,7 @@ struct EditCustomSectionView: View {
         .scrollContentBackground(.hidden)
         .appCanvasBackground()
         .alert("Add Question", isPresented: $showAddQuestion) {
-            TextField("Question", text: $newQuestion)
+            ClearableTextField("Question", text: $newQuestion)
             Button("Cancel", role: .cancel) {
                 newQuestion = ""
             }
@@ -534,7 +534,7 @@ struct EditQuestionView: View {
     var body: some View {
         Form {
             Section("Question") {
-                TextField("Question", text: $question, axis: .vertical)
+                ClearableTextField("Question", text: $question, axis: .vertical)
                     .lineLimit(3...6)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)

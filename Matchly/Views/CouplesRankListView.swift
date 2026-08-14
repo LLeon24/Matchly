@@ -653,7 +653,7 @@ struct AddCouplesRankPairView: View {
                 }
                 
                 Section("Notes") {
-                    TextField("Optional notes about this pair", text: $notes, axis: .vertical)
+                    ClearableTextField("Optional notes about this pair", text: $notes, axis: .vertical)
                         .lineLimit(3...6)
                 }
             }

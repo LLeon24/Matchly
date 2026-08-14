@@ -107,7 +107,7 @@ struct CoupleChatView: View {
         let canSend = !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSending
 
         return HStack(alignment: .bottom, spacing: 10) {
-            TextField("Message your partner…", text: $draft, axis: .vertical)
+            ClearableTextField("Message your partner…", text: $draft, axis: .vertical)
                 .lineLimit(1...6)
                 .font(.arial(size: 16))
                 .padding(.horizontal, 16)

@@ -353,7 +353,7 @@ struct InterviewPrepView: View {
                     .font(.arial(size: 13, weight: .semibold))
 
                 HStack(alignment: .center, spacing: 8) {
-                    TextField("Type your own question…", text: $newCustomQuestionText, axis: .vertical)
+                    ClearableTextField("Type your own question…", text: $newCustomQuestionText, axis: .vertical)
                         .lineLimit(1...3)
                         .font(.arial(size: 14))
                         .padding(.horizontal, 12)

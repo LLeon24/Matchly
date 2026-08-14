@@ -295,21 +295,10 @@ struct ProgramSearchView: View {
             Image(systemName: "magnifyingglass")
                 .foregroundColor(.blue)
                 .font(.arial(size: 16))
-            TextField("Search programs...", text: $searchText)
-                .textFieldStyle(.plain)
+            ClearableTextField("Search programs...", text: $searchText)
                 .autocapitalization(.none)
                 .disableAutocorrection(true)
                 .font(.arial(size: 16))
-            
-            if !searchText.isEmpty {
-                Button(action: {
-                    searchText = ""
-                }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.secondary.opacity(0.6))
-                        .font(.arial(size: 16))
-                }
-            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)

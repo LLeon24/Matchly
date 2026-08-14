@@ -10,6 +10,11 @@ import Charts
 import UIKit
 import Combine
 
+private enum HeroStatDestination: Hashable {
+    case needDates
+    case needReview
+}
+
 struct DashboardView: View {
     @EnvironmentObject var dataManager: DataManager
     @Environment(\.matchlyLayout) private var screenLayout
@@ -17,8 +22,7 @@ struct DashboardView: View {
     @State private var showAddProgram = false
     @State private var showCustomization = false
     @State private var showProfileEdit = false
-    @State private var showNeedDatesFromHero = false
-    @State private var showNeedReviewFromHero = false
+    @State private var heroStatDestination: HeroStatDestination?
     @Binding var selectedTab: Int
     
     init(selectedTab: Binding<Int> = .constant(0)) {
@@ -91,14 +95,22 @@ struct DashboardView: View {
             // Dashboard is a single scroll view — PopToRoot handles navigation stack reset.
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("PopToRoot"))) { _ in
-            // Pop to root when Dashboard tab is tapped — dismisses any pushed
-            // NavigationLink destinations.
+            // Pop to root when Dashboard tab is tapped — dismisses any pushed destinations.
+            heroStatDestination = nil
             DispatchQueue.main.async {
                 if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
                    let window = windowScene.windows.first,
                    let rootViewController = window.rootViewController {
                     findAndPopNavigationControllers(in: rootViewController)
                 }
+            }
+        }
+        .navigationDestination(item: $heroStatDestination) { destination in
+            switch destination {
+            case .needDates:
+                SetInterviewDatesView()
+            case .needReview:
+                ProgramsNeedingReviewView()
             }
         }
         .sheet(isPresented: $showAddProgram) {
@@ -267,18 +279,6 @@ struct DashboardView: View {
                 onStatTap: handleHeroStatTap
             )
             .dashboardCardStyle()
-            .background {
-                Group {
-                    NavigationLink(destination: SetInterviewDatesView(), isActive: $showNeedDatesFromHero) {
-                        EmptyView()
-                    }
-                    .hidden()
-                    NavigationLink(destination: ProgramsNeedingReviewView(), isActive: $showNeedReviewFromHero) {
-                        EmptyView()
-                    }
-                    .hidden()
-                }
-            }
         case "needsAttention":
             needsAttentionCard
         case "analytics":
@@ -411,13 +411,13 @@ struct DashboardView: View {
     private func handleHeroStatTap(_ stage: InterviewSeasonStage) {
         switch stage {
         case .needDate:
-            showNeedDatesFromHero = true
+            heroStatDestination = .needDates
         case .upcoming:
             selectedTab = MainTabLayout.interviewsIndex
         case .scored:
             selectedTab = MainTabLayout.rankListIndex(isCoupleLinked: isCoupleLinked)
         case .toReview:
-            showNeedReviewFromHero = true
+            heroStatDestination = .needReview
         }
     }
 

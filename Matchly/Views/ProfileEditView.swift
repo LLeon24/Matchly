@@ -11,9 +11,16 @@ import Combine
 import UIKit
 
 struct ProfileEditView: View {
+    private enum ProfileEditField: Hashable {
+        case firstName
+        case lastName
+        case aamcID
+    }
+
     @EnvironmentObject var dataManager: DataManager
     @ObservedObject private var authManager = AuthManager.shared
     @Environment(\.dismiss) var dismiss
+    @FocusState private var focusedField: ProfileEditField?
     @State private var firstName: String = ""
     @State private var lastName: String = ""
     @State private var aamcID: String = ""
@@ -22,148 +29,29 @@ struct ProfileEditView: View {
     @State private var avatarPresetID: String?
     @State private var cropImageItem: CropImageItem?
     @State private var isLoadingPhoto = false
+    @State private var keyboardHeight: CGFloat = 0
     
     var body: some View {
-        Form {
-            Section {
-                // Profile Photo
-                VStack(spacing: 16) {
-                    ZStack {
-                        PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                            ZStack {
-                                if let photoData = photoData,
-                                   let uiImage = UIImage(data: photoData) {
-                                    Image(uiImage: uiImage)
-                                        .resizable()
-                                        .scaledToFill()
-                                        .frame(width: 120, height: 120)
-                                        .clipShape(Circle())
-                                } else if let existingPhotoData = dataManager.preferences.profile.photoData,
-                                          let uiImage = UIImage(data: existingPhotoData) {
-                                    Image(uiImage: uiImage)
-                                        .resizable()
-                                        .scaledToFill()
-                                        .frame(width: 120, height: 120)
-                                        .clipShape(Circle())
-                                } else {
-                                    ZStack {
-                                        Circle()
-                                            .fill(
-                                                LinearGradient(
-                                                    colors: [Color.blue.opacity(0.2), Color.purple.opacity(0.2)],
-                                                    startPoint: .topLeading,
-                                                    endPoint: .bottomTrailing
-                                                )
-                                            )
-                                            .frame(width: 120, height: 120)
-                                        
-                                        Image(systemName: "person.fill")
-                                            .font(.arial(size: 50))
-                                            .foregroundStyle(
-                                                LinearGradient(
-                                                    colors: [.blue, .purple],
-                                                    startPoint: .topLeading,
-                                                    endPoint: .bottomTrailing
-                                                )
-                                            )
-                                    }
-                                }
-                                
-                                Circle()
-                                    .fill(Color.black.opacity(0.4))
-                                    .frame(width: 120, height: 120)
-                                
-                                VStack(spacing: 4) {
-                                    Image(systemName: "camera.fill")
-                                        .font(.arial(size: 24))
-                                        .foregroundColor(.white)
-                                    Text(photoData != nil || dataManager.preferences.profile.photoData != nil ? "Change" : "Add Photo")
-                                        .font(.arial(size: 14, weight: .medium))
-                                        .foregroundColor(.white)
-                                }
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(isLoadingPhoto)
-                        
-                        if isLoadingPhoto {
-                            Circle()
-                                .fill(Color.black.opacity(0.45))
-                                .frame(width: 120, height: 120)
-                            ProgressView()
-                                .tint(.white)
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.top, 24) // Increased padding for Dynamic Island
-                .padding(.bottom, 8)
+        ScrollViewReader { proxy in
+            Form {
+                profilePhotoSection
+                personalInformationSection
+                aamcSection
 
-                ProfileAvatarPresetPicker(selectedPresetID: avatarPresetID) { preset, data in
-                    selectedPhoto = nil
-                    photoData = data
-                    avatarPresetID = preset.id
+                if keyboardHeight > 0 {
+                    Color.clear
+                        .frame(height: max(24, keyboardHeight * 0.35))
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                 }
-                .padding(.bottom, 12)
-                
-                if photoData != nil || dataManager.preferences.profile.photoData != nil {
-                    Button(role: .destructive, action: {
-                        photoData = nil
-                        avatarPresetID = nil
-                        selectedPhoto = nil
-                        // Immediately update UI
-                        dataManager.preferences.profile.photoData = nil
-                        dataManager.preferences.profile.avatarPresetID = nil
-                    }) {
-                        HStack {
-                            Spacer()
-                            Text("Remove Photo")
-                            Spacer()
-                        }
-                    }
-                }
-            } header: {
-                Text("Profile Photo")
             }
-            
-            Section {
-                TextField("First Name", text: $firstName)
-                    .autocapitalization(.words)
-                    .disableAutocorrection(true)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .glassEffect(.regular, in: .capsule)
-                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                    .listRowBackground(Color.clear)
-
-                TextField("Last Name", text: $lastName)
-                    .autocapitalization(.words)
-                    .disableAutocorrection(true)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .glassEffect(.regular, in: .capsule)
-                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                    .listRowBackground(Color.clear)
-            } header: {
-                Text("Personal Information")
-            } footer: {
-                Text("Your first name appears in the dashboard welcome message")
+            .scrollDismissesKeyboard(.interactively)
+            .onChange(of: focusedField) { _, field in
+                scrollToField(field, using: proxy)
             }
-            
-            Section {
-                TextField("AAMC ID (Optional)", text: $aamcID)
-                    .keyboardType(.default)
-                    .autocapitalization(.none)
-                    .disableAutocorrection(true)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .glassEffect(.regular, in: .capsule)
-                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                    .listRowBackground(Color.clear)
-            } header: {
-                Text("AAMC Information")
-            } footer: {
-                Text("Your AAMC ID helps us provide better program matching")
+            .onChange(of: keyboardHeight) { _, height in
+                guard height > 0, let field = focusedField else { return }
+                scrollToField(field, using: proxy)
             }
         }
         .navigationTitle("Edit Profile")
@@ -188,6 +76,17 @@ struct ProfileEditView: View {
         .appCanvasBackground()
         .onAppear {
             loadProfile()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { notification in
+            guard let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+            withAnimation(.easeOut(duration: 0.25)) {
+                keyboardHeight = keyboardFrame.height
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            withAnimation(.easeOut(duration: 0.25)) {
+                keyboardHeight = 0
+            }
         }
         .onChange(of: selectedPhoto) { _, newItem in
             guard let newItem else { return }
@@ -216,7 +115,176 @@ struct ProfileEditView: View {
             }
         }
     }
+
+    private var profilePhotoSection: some View {
+        Section {
+            // Profile Photo
+            VStack(spacing: 16) {
+                ZStack {
+                    PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                        ZStack {
+                            if let photoData = photoData,
+                               let uiImage = UIImage(data: photoData) {
+                                Image(uiImage: uiImage)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 120, height: 120)
+                                    .clipShape(Circle())
+                            } else if let existingPhotoData = dataManager.preferences.profile.photoData,
+                                      let uiImage = UIImage(data: existingPhotoData) {
+                                Image(uiImage: uiImage)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 120, height: 120)
+                                    .clipShape(Circle())
+                            } else {
+                                ZStack {
+                                    Circle()
+                                        .fill(
+                                            LinearGradient(
+                                                colors: [Color.blue.opacity(0.2), Color.purple.opacity(0.2)],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            )
+                                        )
+                                        .frame(width: 120, height: 120)
+                                    
+                                    Image(systemName: "person.fill")
+                                        .font(.arial(size: 50))
+                                        .foregroundStyle(
+                                            LinearGradient(
+                                                colors: [.blue, .purple],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            )
+                                        )
+                                }
+                            }
+                            
+                            Circle()
+                                .fill(Color.black.opacity(0.4))
+                                .frame(width: 120, height: 120)
+                            
+                            VStack(spacing: 4) {
+                                Image(systemName: "camera.fill")
+                                    .font(.arial(size: 24))
+                                    .foregroundColor(.white)
+                                Text(photoData != nil || dataManager.preferences.profile.photoData != nil ? "Change" : "Add Photo")
+                                    .font(.arial(size: 14, weight: .medium))
+                                    .foregroundColor(.white)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isLoadingPhoto)
+                    
+                    if isLoadingPhoto {
+                        Circle()
+                            .fill(Color.black.opacity(0.45))
+                            .frame(width: 120, height: 120)
+                        ProgressView()
+                            .tint(.white)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 24)
+            .padding(.bottom, 8)
+
+            ProfileAvatarPresetPicker(selectedPresetID: avatarPresetID) { preset, data in
+                selectedPhoto = nil
+                photoData = data
+                avatarPresetID = preset.id
+            }
+            .padding(.bottom, 12)
+            
+            if photoData != nil || dataManager.preferences.profile.photoData != nil {
+                Button(role: .destructive, action: {
+                    photoData = nil
+                    avatarPresetID = nil
+                    selectedPhoto = nil
+                    dataManager.preferences.profile.photoData = nil
+                    dataManager.preferences.profile.avatarPresetID = nil
+                }) {
+                    HStack {
+                        Spacer()
+                        Text("Remove Photo")
+                        Spacer()
+                    }
+                }
+            }
+        } header: {
+            Text("Profile Photo")
+        }
+    }
+
+    private var personalInformationSection: some View {
+        Section {
+            ClearableTextFieldRow<ProfileEditField>(
+                "First Name",
+                text: $firstName,
+                focus: $focusedField,
+                equals: .firstName
+            )
+                .autocapitalization(.words)
+                .disableAutocorrection(true)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .glassEffect(.regular, in: .capsule)
+                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                .listRowBackground(Color.clear)
+                .id(ProfileEditField.firstName)
+
+            ClearableTextFieldRow<ProfileEditField>(
+                "Last Name",
+                text: $lastName,
+                focus: $focusedField,
+                equals: .lastName
+            )
+                .autocapitalization(.words)
+                .disableAutocorrection(true)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .glassEffect(.regular, in: .capsule)
+                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                .listRowBackground(Color.clear)
+                .id(ProfileEditField.lastName)
+        } header: {
+            Text("Personal Information")
+        }
+    }
+
+    private var aamcSection: some View {
+        Section {
+            ClearableTextFieldRow<ProfileEditField>(
+                "AAMC ID (Optional)",
+                text: $aamcID,
+                focus: $focusedField,
+                equals: .aamcID
+            )
+                .keyboardType(.default)
+                .autocapitalization(.none)
+                .disableAutocorrection(true)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .glassEffect(.regular, in: .capsule)
+                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                .listRowBackground(Color.clear)
+                .id(ProfileEditField.aamcID)
+        } header: {
+            Text("AAMC Information")
+        }
+    }
     
+    private func scrollToField(_ field: ProfileEditField?, using proxy: ScrollViewProxy) {
+        guard let field else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            withAnimation(.easeInOut(duration: 0.25)) {
+                proxy.scrollTo(field, anchor: .center)
+            }
+        }
+    }
+
     private func loadProfile() {
         firstName = dataManager.preferences.profile.firstName
         lastName = dataManager.preferences.profile.lastName

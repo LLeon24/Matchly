@@ -117,25 +117,20 @@ struct ProgramEntryView: View {
                                 .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 10))
                             }
                             
-                            TextField("Program Name", text: $name)
-                                .textFieldStyle(.roundedBorder)
+                            ClearableTextField("Program Name", text: $name)
                                 .padding(.horizontal, 16)
                             
-                            TextField("Hospital / University", text: $hospital)
-                                .textFieldStyle(.roundedBorder)
+                            ClearableTextField("Hospital / University", text: $hospital)
                                 .padding(.horizontal, 16)
                             
-                            TextField("Street Address (e.g., 123 Main St)", text: $address)
-                                .textFieldStyle(.roundedBorder)
+                            ClearableTextField("Street Address (e.g., 123 Main St)", text: $address)
                                 .autocapitalization(.words)
                                 .padding(.horizontal, 16)
                             
-                            TextField("City", text: $city)
-                                .textFieldStyle(.roundedBorder)
+                            ClearableTextField("City", text: $city)
                                 .padding(.horizontal, 16)
                             
-                            TextField("State", text: $state)
-                                .textFieldStyle(.roundedBorder)
+                            ClearableTextField("State", text: $state)
                                 .padding(.horizontal, 16)
                             
                             Toggle("Set Interview Date", isOn: $hasInterviewDate)
@@ -219,7 +214,7 @@ struct ProgramEntryView: View {
                         
                         if showNotes {
                             HStack(alignment: .top, spacing: 8) {
-                                TextField("Notes...", text: $notes, axis: .vertical)
+                                ClearableTextField("Notes...", text: $notes, axis: .vertical)
                                     .textFieldStyle(.roundedBorder)
                                     .lineLimit(5...10)
                                     .focused($isNotesFocused)
@@ -347,7 +342,7 @@ struct ProgramEntryView: View {
                 .buttonStyle(.plain)
 
                 if isOtherSelected {
-                    TextField("Type EMR name", text: $emrOtherDetail)
+                    ClearableTextField("Type EMR name", text: $emrOtherDetail)
                         .font(.arial(size: 15))
                         .textInputAutocapitalization(.words)
                         .autocorrectionDisabled()
@@ -750,14 +745,14 @@ struct ProgramEntryView: View {
             MatchlyNavigationView {
                 Form {
                     Section("Address") {
-                        TextField("Street Address", text: $address)
+                        ClearableTextField("Street Address", text: $address)
                             .autocapitalization(.words)
                     }
                     
                     Section("Contact Information") {
                         // Website URL with open button
                         HStack {
-                            TextField("Website URL", text: $websiteURL)
+                            ClearableTextField("Website URL", text: $websiteURL)
                                 .keyboardType(.URL)
                                 .autocapitalization(.none)
                                 if !websiteURL.isEmpty, let url = URL(string: websiteURL) {
@@ -770,14 +765,14 @@ struct ProgramEntryView: View {
                             }
                         }
                         
-                        TextField("Contact Email", text: $contactEmail)
+                        ClearableTextField("Contact Email", text: $contactEmail)
                             .keyboardType(.emailAddress)
                             .autocapitalization(.none)
                         
-                        TextField("Contact Phone", text: $contactPhone)
+                        ClearableTextField("Contact Phone", text: $contactPhone)
                             .keyboardType(.phonePad)
                         
-                        TextField("Program Coordinator", text: $programCoordinator)
+                        ClearableTextField("Program Coordinator", text: $programCoordinator)
                                 .autocapitalization(.words)
                     }
                 }
@@ -1683,7 +1678,7 @@ struct ProgramEntryView: View {
                 }
             }
 
-            TextField(
+            ClearableTextField(
                 "Why this program? (for your ERAS / ResidencyCAS application)",
                 text: $signalNote,
                 axis: .vertical

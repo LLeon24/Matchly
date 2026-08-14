@@ -223,14 +223,14 @@ struct OnboardingFlowView: View {
             subtitle: OnboardingStep.name.subtitle,
             content: {
                 VStack(spacing: 24) {
-                    TextField("First Name", text: $profile.firstName)
+                    ClearableTextField("First Name", text: $profile.firstName)
                         .font(.arial(size: 18))
                         .padding()
                         .glassEffect(.regular, in: .rect(cornerRadius: 12))
                         .autocapitalization(.words)
                         .disableAutocorrection(true)
 
-                    TextField("Last Name", text: $profile.lastName)
+                    ClearableTextField("Last Name", text: $profile.lastName)
                         .font(.arial(size: 18))
                         .padding()
                         .glassEffect(.regular, in: .rect(cornerRadius: 12))
@@ -261,7 +261,7 @@ struct OnboardingFlowView: View {
             subtitle: OnboardingStep.aamcID.subtitle,
             content: {
                 VStack(spacing: 24) {
-                    TextField("AAMC ID (Optional)", text: Binding(
+                    ClearableTextField("AAMC ID (Optional)", text: Binding(
                         get: { profile.aamcID ?? "" },
                         set: { profile.aamcID = $0.isEmpty ? nil : $0 }
                     ))
@@ -845,7 +845,7 @@ struct SpecialtySelectionContentView: View {
             HStack {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.secondary)
-                TextField("Search specialties...", text: $searchText)
+                ClearableTextField("Search specialties...", text: $searchText)
             }
             .padding()
             .glassEffect(.regular, in: .rect(cornerRadius: 10))

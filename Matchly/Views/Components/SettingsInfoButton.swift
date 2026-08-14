@@ -44,13 +44,25 @@ struct SettingsSectionHeader: View {
 struct SettingsLabeledToggle: View {
     let title: String
     let infoMessage: String
+    var systemImage: String? = nil
+    var iconColor: Color = .blue
     @Binding var isOn: Bool
 
     var body: some View {
-        HStack(alignment: .center, spacing: 6) {
-            Text(title)
-            SettingsInfoButton(title: title, message: infoMessage)
+        HStack(alignment: .center, spacing: 8) {
+            if let systemImage {
+                Image(systemName: systemImage)
+                    .foregroundStyle(iconColor)
+            }
+
+            HStack(spacing: 4) {
+                Text(title)
+                    .fixedSize(horizontal: false, vertical: true)
+                SettingsInfoButton(title: title, message: infoMessage)
+            }
+
             Spacer(minLength: 8)
+
             Toggle("", isOn: $isOn)
                 .labelsHidden()
         }

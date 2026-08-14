@@ -22,7 +22,7 @@ struct PhoneLoginView: View {
                 Section {
                     Group {
                         if !isCodeSent {
-                            TextField("Phone Number", text: $phoneNumber)
+                            ClearableTextField("Phone Number", text: $phoneNumber)
                                 .textContentType(.telephoneNumber)
                                 .keyboardType(.phonePad)
                                 .onChange(of: phoneNumber) { oldValue, newValue in
@@ -36,7 +36,7 @@ struct PhoneLoginView: View {
                                 Text(phoneNumber)
                                     .foregroundColor(.secondary)
                                 
-                                TextField("Verification Code", text: $verificationCode)
+                                ClearableTextField("Verification Code", text: $verificationCode)
                                     .textContentType(.oneTimeCode)
                                     .keyboardType(.numberPad)
                                     .padding(.horizontal, 16)

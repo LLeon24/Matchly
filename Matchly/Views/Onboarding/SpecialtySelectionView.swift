@@ -43,7 +43,7 @@ struct SpecialtySelectionView: View {
                 HStack {
                     Image(systemName: "magnifyingglass")
                         .foregroundColor(.secondary)
-                    TextField("Search specialties...", text: $searchText)
+                    ClearableTextField("Search specialties...", text: $searchText)
                 }
                 .padding()
                 .glassEffect(.regular, in: .capsule)

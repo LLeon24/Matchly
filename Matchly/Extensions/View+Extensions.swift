@@ -194,8 +194,8 @@ extension View {
 
 // MARK: - Navigation (iPad-safe)
 
-/// Single-column navigation on all devices. Prevents the blank detail pane that
-/// appears when `NavigationView` uses the iPad split style in landscape.
+/// Single-column navigation on all devices. Uses `NavigationStack` so pushed
+/// destinations work with modern `navigationDestination` APIs.
 struct MatchlyNavigationView<Content: View>: View {
     @ViewBuilder private var content: () -> Content
 
@@ -204,10 +204,9 @@ struct MatchlyNavigationView<Content: View>: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             content()
         }
-        .navigationViewStyle(.stack)
     }
 }
 

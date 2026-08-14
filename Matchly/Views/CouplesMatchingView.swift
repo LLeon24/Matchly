@@ -613,7 +613,7 @@ struct LinkPartnerView: View {
                 }
 
                 Section {
-                    TextField("Enter 6-character code", text: $partnerCode)
+                    ClearableTextField("Enter 6-character code", text: $partnerCode)
                         .autocapitalization(.allCharacters)
                         .disableAutocorrection(true)
                         .font(.arial(size: 20, weight: .medium, design: .monospaced))
