@@ -16,8 +16,8 @@ struct SettingsInfoButton: View {
             showInfo = true
         } label: {
             Image(systemName: "info.circle")
-                .font(.arial(size: 14))
-                .foregroundColor(.secondary)
+                .font(.body)
+                .foregroundStyle(AppColors.primaryBlue)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("About \(title)")
@@ -45,26 +45,25 @@ struct SettingsLabeledToggle: View {
     let title: String
     let infoMessage: String
     var systemImage: String? = nil
-    var iconColor: Color = .blue
+    var iconColor: Color = AppColors.primaryBlue
     @Binding var isOn: Bool
 
     var body: some View {
-        HStack(alignment: .center, spacing: 8) {
-            if let systemImage {
-                Image(systemName: systemImage)
-                    .foregroundStyle(iconColor)
-            }
-
+        Toggle(isOn: $isOn) {
             HStack(spacing: 4) {
-                Text(title)
-                    .fixedSize(horizontal: false, vertical: true)
+                if let systemImage {
+                    Label {
+                        Text(title)
+                    } icon: {
+                        Image(systemName: systemImage)
+                            .foregroundStyle(iconColor)
+                    }
+                } else {
+                    Text(title)
+                }
+
                 SettingsInfoButton(title: title, message: infoMessage)
             }
-
-            Spacer(minLength: 8)
-
-            Toggle("", isOn: $isOn)
-                .labelsHidden()
         }
     }
 }

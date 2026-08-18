@@ -186,18 +186,15 @@ struct SettingsView: View {
                     Text(track.rawValue).tag(track)
                 }
             }
+            .pickerStyle(.menu)
 
             if !dataManager.preferences.specialties.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Specialties")
-                        .font(.headline)
-                    ForEach(dataManager.preferences.specialties, id: \.self) { specialty in
-                        HStack {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(.blue)
-                            Text(specialty)
-                        }
-                        .font(.subheadline)
+                ForEach(dataManager.preferences.specialties, id: \.self) { specialty in
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(AppColors.primaryBlue)
+                            .font(.subheadline)
+                        Text(specialty)
                     }
                 }
             } else {
@@ -205,7 +202,7 @@ struct SettingsView: View {
                     Text("Specialty")
                     Spacer()
                     Text(dataManager.preferences.specialty ?? "Not set")
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -218,12 +215,12 @@ struct SettingsView: View {
             .buttonStyle(.glassProminent)
             .tint(AppColors.primaryBlue)
             .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden, edges: .bottom)
 
             SettingsLabeledToggle(
                 title: "Sync Interviews to Calendar",
                 infoMessage: "When enabled, sync interview dates to a Matchly calendar from the Interviews tab.",
                 systemImage: "calendar.badge.plus",
-                iconColor: .blue,
                 isOn: Binding(
                     get: { dataManager.preferences.enableCalendarSync },
                     set: { newValue in
@@ -305,7 +302,7 @@ struct SettingsView: View {
                     .pickerStyle(.menu)
                     
                     SettingsLabeledToggle(
-                        title: "Include Red Flagged Programs in Rank List",
+                        title: "Include Red Flagged in Rank List",
                         infoMessage: "When enabled, programs with red flags appear at the bottom of your rank list.",
                         systemImage: "exclamationmark.triangle.fill",
                         iconColor: .red,
