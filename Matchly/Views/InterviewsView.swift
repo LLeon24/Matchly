@@ -56,19 +56,23 @@ struct InterviewsView: View {
             }
 
             // View Mode Picker
-            Picker("View Mode", selection: $viewMode) {
-                Label("List", systemImage: "list.bullet").tag(ViewMode.list)
-                Label("Calendar", systemImage: "calendar").tag(ViewMode.calendar)
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .padding(.horizontal, 16)
+            MatchlyColoredTabBar(
+                options: [
+                    MatchlyColoredTabOption(value: ViewMode.list, title: "List", tint: AppColors.accentTeal),
+                    MatchlyColoredTabOption(value: ViewMode.calendar, title: "Calendar", tint: AppColors.pipelineUpcoming)
+                ],
+                selection: $viewMode
+            )
+            .padding(.bottom, 8)
             
             if viewMode == .list {
                 listView
             } else {
-                calendarView
+                ScrollView {
+                    calendarView
+                }
+                .scrollContentBackground(.hidden)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
         }
         .navigationTitle("")
@@ -97,10 +101,17 @@ struct InterviewsView: View {
         }
         .onAppear {
             calendarManager.checkAuthorizationStatus()
+            if dataManager.preferences.enableCalendarSync,
+               calendarManager.calendarAccessGranted,
+               !allInterviews.isEmpty {
+                Task {
+                    await createCalendarEvents(showSuccessAlert: false)
+                }
+            }
         }
     }
     
-    private func createCalendarEvents() async {
+    private func createCalendarEvents(showSuccessAlert: Bool = true) async {
         guard !allInterviews.isEmpty else { return }
         
         // Check authorization
@@ -138,7 +149,9 @@ struct InterviewsView: View {
             await MainActor.run {
                 isCreatingEvents = false
                 eventsCreatedCount = allInterviews.count
-                showCalendarSuccessAlert = true
+                if showSuccessAlert {
+                    showCalendarSuccessAlert = true
+                }
             }
         } catch {
             await MainActor.run {
@@ -221,9 +234,7 @@ struct InterviewsView: View {
                         }
                     }
                 } header: {
-                    Text("Needs a Date (\(programsNeedingDates.count))")
-                        .font(.arial(size: 13, weight: .semibold))
-                        .foregroundColor(.secondary)
+                    interviewsSectionHeader("Needs a Date (\(programsNeedingDates.count))")
                 } footer: {
                     Text("Tap a program to add its interview date and time.")
                 }
@@ -259,9 +270,7 @@ struct InterviewsView: View {
                             }
                         }
                     } header: {
-                        Text("Upcoming (\(upcomingInterviews.count))")
-                            .font(.arial(size: 13, weight: .semibold))
-                            .foregroundColor(.secondary)
+                        interviewsSectionHeader("Upcoming (\(upcomingInterviews.count))")
                     }
                 }
                 
@@ -274,9 +283,7 @@ struct InterviewsView: View {
                             }
                         }
                     } header: {
-                        Text("Past (\(pastInterviews.count))")
-                            .font(.arial(size: 13, weight: .semibold))
-                            .foregroundColor(.secondary)
+                        interviewsSectionHeader("Past (\(pastInterviews.count))")
                     }
                 }
             }
@@ -286,8 +293,15 @@ struct InterviewsView: View {
         .matchlyScrollTabBarClearance()
     }
     
+    private func interviewsSectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.arial(size: 14, weight: .bold))
+            .foregroundColor(.primary)
+            .textCase(nil)
+    }
+
     private var calendarView: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 12) {
             // Month Navigation Header
             HStack {
                 Button(action: {
@@ -338,12 +352,9 @@ struct InterviewsView: View {
                 let interviewsOnDate = interviewsOnDate(selectedDate)
                 if !interviewsOnDate.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
-                        Divider()
-                        
                         Text("Interviews on \(Self.dayDateFormatter.string(from: selectedDate))")
                             .font(.arial(size: 16, weight: .semibold))
                             .padding(.horizontal, 16)
-                            .padding(.top, 8)
                         
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 12) {
@@ -356,12 +367,15 @@ struct InterviewsView: View {
                             }
                             .padding(.horizontal, 16)
                         }
-                        .padding(.bottom, 8)
                     }
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .glassEffect(.regular, in: .rect(cornerRadius: 12))
+                    .padding(.horizontal, 16)
                 }
             }
         }
+        .padding(.top, 4)
     }
     
     private func interviewsOnDate(_ date: Date) -> [Program] {
@@ -499,7 +513,6 @@ struct CalendarGridView: View {
         }
         .glassEffect(.regular, in: .rect(cornerRadius: 16))
         .padding(.horizontal, 16)
-        .padding(.bottom, 90) // Space for custom tab bar
     }
 }
 

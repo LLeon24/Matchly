@@ -192,6 +192,15 @@ struct RankListView: View {
                         }
 
                         filterToolbar
+
+                        if !scoredRankedPrograms.isEmpty {
+                            rankListSectionDivider
+                            rankListSecondaryActionRow
+                        }
+
+                        rankListSectionDivider
+                            .padding(.bottom, 4)
+
                         programListContent
                     }
                 }
@@ -199,9 +208,6 @@ struct RankListView: View {
             .matchlyRootContentFrame()
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                toolbarContent
-            }
             .sheet(isPresented: $showExportSheet) {
                 ExportView(orderedRankedPrograms: orderedScoredPrograms)
                     .environmentObject(dataManager)
@@ -216,21 +222,80 @@ struct RankListView: View {
     }
     
     // MARK: - View Components
+
+    private var rankListSectionDivider: some View {
+        MatchlyBrandHairline(fullWidth: true, color: AppColors.secondaryText.opacity(0.22))
+            .padding(.horizontal, 16)
+    }
+
+    private var rankListSecondaryActionRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                if dataManager.programs.count >= 2 {
+                    NavigationLink(destination: ProgramComparisonView()) {
+                        MatchlyFilterChipLabel(
+                            icon: "square.grid.2x2",
+                            iconColor: AppColors.primaryBlue,
+                            text: "Compare Programs",
+                            showsChevron: false
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isEditing.toggle()
+                    }
+                } label: {
+                    MatchlyFilterChipLabel(
+                        icon: "line.3.horizontal",
+                        iconColor: isEditing ? AppColors.primaryBlue : .secondary,
+                        text: isEditing ? "Done" : "Reorder",
+                        isActive: isEditing,
+                        showsChevron: false
+                    )
+                }
+                .buttonStyle(.plain)
+
+                if !manualOrder.isEmpty {
+                    Button {
+                        manualOrder = []
+                        saveManualOrder()
+                        isEditing = false
+                    } label: {
+                        MatchlyFilterChipLabel(
+                            icon: "arrow.counterclockwise",
+                            iconColor: .secondary,
+                            text: "Reset",
+                            showsChevron: false
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+        .padding(.vertical, 10)
+    }
     
     private var filterToolbar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
                 specialtyFilterMenu
                 sortMenu
-                Spacer()
+                    .disabled(isEditing)
+
+                Spacer(minLength: 0)
+
                 Text("\(scoredRankedPrograms.count) ranked")
                     .font(.arial(size: 12, weight: .medium))
                     .foregroundColor(.secondary)
             }
-            .padding(.horizontal, 4)
         }
         .padding(.horizontal, 16)
-        .padding(.bottom, 8)
+        .padding(.top, 4)
+        .padding(.bottom, 10)
     }
     
     private var specialtyFilterMenu: some View {
@@ -322,105 +387,56 @@ struct RankListView: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
-        .listSectionSpacing(12)
+        .listSectionSpacing(16)
         .matchlyReadableWidth()
         .matchlyScrollTabBarClearance()
         .environment(\.editMode, isEditing ? .constant(.active) : .constant(.inactive))
+    }
+
+    private var rankListRowInsets: EdgeInsets {
+        EdgeInsets(top: 12, leading: 10, bottom: 12, trailing: 10)
     }
     
     private var rankedProgramsSection: some View {
         Section {
             ForEach(Array(orderedScoredPrograms.enumerated()), id: \.element.id) { index, program in
-                Group {
-                    if isEditing {
-                        RankListProgramRow(
-                            rank: index + 1,
-                            program: program,
-                            specialtyHeader: shouldShowSpecialtyHeader(at: index) ? program.specialty : nil,
-                            showsRedFlaggedSectionBanner: shouldShowRedFlaggedBanner(at: index),
-                            showsElevatedRedFlag: elevatedRedFlag(at: index)
-                        )
-                    } else {
-                        NavigationLink(destination: ProgramEntryView(program: program)) {
-                            RankListProgramRow(
-                                rank: index + 1,
-                                program: program,
-                                specialtyHeader: shouldShowSpecialtyHeader(at: index) ? program.specialty : nil,
-                                showsRedFlaggedSectionBanner: shouldShowRedFlaggedBanner(at: index),
-                                showsElevatedRedFlag: elevatedRedFlag(at: index)
-                            )
-                        }
-                    }
-                }
+                rankedProgramRow(at: index, program: program)
             }
-            .onMove(perform: moveScoredPrograms)
+            .onMove(perform: moveScoredProgramsWhenEditing)
         } header: {
             if isEditing {
-                Text("Drag to set your match order")
+                Text("Drag using the handles to set your match order")
                     .font(.arial(size: 12, weight: .medium))
                     .foregroundColor(.secondary)
                     .textCase(nil)
             }
         }
     }
-    
+
     @ViewBuilder
-    private var unrankedSection: some View {
-        if !unrankedPrograms.isEmpty {
-            Section(header: unrankedHeader) {
-                ForEach(unrankedPrograms) { program in
-                    NavigationLink(destination: ProgramEntryView(program: program)) {
-                        UnrankedProgramRow(program: program, reason: unrankedReason(for: program))
-                    }
-                }
-            }
-        }
-    }
+    private func rankedProgramRow(at index: Int, program: Program) -> some View {
+        let row = RankListProgramRow(
+            rank: index + 1,
+            program: program,
+            specialtyHeader: shouldShowSpecialtyHeader(at: index) ? program.specialty : nil,
+            showsRedFlaggedSectionBanner: shouldShowRedFlaggedBanner(at: index),
+            showsElevatedRedFlag: elevatedRedFlag(at: index)
+        )
+        .listRowInsets(rankListRowInsets)
 
-    private var unrankedHeader: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "list.bullet.clipboard")
-                .font(.arial(size: 12))
-                .foregroundColor(AppColors.pipelineToReview)
-            Text("Not Ranked Yet (\(unrankedPrograms.count))")
-                .font(.arial(size: 13, weight: .semibold))
-                .foregroundColor(AppColors.pipelineToReview)
+        if isEditing {
+            row
+        } else {
+            NavigationLink(destination: ProgramEntryView(program: program)) {
+                row
+            }
+            .listRowInsets(rankListRowInsets)
         }
     }
     
-    @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
-        if MatchlyListPageToolbar.showsActions(hasContent: !scoredRankedPrograms.isEmpty) {
-            ToolbarItem(placement: .navigationBarLeading) {
-                HStack {
-                    Button(action: {
-                        isEditing.toggle()
-                    }) {
-                        Text(isEditing ? "Done" : "Edit")
-                    }
-
-                    if !manualOrder.isEmpty {
-                        Button(action: {
-                            manualOrder = []
-                            saveManualOrder()
-                        }) {
-                            Text("Reset")
-                                .font(.caption)
-                        }
-                    }
-                }
-            }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                if dataManager.programs.count >= 2 {
-                    NavigationLink(destination: ProgramComparisonView()) {
-                        Image(systemName: "square.grid.2x2")
-                            .font(.arial(size: 17, weight: .semibold))
-                            .foregroundColor(AppColors.primaryBlue)
-                    }
-                    .accessibilityLabel("Compare programs")
-                }
-            }
-        }
+    private func moveScoredProgramsWhenEditing(from source: IndexSet, to destination: Int) {
+        guard isEditing else { return }
+        moveScoredPrograms(from: source, to: destination)
     }
     
     private func moveScoredPrograms(from source: IndexSet, to destination: Int) {
@@ -435,6 +451,36 @@ struct RankListView: View {
 
         manualOrder = newManualOrder
         saveManualOrder()
+    }
+    
+    @ViewBuilder
+    private var unrankedSection: some View {
+        if !unrankedPrograms.isEmpty {
+            Section(header: unrankedHeader) {
+                ForEach(unrankedPrograms) { program in
+                    NavigationLink(
+                        destination: ProgramEntryView(
+                            program: program,
+                            scrollToFirstMissing: program.needsScoring(preferences: dataManager.preferences)
+                        )
+                    ) {
+                        UnrankedProgramRow(program: program, reason: unrankedReason(for: program))
+                    }
+                    .listRowInsets(rankListRowInsets)
+                }
+            }
+        }
+    }
+
+    private var unrankedHeader: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "list.bullet.clipboard")
+                .font(.arial(size: 12))
+                .foregroundColor(AppColors.pipelineToReview)
+            Text("Not Ranked Yet (\(unrankedPrograms.count))")
+                .font(.arial(size: 13, weight: .semibold))
+                .foregroundColor(AppColors.pipelineToReview)
+        }
     }
     
     private func saveManualOrder() {
@@ -517,14 +563,14 @@ struct RankListItemView: View {
     var showsElevatedRedFlag: Bool = false
     
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: 14) {
             // Rank and Score combined on left
             VStack(spacing: 4) {
                 // Rank badge
                 ZStack {
                     Circle()
                         .fill(rankColor(rank).opacity(0.15))
-                        .frame(width: 44, height: 44)
+                        .frame(width: 42, height: 42)
                     
                     VStack(spacing: 2) {
                         Image(systemName: rank <= 3 ? "trophy.fill" : "star.fill")
@@ -546,8 +592,8 @@ struct RankListItemView: View {
                         .foregroundColor(.secondary)
                 }
             }
-            .frame(width: 50)
-            
+            .frame(width: 48)
+
             // Program info - cleaner, more spacious
             VStack(alignment: .leading, spacing: 6) {
                 if showsElevatedRedFlag {
@@ -653,10 +699,11 @@ struct RankListItemView: View {
                     ProgramVoiceMemoBadge(program: program, iconSize: 9, textSize: 11)
                 }
             }
-            
-            Spacer()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .layoutPriority(1)
         }
-        .padding(.vertical, 10)
+        .padding(.vertical, 12)
+        .padding(.horizontal, 4)
         .overlay(alignment: .leading) {
             if showsElevatedRedFlag {
                 RoundedRectangle(cornerRadius: 2, style: .continuous)

@@ -382,6 +382,7 @@ struct MatchlyFilterChipLabel: View {
     var iconColor: Color = .secondary
     let text: String
     var isActive: Bool = false
+    var showsChevron: Bool = true
 
     var body: some View {
         HStack(spacing: 6) {
@@ -390,9 +391,11 @@ struct MatchlyFilterChipLabel: View {
                 .foregroundColor(isActive ? AppColors.primaryBlue : iconColor)
             Text(text)
                 .font(.arial(size: 12, weight: .medium))
-            Image(systemName: "chevron.down")
-                .font(.arial(size: 9))
-                .foregroundColor(.secondary)
+            if showsChevron {
+                Image(systemName: "chevron.down")
+                    .font(.arial(size: 9))
+                    .foregroundColor(.secondary)
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
@@ -400,6 +403,65 @@ struct MatchlyFilterChipLabel: View {
             Capsule()
                 .fill(isActive ? AppColors.primaryBlue.opacity(0.1) : Color(.tertiarySystemFill))
         )
+    }
+}
+
+/// Tinted capsule tabs for All / Completed / Incomplete-style filters.
+struct MatchlyColoredTabOption<ID: Hashable>: Identifiable {
+    var id: ID { value }
+    let value: ID
+    let title: String
+    let tint: Color
+    var count: Int?
+
+    var displayTitle: String {
+        if let count {
+            return "\(title) (\(count))"
+        }
+        return title
+    }
+}
+
+struct MatchlyColoredTabBar<ID: Hashable>: View {
+    let options: [MatchlyColoredTabOption<ID>]
+    @Binding var selection: ID
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(options) { option in
+                tabButton(for: option)
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+
+    private func tabButton(for option: MatchlyColoredTabOption<ID>) -> some View {
+        let isSelected = selection == option.value
+
+        return Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                selection = option.value
+            }
+        } label: {
+            Text(option.displayTitle)
+                .font(.arial(size: 13, weight: isSelected ? .semibold : .medium))
+                .foregroundColor(isSelected ? option.tint : option.tint.opacity(0.72))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity)
+                .background(
+                    Capsule()
+                        .fill(option.tint.opacity(isSelected ? 0.2 : 0.08))
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(option.tint.opacity(isSelected ? 0.45 : 0.18), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -513,6 +575,23 @@ struct MatchlyProgramLocationAndIDRow: View {
                 .foregroundColor(.secondary)
             }
         }
+    }
+}
+
+/// Colored capsule for adding programs on the My Programs tab title row.
+struct MatchlyToolbarAddProgramButton: View {
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "plus")
+                .font(.arial(size: 12, weight: .semibold))
+            Text("Add Program")
+                .font(.arial(size: 13, weight: .semibold))
+        }
+        .foregroundColor(.white)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Capsule().fill(AppColors.primaryBlue))
+        .accessibilityLabel("Add program")
     }
 }
 

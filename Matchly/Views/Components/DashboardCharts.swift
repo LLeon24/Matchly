@@ -256,7 +256,7 @@ struct DashboardRingHero: View {
 
     private var gradientColors: [Color] {
         if let accentTint {
-            return [accentTint, accentTint.opacity(0.65)]
+            return [accentTint, accentTint]
         }
         return AppColors.scoreGradientColors(for: score)
     }
@@ -388,10 +388,9 @@ struct DashboardSnapshotHero: View {
     private var compactRingUnitFont: CGFloat { layout == .compactVertical ? 8 : 9 }
 
     private var usesSegmentedRing: Bool { !ringSegments.isEmpty }
-    private let segmentBlendFraction: Double = 0.055
 
     private var gradientColors: [Color] {
-        [accentTint, accentTint.opacity(0.65)]
+        [accentTint, accentTint]
     }
 
     private var ringGradient: AngularGradient {
@@ -501,7 +500,7 @@ struct DashboardSnapshotHero: View {
                 if !unit.isEmpty {
                     Text(unit)
                         .font(.arial(size: compactRingUnitFont, weight: .semibold))
-                        .foregroundColor(usesSegmentedRing ? .secondary : accentTint.opacity(0.9))
+                        .foregroundColor(usesSegmentedRing ? .secondary : accentTint)
                         .textCase(.uppercase)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
@@ -549,36 +548,14 @@ struct DashboardSnapshotHero: View {
             )
         }
 
-        let blend = segmentBlendFraction
         var stops: [Gradient.Stop] = []
         var cursor: Double = 0
 
-        for (index, segment) in segments.enumerated() {
-            let previous = segments[(index - 1 + segments.count) % segments.count].color
-            let next = segments[(index + 1) % segments.count].color
-            let start = cursor
+        for segment in segments {
             let end = min(cursor + segment.fraction, 1)
-            let innerStart = min(start + blend, end)
-            let innerEnd = max(end - blend, innerStart)
-
-            if segments.count == 1 {
-                stops.append(.init(color: segment.color, location: start))
-                stops.append(.init(color: segment.color, location: end))
-            } else {
-                stops.append(.init(color: previous, location: start))
-                stops.append(.init(color: segment.color, location: innerStart))
-                stops.append(.init(color: segment.color, location: innerEnd))
-                stops.append(.init(color: next, location: end))
-            }
-
+            stops.append(.init(color: segment.color, location: cursor))
+            stops.append(.init(color: segment.color, location: end))
             cursor = end
-        }
-
-        if segments.count > 1, segmentedRingFill >= 0.999 {
-            let first = segments[0].color
-            let last = segments[segments.count - 1].color
-            stops.append(.init(color: last, location: max(0, 1 - blend)))
-            stops.append(.init(color: first, location: 1))
         }
 
         let sorted = stops.sorted { $0.location < $1.location }

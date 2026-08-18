@@ -219,13 +219,23 @@ struct SettingsView: View {
 
             SettingsLabeledToggle(
                 title: "Sync Interviews to Calendar",
-                infoMessage: "When enabled, sync interview dates to a Matchly calendar from the Interviews tab.",
+                infoMessage: "When enabled, sync interview dates to the Matchly Interviews calendar from the Interviews tab.",
                 systemImage: "calendar.badge.plus",
                 isOn: Binding(
                     get: { dataManager.preferences.enableCalendarSync },
                     set: { newValue in
                         dataManager.preferences.enableCalendarSync = newValue
                         dataManager.savePreferences()
+                        if newValue {
+                            Task {
+                                let granted = await CalendarManager.shared.requestAccess()
+                                if granted {
+                                    try? await CalendarManager.shared.syncAllInterviewPrograms(
+                                        dataManager.programs
+                                    )
+                                }
+                            }
+                        }
                     }
                 )
             )

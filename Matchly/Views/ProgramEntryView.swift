@@ -20,6 +20,7 @@ struct ProgramEntryView: View {
     @Environment(\.dismiss) var dismiss
     
     let program: Program?
+    let scrollToFirstMissing: Bool
     
     @State private var specialty: String = ""
     @State private var name: String = ""
@@ -82,8 +83,9 @@ struct ProgramEntryView: View {
     /// Positions the next question below mid-screen so the just-answered question stays visible above.
     private static let nextQuestionScrollAnchor = UnitPoint(x: 0.5, y: 0.42)
     
-    init(program: Program?) {
+    init(program: Program?, scrollToFirstMissing: Bool = false) {
         self.program = program
+        self.scrollToFirstMissing = scrollToFirstMissing
     }
     
     // MARK: - Form Content (now using ScrollView for better scrolling)
@@ -178,6 +180,11 @@ struct ProgramEntryView: View {
 
                 if canOpenInterviewPrep {
                     interviewPrepReferenceCard
+                }
+
+                if !isQuestionnaireComplete {
+                    questionnaireCompletionBanner
+                        .padding(.horizontal, 20)
                 }
 
                 // Standard questionnaire sections - white card design
@@ -402,6 +409,44 @@ struct ProgramEntryView: View {
         questionnaire.questionnaireCompletionRatio(preferences: dataManager.preferences) >= 1.0
     }
 
+    private var questionnaireCompletionPercent: Int {
+        Int((questionnaire.questionnaireCompletionRatio(preferences: dataManager.preferences) * 100).rounded())
+    }
+
+    private var questionnaireUnansweredCount: Int {
+        questionnaire.unansweredCount(preferences: dataManager.preferences)
+    }
+
+    private var questionnaireCompletionBanner: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Questionnaire \(questionnaireCompletionPercent)% complete")
+                        .font(.arial(size: 15, weight: .semibold))
+                    Text(questionnaireUnansweredCount == 1
+                         ? "1 question still needs an answer"
+                         : "\(questionnaireUnansweredCount) questions still need an answer")
+                        .font(.arial(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 8)
+
+                Button("Jump to next") {
+                    scrollToFirstUnansweredQuestion()
+                }
+                .font(.arial(size: 14, weight: .semibold))
+                .buttonStyle(.glassProminent)
+                .tint(AppColors.primaryBlue)
+            }
+
+            ProgressView(value: questionnaire.questionnaireCompletionRatio(preferences: dataManager.preferences))
+                .tint(AppColors.primaryBlue)
+        }
+        .padding(16)
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+    }
+
     private var interviewPrepSummary: String {
         let prep = dataManager.preferences.interviewPrepByProgram[currentProgramId]
         if let prep, !prep.priorityQuestionIds.isEmpty {
@@ -502,6 +547,7 @@ struct ProgramEntryView: View {
                 
                 whiteCardQuestionnaireSection(
                     title: section.title,
+                    unansweredCount: sectionUnansweredCount(section),
                     isExpanded: Binding(
                         get: { isExpanded },
                         set: { newValue in
@@ -549,7 +595,8 @@ struct ProgramEntryView: View {
                                     ),
                                     isYesNo: section.title.contains("Red flags"),
                                     isPositiveYesNo: item.question.contains("Do you feel you could see yourself living"),
-                                    showLabels: index == 0 // Show labels only on first question
+                                    showLabels: index == 0,
+                                    isUnanswered: item.programRating == 0
                                 )
                                 .id("\(section.id)-\(item.id)") // For scrolling
                             }
@@ -572,6 +619,7 @@ struct ProgramEntryView: View {
                 
                 whiteCardQuestionnaireSection(
                     title: customSection.title,
+                    unansweredCount: sectionUnansweredCount(customSection),
                     isExpanded: Binding(
                         get: { isExpanded },
                         set: { newValue in
@@ -612,7 +660,8 @@ struct ProgramEntryView: View {
                                             questionnaire = updated
                                         }
                                     ),
-                                    isYesNo: false
+                                    isYesNo: false,
+                                    isUnanswered: item.programRating == 0
                                 )
                                 .id("\(customSection.id)-\(item.id)") // For scrolling
                             }
@@ -901,6 +950,12 @@ struct ProgramEntryView: View {
                 }
                 if let sectionA = questionnaire.sections.first(where: { $0.title.contains("Section A") }) {
                     expandedSections.insert(sectionA.id)
+                }
+
+                if scrollToFirstMissing {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                        scrollToFirstUnansweredQuestion()
+                    }
                 }
             }
     }
@@ -1320,19 +1375,34 @@ struct ProgramEntryView: View {
         guard nextIndex < allQuestions.count else { return }
 
         let nextQuestion = allQuestions[nextIndex]
-        let nextQuestionId = "\(nextQuestion.sectionId)-\(nextQuestion.itemId)"
+        scrollToQuestion(sectionId: nextQuestion.sectionId, itemId: nextQuestion.itemId)
+    }
 
-        if !expandedSections.contains(nextQuestion.sectionId) {
-            expandedSections.insert(nextQuestion.sectionId)
+    private func scrollToFirstUnansweredQuestion() {
+        guard let target = questionnaire.firstUnansweredQuestion(preferences: dataManager.preferences) else { return }
+        scrollToQuestion(sectionId: target.sectionId, itemId: target.itemId)
+    }
+
+    private func scrollToQuestion(sectionId: String, itemId: String) {
+        if !expandedSections.contains(sectionId) {
+            expandedSections.insert(sectionId)
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+        let questionId = "\(sectionId)-\(itemId)"
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             if let proxy = scrollProxy {
                 withAnimation(.easeInOut(duration: 0.35)) {
-                    proxy.scrollTo(nextQuestionId, anchor: Self.nextQuestionScrollAnchor)
+                    proxy.scrollTo(questionId, anchor: Self.nextQuestionScrollAnchor)
                 }
             }
         }
+    }
+
+    private func sectionUnansweredCount(_ section: QuestionnaireSection) -> Int {
+        questionnaire.enabledItems(for: section, preferences: dataManager.preferences)
+            .filter { $0.programRating == 0 }
+            .count
     }
 
     // Helper function to check if we should auto-expand next section
@@ -1792,6 +1862,7 @@ extension ProgramEntryView {
     @ViewBuilder
     func whiteCardQuestionnaireSection<Content: View>(
         title: String,
+        unansweredCount: Int = 0,
         isExpanded: Binding<Bool>,
         @ViewBuilder content: () -> Content
     ) -> some View {
@@ -1806,6 +1877,18 @@ extension ProgramEntryView {
                     Text(title)
                         .font(.arial(size: 16, weight: .semibold))
                         .foregroundColor(.primary)
+
+                    if unansweredCount > 0 {
+                        Text("\(unansweredCount) left")
+                            .font(.arial(size: 11, weight: .semibold))
+                            .foregroundStyle(AppColors.pipelineNeedDate)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(
+                                Capsule()
+                                    .fill(AppColors.pipelineNeedDate.opacity(0.14))
+                            )
+                    }
                     
                     Spacer()
                     

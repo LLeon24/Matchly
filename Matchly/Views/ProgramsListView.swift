@@ -12,6 +12,7 @@ struct ProgramsListView: View {
     @EnvironmentObject var dataManager: DataManager
     @State private var showAddProgram = false
     @State private var sortOption: SortOption = .name
+    @State private var listFilter: ProgramListFilter = .all
     @State private var isEditMode = false
     @State private var selectedPrograms = Set<String>()
     
@@ -20,6 +21,28 @@ struct ProgramsListView: View {
         case score = "Score"
         case location = "Location"
         case specialty = "Specialty"
+    }
+
+    enum ProgramListFilter: String, CaseIterable {
+        case all = "All"
+        case completed = "Completed"
+        case incomplete = "Incomplete"
+    }
+
+    private var incompleteProgramsCount: Int {
+        dataManager.programs.filter { $0.needsScoring(preferences: dataManager.preferences) }.count
+    }
+
+    private var completedProgramsCount: Int {
+        dataManager.programs.count - incompleteProgramsCount
+    }
+
+    private var programFilterTabs: [MatchlyColoredTabOption<ProgramListFilter>] {
+        [
+            MatchlyColoredTabOption(value: .all, title: "All", tint: AppColors.primaryBlue, count: dataManager.programs.count),
+            MatchlyColoredTabOption(value: .completed, title: "Completed", tint: AppColors.pipelineScored, count: completedProgramsCount),
+            MatchlyColoredTabOption(value: .incomplete, title: "Incomplete", tint: AppColors.pipelineToReview, count: incompleteProgramsCount)
+        ]
     }
     
     var body: some View {
@@ -30,13 +53,49 @@ struct ProgramsListView: View {
                         .matchlyRootContentFrame()
                 } else {
                     // Group programs by specialty
-                    let groupedPrograms = Dictionary(grouping: sortedPrograms) {
+                    let groupedPrograms = Dictionary(grouping: filteredPrograms) {
                         SpecialtyFormatter.normalizedUserSpecialty($0.specialty)
                     }
                     let sortedSpecialties = groupedPrograms.keys.sorted()
                     
                     VStack(spacing: 0) {
-                        MatchlyListPageTitleRow(title: "My Programs")
+                        MatchlyListPageTitleRow(title: "My Programs") {
+                            Button {
+                                showAddProgram = true
+                            } label: {
+                                MatchlyToolbarAddProgramButton()
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        MatchlyColoredTabBar(options: programFilterTabs, selection: $listFilter)
+                            .padding(.bottom, 4)
+
+                        programsFilterToolbar
+
+                        programsSectionDivider
+                        programsSecondaryActionRow
+
+                        programsSectionDivider
+                            .padding(.bottom, 4)
+
+                        if listFilter == .incomplete && filteredPrograms.isEmpty {
+                            ContentUnavailableView {
+                                Label("All Questionnaires Complete", systemImage: "checkmark.circle.fill")
+                            } description: {
+                                Text("Every program has answered all enabled questionnaire items.")
+                            }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .padding(.horizontal, 24)
+                        } else if listFilter == .completed && filteredPrograms.isEmpty {
+                            ContentUnavailableView {
+                                Label("No Completed Programs Yet", systemImage: "doc.text")
+                            } description: {
+                                Text("Finish questionnaires to mark programs as complete.")
+                            }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .padding(.horizontal, 24)
+                        } else {
                         List {
                             ForEach(sortedSpecialties, id: \.self) { specialty in
                                 Section(header: MatchlySpecialtySectionHeader(specialty: specialty)) {
@@ -58,10 +117,17 @@ struct ProgramsListView: View {
 
                                                 CompactProgramRowView(program: program)
                                             }
+                                            .listRowInsets(programsListRowInsets)
                                         } else {
-                                            NavigationLink(destination: ProgramEntryView(program: program)) {
+                                            NavigationLink(
+                                                destination: ProgramEntryView(
+                                                    program: program,
+                                                    scrollToFirstMissing: program.needsScoring(preferences: dataManager.preferences)
+                                                )
+                                            ) {
                                                 CompactProgramRowView(program: program)
                                             }
+                                            .listRowInsets(programsListRowInsets)
                                         }
                                     }
                                     .onDelete { offsets in
@@ -71,11 +137,14 @@ struct ProgramsListView: View {
                             }
                         }
                         .listStyle(.insetGrouped)
+                        .scrollContentBackground(.hidden)
+                        .listSectionSpacing(16)
                         .matchlyReadableWidth()
                         .matchlyScrollTabBarClearance()
                         .refreshable {
                             dataManager.recalculateAllScores()
                             dataManager.objectWillChange.send()
+                        }
                         }
                     }
                 }
@@ -83,11 +152,6 @@ struct ProgramsListView: View {
             .matchlyRootContentFrame()
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                if MatchlyListPageToolbar.showsActions(hasContent: !dataManager.programs.isEmpty) {
-                    programsListToolbar
-                }
-            }
             .sheet(isPresented: $showAddProgram) {
                 ProgramSearchView(
                     onSelect: { _ in },
@@ -107,72 +171,126 @@ struct ProgramsListView: View {
         }
     }
 
-    @ToolbarContentBuilder
-    private var programsListToolbar: some ToolbarContent {
-        ToolbarItem(placement: .navigationBarLeading) {
-            Menu {
-                ForEach(SortOption.allCases, id: \.self) { option in
-                    Button(action: {
-                        sortOption = option
-                    }) {
-                        HStack {
-                            Text(option.rawValue)
-                            if sortOption == option {
-                                Spacer()
-                                Image(systemName: "checkmark")
+    // MARK: - View Components
+
+    private var programsSectionDivider: some View {
+        MatchlyBrandHairline(fullWidth: true, color: AppColors.secondaryText.opacity(0.22))
+            .padding(.horizontal, 16)
+    }
+
+    private var programsFilterToolbar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                sortMenu
+                    .disabled(isEditMode)
+
+                Spacer(minLength: 0)
+
+                Text("\(filteredPrograms.count) program\(filteredPrograms.count == 1 ? "" : "s")")
+                    .font(.arial(size: 12, weight: .medium))
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 4)
+        .padding(.bottom, 10)
+    }
+
+    private var programsSecondaryActionRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                if isEditMode {
+                    Button {
+                        for programId in selectedPrograms {
+                            if let program = dataManager.programs.first(where: { $0.id == programId }) {
+                                dataManager.deleteProgram(program)
                             }
                         }
+                        selectedPrograms.removeAll()
+                        isEditMode = false
+                    } label: {
+                        MatchlyFilterChipLabel(
+                            icon: "trash.fill",
+                            iconColor: selectedPrograms.isEmpty ? .secondary : AppColors.accentRed,
+                            text: "Delete",
+                            showsChevron: false
+                        )
                     }
-                }
-            } label: {
-                MatchlyToolbarSortChipLabel(valueLabel: sortOption.rawValue)
-            }
-        }
+                    .buttonStyle(.plain)
+                    .disabled(selectedPrograms.isEmpty)
 
-        ToolbarItemGroup(placement: .navigationBarTrailing) {
-            if isEditMode {
+                    Button {
+                        isEditMode = false
+                        selectedPrograms.removeAll()
+                    } label: {
+                        MatchlyFilterChipLabel(
+                            icon: "checkmark",
+                            iconColor: AppColors.primaryBlue,
+                            text: "Done",
+                            isActive: true,
+                            showsChevron: false
+                        )
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    if dataManager.programs.count >= 2 {
+                        NavigationLink(destination: ProgramComparisonView()) {
+                            MatchlyFilterChipLabel(
+                                icon: "square.grid.2x2",
+                                iconColor: AppColors.primaryBlue,
+                                text: "Compare Programs",
+                                showsChevron: false
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Button {
+                        isEditMode = true
+                    } label: {
+                        MatchlyFilterChipLabel(
+                            icon: "pencil",
+                            iconColor: .secondary,
+                            text: "Edit",
+                            showsChevron: false
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+        .padding(.vertical, 10)
+    }
+
+    private var sortMenu: some View {
+        Menu {
+            ForEach(SortOption.allCases, id: \.self) { option in
                 Button(action: {
-                    for programId in selectedPrograms {
-                        if let program = dataManager.programs.first(where: { $0.id == programId }) {
-                            dataManager.deleteProgram(program)
+                    sortOption = option
+                }) {
+                    HStack {
+                        Text(option.rawValue)
+                        Spacer()
+                        if sortOption == option {
+                            Image(systemName: "checkmark")
+                                .foregroundColor(.blue)
                         }
                     }
-                    selectedPrograms.removeAll()
-                    isEditMode = false
-                }) {
-                    Image(systemName: "trash.fill")
-                        .foregroundColor(selectedPrograms.isEmpty ? .gray : .red)
-                }
-                .disabled(selectedPrograms.isEmpty)
-
-                Button("Done") {
-                    isEditMode = false
-                    selectedPrograms.removeAll()
-                }
-            } else {
-                if dataManager.programs.count >= 2 {
-                    NavigationLink(destination: ProgramComparisonView()) {
-                        Image(systemName: "square.grid.2x2")
-                            .font(.arial(size: 17, weight: .semibold))
-                            .foregroundColor(AppColors.primaryBlue)
-                    }
-                    .accessibilityLabel("Compare programs")
-                }
-
-                MatchlyToolbarAddButton {
-                    showAddProgram = true
-                }
-
-                Button(action: {
-                    isEditMode = true
-                }) {
-                    Text("Edit")
-                        .font(.arial(size: 15, weight: .medium))
                 }
             }
+        } label: {
+            MatchlyFilterChipLabel(
+                icon: "arrow.up.arrow.down",
+                text: "Sort: \(sortOption.rawValue)"
+            )
         }
     }
-    
+
+    private var programsListRowInsets: EdgeInsets {
+        EdgeInsets(top: 12, leading: 10, bottom: 12, trailing: 10)
+    }
+
     private func deletePrograms(at offsets: IndexSet) {
         for index in offsets {
             dataManager.deleteProgram(dataManager.programs[index])
@@ -185,6 +303,17 @@ struct ProgramsListView: View {
         }
     }
     
+    private var filteredPrograms: [Program] {
+        switch listFilter {
+        case .all:
+            return sortedPrograms
+        case .completed:
+            return sortedPrograms.filter { !$0.needsScoring(preferences: dataManager.preferences) }
+        case .incomplete:
+            return sortedPrograms.filter { $0.needsScoring(preferences: dataManager.preferences) }
+        }
+    }
+
     // Cache sorted programs to avoid recalculating on every view update
     @State private var cachedSortedPrograms: [Program] = []
     @State private var lastSortOption: SortOption?
@@ -253,23 +382,35 @@ struct ProgramsListView: View {
 }
 
 struct CompactProgramRowView: View {
+    @EnvironmentObject private var dataManager: DataManager
     let program: Program
+
+    private var completionRatio: Double {
+        program.questionnaireCompletionRatio(preferences: dataManager.preferences)
+    }
+
+    private var showsIncompleteBadge: Bool {
+        program.needsScoring(preferences: dataManager.preferences)
+    }
     
     var body: some View {
         HStack(spacing: 12) {
-            // Score indicator with icon - smaller
-            ZStack {
-                Circle()
-                    .fill(scoreColor(program.finalScore).opacity(0.15))
-                    .frame(width: 42, height: 42)
-                
-                VStack(spacing: 0) {
-                    Image(systemName: "star.fill")
-                        .font(.arial(size: 9))
-                        .foregroundColor(scoreColor(program.finalScore))
-                    Text(String(format: "%.0f", program.finalScore))
-                        .font(.arial(size: 15, weight: .bold))
-                        .foregroundColor(scoreColor(program.finalScore))
+            if showsIncompleteBadge {
+                ProgramCompletionRing(ratio: completionRatio)
+            } else {
+                ZStack {
+                    Circle()
+                        .fill(scoreColor(program.finalScore).opacity(0.15))
+                        .frame(width: 42, height: 42)
+                    
+                    VStack(spacing: 0) {
+                        Image(systemName: "star.fill")
+                            .font(.arial(size: 9))
+                            .foregroundColor(scoreColor(program.finalScore))
+                        Text(String(format: "%.0f", program.finalScore))
+                            .font(.arial(size: 15, weight: .bold))
+                            .foregroundColor(scoreColor(program.finalScore))
+                    }
                 }
             }
             
@@ -331,6 +472,43 @@ struct CompactProgramRowView: View {
         .padding(.vertical, 6)
     }
     
+}
+
+struct ProgramCompletionRing: View {
+    let ratio: Double
+
+    private var percent: Int {
+        Int((ratio * 100).rounded())
+    }
+
+    private var tint: Color {
+        switch percent {
+        case 80...: return AppColors.accentGreen
+        case 50..<80: return AppColors.pipelineNeedDate
+        default: return AppColors.pipelineToReview
+        }
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(tint.opacity(0.18), lineWidth: 3.5)
+                .frame(width: 42, height: 42)
+
+            Circle()
+                .trim(from: 0, to: CGFloat(min(max(ratio, 0), 1)))
+                .stroke(tint, style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
+                .frame(width: 42, height: 42)
+                .rotationEffect(.degrees(-90))
+
+            Text("\(percent)%")
+                .font(.arial(size: 11, weight: .bold))
+                .foregroundStyle(tint)
+                .minimumScaleFactor(0.8)
+                .lineLimit(1)
+        }
+        .accessibilityLabel("\(percent) percent complete")
+    }
 }
 
 struct EmptyProgramsView: View {

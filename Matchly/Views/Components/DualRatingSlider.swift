@@ -14,18 +14,32 @@ struct DualRatingSlider: View {
     var isYesNo: Bool = false // For Section F red flags
     var isPositiveYesNo: Bool = false // For questions where "Yes" is positive (e.g., "could see yourself living in city")
     var showLabels: Bool = false // Show "Poor" and "Excellent" labels on first question
+    var isUnanswered: Bool = false
     
     @State private var showNotes: Bool = false
     @FocusState private var isNotesFocused: Bool
     
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            // Question text
-            Text(question)
-                .font(.arial(size: 15, weight: .medium))
-                .foregroundColor(.primary)
-                .lineSpacing(1)
-            
+            HStack(alignment: .top, spacing: 8) {
+                Text(question)
+                    .font(.arial(size: 15, weight: .medium))
+                    .foregroundColor(.primary)
+                    .lineSpacing(1)
+
+                if isUnanswered {
+                    Text("Needs answer")
+                        .font(.arial(size: 10, weight: .semibold))
+                        .foregroundStyle(AppColors.pipelineNeedDate)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(
+                            Capsule()
+                                .fill(AppColors.pipelineNeedDate.opacity(0.14))
+                        )
+                        .fixedSize()
+                }
+            }
             if isYesNo {
                 // Yes/No toggle for red flags (or positive questions)
                 HStack(spacing: 16) {
@@ -347,6 +361,12 @@ struct DualRatingSlider: View {
         .padding(.vertical, 4)
         .padding(.horizontal, 0)
         .glassPanelStyle(cornerRadius: 12)
+        .overlay {
+            if isUnanswered {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(AppColors.pipelineNeedDate.opacity(0.5), lineWidth: 1.5)
+            }
+        }
         .onAppear {
             // Auto-expand notes if they already have content
             if !notes.isEmpty {

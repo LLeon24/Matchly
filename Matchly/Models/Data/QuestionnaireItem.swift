@@ -7,6 +7,13 @@
 
 import Foundation
 
+struct QuestionnaireQuestionRef: Equatable, Hashable {
+    let sectionId: String
+    let itemId: String
+
+    var scrollID: String { "\(sectionId)-\(itemId)" }
+}
+
 struct QuestionnaireItem: Codable, Identifiable, Equatable {
     let id: String
     let question: String
@@ -312,6 +319,31 @@ struct Questionnaire: Codable, Equatable {
     /// True when any enabled questionnaire item still needs an answer.
     func needsScoring(preferences: UserPreferences) -> Bool {
         questionnaireCompletionRatio(preferences: preferences) < 1.0
+    }
+
+    /// Enabled questions that still have no rating (programRating == 0).
+    func unansweredQuestions(preferences: UserPreferences) -> [QuestionnaireQuestionRef] {
+        var unanswered: [QuestionnaireQuestionRef] = []
+        let allSections = sections + customSections
+
+        for section in allSections {
+            if isRedFlagSection(section) { continue }
+            guard sectionIsEnabled(section, preferences: preferences, allSections: allSections) else { continue }
+
+            for item in enabledItems(for: section, preferences: preferences) where item.programRating == 0 {
+                unanswered.append(QuestionnaireQuestionRef(sectionId: section.id, itemId: item.id))
+            }
+        }
+
+        return unanswered
+    }
+
+    func firstUnansweredQuestion(preferences: UserPreferences) -> QuestionnaireQuestionRef? {
+        unansweredQuestions(preferences: preferences).first
+    }
+
+    func unansweredCount(preferences: UserPreferences) -> Int {
+        unansweredQuestions(preferences: preferences).count
     }
 
     private func isRedFlagSection(_ section: QuestionnaireSection) -> Bool {

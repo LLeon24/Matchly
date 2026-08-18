@@ -124,11 +124,23 @@ class CalendarManager: ObservableObject {
         }
     }
     
+    func syncAllInterviewPrograms(_ programs: [Program]) async throws {
+        try await createEventsForInterviews(programs.filter { $0.interviewDate != nil })
+    }
+
     // MARK: - Calendar Events
     
     func createEventsForInterviews(_ programs: [Program]) async throws {
-        guard calendarAccessGranted, let calendar = matchlyCalendar else {
+        guard calendarAccessGranted else {
             throw CalendarError.notAuthorized
+        }
+
+        if matchlyCalendar == nil {
+            findOrCreateMatchlyCalendar()
+        }
+
+        guard let calendar = matchlyCalendar else {
+            throw CalendarError.calendarNotFound
         }
         
         var createdCount = 0

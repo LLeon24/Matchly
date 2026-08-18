@@ -55,7 +55,12 @@ struct ProgramsNeedingReviewView: View {
                             .foregroundColor(.secondary)
                         ) {
                             ForEach(groupedPrograms[specialty] ?? []) { program in
-                                NavigationLink(destination: ProgramEntryView(program: program)) {
+                                NavigationLink(
+                                    destination: ProgramEntryView(
+                                        program: program,
+                                        scrollToFirstMissing: true
+                                    )
+                                ) {
                                     let completionRatio = program.questionnaireCompletionRatio(preferences: dataManager.preferences)
                                     let completionPercent = Int((completionRatio * 100).rounded())
                                     let tint = completionColor(completionPercent)
