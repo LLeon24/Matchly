@@ -394,7 +394,7 @@ struct RankListView: View {
     }
 
     private var rankListRowInsets: EdgeInsets {
-        EdgeInsets(top: 12, leading: 10, bottom: 12, trailing: 10)
+        EdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12)
     }
     
     private var rankedProgramsSection: some View {
@@ -561,40 +561,15 @@ struct RankListItemView: View {
     let rank: Int
     let program: Program
     var showsElevatedRedFlag: Bool = false
-    
-    var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            // Rank and Score combined on left
-            VStack(spacing: 4) {
-                // Rank badge
-                ZStack {
-                    Circle()
-                        .fill(rankColor(rank).opacity(0.15))
-                        .frame(width: 42, height: 42)
-                    
-                    VStack(spacing: 2) {
-                        Image(systemName: rank <= 3 ? "trophy.fill" : "star.fill")
-                            .font(.arial(size: 12))
-                            .foregroundColor(rankColor(rank))
-                        Text("\(rank)")
-                            .font(.arial(size: 18, weight: .bold))
-                            .foregroundColor(rankColor(rank))
-                    }
-                }
-                
-                // Score - prominent
-                VStack(spacing: 1) {
-                    Text(String(format: "%.1f", program.finalScore))
-                        .font(.arial(size: 18, weight: .bold))
-                        .foregroundColor(scoreColor(program.finalScore))
-                    Text("pts")
-                        .font(.arial(size: 9))
-                        .foregroundColor(.secondary)
-                }
-            }
-            .frame(width: 48)
 
-            // Program info - cleaner, more spacious
+    private var formattedScore: String {
+        String(format: "%.1f", program.finalScore)
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 14) {
+            rankScoreRail
+
             VStack(alignment: .leading, spacing: 6) {
                 if showsElevatedRedFlag {
                     HStack(spacing: 5) {
@@ -610,72 +585,29 @@ struct RankListItemView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 }
 
-                // Hospital name - allow wrapping
                 Text(HospitalNameFormatter.format(program.hospital.isEmpty ? (program.name.isEmpty ? "Unnamed Program" : program.name) : program.hospital))
                     .font(.arial(size: 15, weight: .semibold))
                     .lineLimit(2)
-                    .minimumScaleFactor(0.8)
                     .fixedSize(horizontal: false, vertical: true)
-                
-                // Specialty badge (only badge-style element) - matching ProgramsListView
+
                 if !program.specialty.isEmpty {
-                    let specialtyColor = SpecialtyFormatter.color(for: program.specialty)
-                    let specialtyAbbrev = SpecialtyFormatter.abbreviation(for: program.specialty)
-                    
-                    HStack(spacing: 3) {
-                        Image(systemName: "stethoscope")
-                            .font(.arial(size: 8))
-                        Text(specialtyAbbrev)
-                            .font(.arial(size: 10, weight: .semibold))
-                    }
-                    .foregroundColor(specialtyColor)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(specialtyColor.opacity(0.15))
-                    .cornerRadius(4)
+                    MatchlyProgramSpecialtyBadge(specialty: program.specialty)
                 }
-                
-                // Location and Accreditation ID on first row
-                HStack(spacing: 10) {
-                    // Location
-                    if !program.city.isEmpty && !program.state.isEmpty {
-                        HStack(spacing: 3) {
-                            Image(systemName: "mappin.circle.fill")
-                                .font(.arial(size: 10))
-                            Text("\(program.city), \(program.state)")
-                                .font(.arial(size: 12))
-                        }
-                        .foregroundColor(.secondary)
-                    }
-                    
-                    // Accreditation ID
-                    if let acgmeID = program.accreditationID, !acgmeID.isEmpty {
-                        HStack(spacing: 2) {
-                            Image(systemName: "number.circle.fill")
-                                .font(.arial(size: 10))
-                            Text("ID:")
-                                .font(.arial(size: 11, weight: .medium))
-                            Text(acgmeID)
-                                .font(.arial(size: 12, weight: .medium))
-                        }
-                        .foregroundColor(.secondary)
-                    }
-                }
-                
+
+                MatchlyProgramLocationAndIDRow(program: program)
+
                 SavedProgramIMGBadge(program: program, iconSize: 9, textSize: 11)
-                
-                // Signal and Red Flags on third row
+
                 HStack(spacing: 10) {
-                    // Signal indicator
                     if program.signalType != .none {
                         let isTiered = SignalLimits.isTiered(for: program.specialty)
-                        let signalText = isTiered 
+                        let signalText = isTiered
                             ? (program.signalType == .gold ? "Gold Signal" : "Silver Signal")
                             : "Signal"
                         let signalColor = isTiered
                             ? (program.signalType == .gold ? Color.yellow : Color(white: 0.6))
                             : Color.blue
-                        
+
                         HStack(spacing: 3) {
                             Image(systemName: program.signalType == .gold ? "star.fill" : "star")
                                 .font(.arial(size: 9))
@@ -684,8 +616,7 @@ struct RankListItemView: View {
                         }
                         .foregroundColor(signalColor)
                     }
-                    
-                    // Red flag indicator
+
                     if program.hasRedFlags() {
                         HStack(spacing: 3) {
                             Image(systemName: "exclamationmark.triangle.fill")
@@ -700,10 +631,8 @@ struct RankListItemView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .layoutPriority(1)
         }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 4)
+        .padding(.vertical, 10)
         .overlay(alignment: .leading) {
             if showsElevatedRedFlag {
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
@@ -713,7 +642,31 @@ struct RankListItemView: View {
             }
         }
     }
-    
+
+    private var rankScoreRail: some View {
+        let tint = scoreColor(program.finalScore)
+
+        return VStack(spacing: 6) {
+            Text("\(rank)")
+                .font(.arial(size: 26, weight: .bold))
+                .foregroundColor(rankColor(rank))
+                .monospacedDigit()
+
+            VStack(spacing: 1) {
+                Text("Score")
+                    .font(.arial(size: 9, weight: .semibold))
+                    .foregroundColor(.secondary)
+                Text(formattedScore)
+                    .font(.arial(size: 15, weight: .bold))
+                    .foregroundColor(tint)
+                    .monospacedDigit()
+            }
+        }
+        .frame(width: 54)
+        .multilineTextAlignment(.center)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Rank \(rank), score \(formattedScore)")
+    }
 }
 
 struct EmptyRankListView: View {
