@@ -22,6 +22,8 @@ struct OnboardingFlowView: View {
     @State private var enableCalendarSync: Bool = false
     @State private var includeRedFlaggedInRankList: Bool = true
     @State private var preferredEMR: String = ""
+    @State private var preferredEMROtherDetail: String = ""
+    @State private var showQuestionnaireCustomization = false
     
     enum OnboardingStep: Int, CaseIterable {
         case welcome = 0
@@ -477,33 +479,97 @@ struct OnboardingFlowView: View {
             subtitle: OnboardingStep.matchPreferences.subtitle,
             content: {
                 ScrollView {
-                    VStack(spacing: 20) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Label("Program Scoring", systemImage: "slider.horizontal.3")
-                                .font(.arial(size: 16, weight: .semibold))
-                            Text("Programs are scored using the questionnaire. Every enabled section counts equally toward your score.")
-                                .font(.arial(size: 14))
-                                .foregroundColor(.secondary)
+                    VStack(spacing: 16) {
+                        Button {
+                            showQuestionnaireCustomization = true
+                        } label: {
+                            HStack(alignment: .center, spacing: 12) {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    Label("Program Scoring", systemImage: "slider.horizontal.3")
+                                        .font(.arial(size: 16, weight: .semibold))
+                                        .foregroundColor(.primary)
+                                    Text("Programs are scored using the questionnaire. Every enabled section counts equally toward your score.")
+                                        .font(.arial(size: 14))
+                                        .foregroundColor(.secondary)
+                                        .multilineTextAlignment(.leading)
+                                    Text("Customize questionnaire")
+                                        .font(.arial(size: 13, weight: .semibold))
+                                        .foregroundColor(AppColors.primaryBlue)
+                                }
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.right")
+                                    .font(.arial(size: 13, weight: .semibold))
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(16)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .glassEffect(.regular, in: .rect(cornerRadius: 14))
                         }
-                        .padding(16)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .glassEffect(.regular, in: .rect(cornerRadius: 14))
+                        .buttonStyle(.plain)
 
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Preferred EMR (Optional)")
                                 .font(.arial(size: 16, weight: .semibold))
-                            Picker("Preferred EMR", selection: $preferredEMR) {
-                                Text("Not set").tag("")
-                                ForEach(EMRSystem.allCases) { system in
-                                    Text(system.displayName).tag(system.rawValue)
+
+                            Menu {
+                                Button {
+                                    selectPreferredEMR(nil)
+                                } label: {
+                                    if preferredEMR.isEmpty {
+                                        Label("Not set", systemImage: "checkmark")
+                                    } else {
+                                        Text("Not set")
+                                    }
                                 }
+                                ForEach(EMRSystem.allCases) { system in
+                                    Button {
+                                        selectPreferredEMR(system)
+                                    } label: {
+                                        if EMRSystem.matchesSelection(preferredEMRForSelection, system: system) {
+                                            Label(system.displayName, systemImage: "checkmark")
+                                        } else {
+                                            Text(system.displayName)
+                                        }
+                                    }
+                                }
+                            } label: {
+                                HStack {
+                                    Text(preferredEMRMenuLabel)
+                                        .font(.arial(size: 15, weight: .medium))
+                                        .foregroundColor(preferredEMR.isEmpty ? .secondary : .primary)
+                                    Spacer()
+                                    Image(systemName: "chevron.up.chevron.down")
+                                        .font(.arial(size: 12))
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 10))
                             }
-                            .pickerStyle(.menu)
+                            .buttonStyle(.plain)
+
+                            if isPreferredEMROtherSelected {
+                                ClearableTextField("Type EMR name", text: $preferredEMROtherDetail)
+                                    .font(.arial(size: 15))
+                                    .textInputAutocapitalization(.words)
+                                    .autocorrectionDisabled()
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 10)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 10))
+                                    .onChange(of: preferredEMROtherDetail) { _, newValue in
+                                        let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        preferredEMR = trimmed.isEmpty ? EMRSystem.other.rawValue : trimmed
+                                    }
+                            }
+
                             Text("Optional — we'll note when a program uses the EMR you're most familiar with.")
                                 .font(.arial(size: 13))
                                 .foregroundColor(.secondary)
                         }
                         .padding(16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .glassEffect(.regular, in: .rect(cornerRadius: 14))
 
                         Toggle(isOn: $includeRedFlaggedInRankList) {
@@ -516,6 +582,7 @@ struct OnboardingFlowView: View {
                             }
                         }
                         .padding(16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .glassEffect(.regular, in: .rect(cornerRadius: 14))
                     }
                 }
@@ -534,9 +601,81 @@ struct OnboardingFlowView: View {
             }
         )
         .onAppear {
-            includeRedFlaggedInRankList = dataManager.preferences.includeRedFlaggedProgramsInRankList
-            preferredEMR = dataManager.preferences.preferredEMR ?? ""
+            loadMatchPreferencesState()
         }
+        .sheet(isPresented: $showQuestionnaireCustomization) {
+            NavigationStack {
+                QuestionnaireCustomizationView()
+                    .environmentObject(dataManager)
+                    .navigationTitle("Program Scoring")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") {
+                                showQuestionnaireCustomization = false
+                            }
+                        }
+                    }
+            }
+            .matchlyExpandedSheet()
+        }
+    }
+
+    private var isPreferredEMROtherSelected: Bool {
+        EMRSystem.isOtherOrCustom(preferredEMRForSelection)
+    }
+
+    private var preferredEMRForSelection: String? {
+        preferredEMR.isEmpty ? nil : preferredEMR
+    }
+
+    private var preferredEMRMenuLabel: String {
+        guard !preferredEMR.isEmpty else { return "Not set" }
+        if EMRSystem.isOtherOrCustom(preferredEMR) {
+            let trimmed = preferredEMROtherDetail.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? EMRSystem.other.displayName : trimmed
+        }
+        return preferredEMR
+    }
+
+    private func loadMatchPreferencesState() {
+        includeRedFlaggedInRankList = dataManager.preferences.includeRedFlaggedProgramsInRankList
+        if let stored = dataManager.preferences.preferredEMR, !stored.isEmpty {
+            if let system = EMRSystem(rawValue: stored) {
+                preferredEMR = system.rawValue
+                preferredEMROtherDetail = ""
+            } else {
+                preferredEMR = EMRSystem.other.rawValue
+                preferredEMROtherDetail = stored
+            }
+        } else {
+            preferredEMR = ""
+            preferredEMROtherDetail = ""
+        }
+    }
+
+    private func selectPreferredEMR(_ system: EMRSystem?) {
+        guard let system else {
+            preferredEMR = ""
+            preferredEMROtherDetail = ""
+            return
+        }
+        if system == .other {
+            let trimmed = preferredEMROtherDetail.trimmingCharacters(in: .whitespacesAndNewlines)
+            preferredEMR = trimmed.isEmpty ? EMRSystem.other.rawValue : trimmed
+        } else {
+            preferredEMR = system.rawValue
+            preferredEMROtherDetail = ""
+        }
+    }
+
+    private func resolvedPreferredEMRForSave() -> String? {
+        guard !preferredEMR.isEmpty else { return nil }
+        if EMRSystem.isOtherOrCustom(preferredEMR) {
+            let trimmed = preferredEMROtherDetail.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? EMRSystem.other.rawValue : trimmed
+        }
+        return preferredEMR
     }
     
     // MARK: - Calendar Sync Step
@@ -715,7 +854,7 @@ struct OnboardingFlowView: View {
         dataManager.preferences.enableCalendarSync = enableCalendarSync
         dataManager.preferences.applyingTrack = selectedApplyingTrack.rawValue
         dataManager.preferences.includeRedFlaggedProgramsInRankList = includeRedFlaggedInRankList
-        dataManager.preferences.preferredEMR = preferredEMR.isEmpty ? nil : preferredEMR
+        dataManager.preferences.preferredEMR = resolvedPreferredEMRForSave()
         
         // Mark onboarding as complete
         dataManager.preferences.hasCompletedOnboarding = true
