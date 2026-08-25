@@ -80,7 +80,7 @@ struct Questionnaire: Codable, Equatable {
                 id: "matchly.section.b",
                 title: "Section B — Training quality & clinical experience",
                 questions: [
-                    "Variety of clinical cases (diagnoses, acuity, and volume)",
+                    "Clinical exposure — variety and complexity of cases",
                     "Procedural volume / hands-on opportunities",
                     "Quality of teaching (faculty commitment to education, protected teaching time)",
                     "Board pass rates and objective outcomes",
