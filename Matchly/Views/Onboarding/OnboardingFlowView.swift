@@ -32,9 +32,8 @@ struct OnboardingFlowView: View {
         case name = 3
         case aamcID = 4
         case photo = 5
-        case appGuide = 6
-        case matchPreferences = 7
-        case calendarSync = 8
+        case matchPreferences = 6
+        case calendarSync = 7
         
         var title: String {
             switch self {
@@ -44,7 +43,6 @@ struct OnboardingFlowView: View {
             case .name: return "What's your name?"
             case .aamcID: return "AAMC ID (Optional)"
             case .photo: return "Add Your Photo (Optional)"
-            case .appGuide: return "Quick App Tour"
             case .matchPreferences: return "Match Preferences"
             case .calendarSync: return "Calendar Sync"
             }
@@ -58,7 +56,6 @@ struct OnboardingFlowView: View {
             case .name: return "We'll use this to personalize your experience"
             case .aamcID: return "Your AAMC ID helps us provide better program matching"
             case .photo: return "Upload a photo or pick an avatar"
-            case .appGuide: return "After setup, we'll walk you through the real app with arrows and highlights — not a slideshow."
             case .matchPreferences: return "A few defaults to get your rank list and scoring right from the start."
             case .calendarSync: return "Would you like to sync your interviews to your device calendar? You can change this anytime in Settings."
             }
@@ -89,8 +86,6 @@ struct OnboardingFlowView: View {
                         aamcIDStep
                     case .photo:
                         photoStep
-                    case .appGuide:
-                        appGuideStep
                     case .matchPreferences:
                         matchPreferencesStep
                     case .calendarSync:
@@ -383,14 +378,14 @@ struct OnboardingFlowView: View {
             },
             onNext: {
                 withAnimation {
-                    currentStep = .appGuide
+                    currentStep = .matchPreferences
                 }
             },
             canContinue: true,
             showSkip: true,
             onSkip: {
                 withAnimation {
-                    currentStep = .appGuide
+                    currentStep = .matchPreferences
                 }
             },
             buttonText: "Continue",
@@ -400,76 +395,6 @@ struct OnboardingFlowView: View {
                 }
             }
         )
-    }
-
-    // MARK: - App Guide Step
-    private var appGuideStep: some View {
-        OnboardingStepView(
-            title: OnboardingStep.appGuide.title,
-            subtitle: OnboardingStep.appGuide.subtitle,
-            content: {
-                VStack(spacing: 24) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .fill(AppColors.primaryBlue.opacity(0.08))
-                            .frame(height: 180)
-
-                        VStack(spacing: 16) {
-                            Image(systemName: "hand.point.up.left.fill")
-                                .font(.system(size: 42))
-                                .foregroundStyle(AppColors.primaryBlue)
-                                .rotationEffect(.degrees(-8))
-
-                            Text("Interactive guided tour")
-                                .font(.arial(size: 18, weight: .semibold))
-
-                            Text("We'll dim the screen, spotlight each tab, and draw arrows with tips — like the in-app tours you see in other apps.")
-                                .font(.arial(size: 14))
-                                .foregroundColor(.secondary)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal, 20)
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        tourPreviewRow(icon: "house.fill", title: "Dashboard", tint: AppColors.primaryBlue)
-                        tourPreviewRow(icon: "list.bullet", title: "My Programs", tint: AppColors.accentGreen)
-                        tourPreviewRow(icon: "chart.bar.fill", title: "Rank List", tint: AppColors.accentPink)
-                        tourPreviewRow(icon: "map.fill", title: "Map", tint: AppColors.accentTeal)
-                        tourPreviewRow(icon: "gearshape.fill", title: "Settings", tint: AppColors.accentPurple)
-                    }
-                    .padding(16)
-                    .glassEffect(.regular, in: .rect(cornerRadius: 14))
-                }
-            },
-            onNext: {
-                withAnimation {
-                    currentStep = .matchPreferences
-                }
-            },
-            canContinue: true,
-            buttonText: "Continue",
-            onBack: {
-                withAnimation {
-                    currentStep = .photo
-                }
-            }
-        )
-    }
-
-    private func tourPreviewRow(icon: String, title: String, tint: Color) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.arial(size: 14, weight: .semibold))
-                .foregroundStyle(tint)
-                .frame(width: 24)
-            Text(title)
-                .font(.arial(size: 15, weight: .medium))
-            Spacer()
-            Image(systemName: "arrow.turn.down.right")
-                .font(.arial(size: 12))
-                .foregroundColor(.secondary)
-        }
     }
 
     // MARK: - Match Preferences Step
@@ -596,7 +521,7 @@ struct OnboardingFlowView: View {
             buttonText: "Continue",
             onBack: {
                 withAnimation {
-                    currentStep = .appGuide
+                    currentStep = .photo
                 }
             }
         )

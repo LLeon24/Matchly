@@ -56,7 +56,7 @@ struct InterviewsView: View {
                 ],
                 selection: $viewMode
             )
-            .padding(.bottom, 2)
+            .padding(.bottom, 10)
             
             if viewMode == .list {
                 listView
