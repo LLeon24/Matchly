@@ -46,14 +46,7 @@ struct InterviewsView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            MatchlyListPageTitleRow(title: "Interviews") {
-                if !programsNeedingDates.isEmpty {
-                    NavigationLink(destination: SetInterviewDatesView()) {
-                        MatchlyToolbarAddInterviewDateButton()
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
+            MatchlyListPageTitleRow(title: "Interviews")
 
             // View Mode Picker
             MatchlyColoredTabBar(
@@ -111,6 +104,21 @@ struct InterviewsView: View {
         }
     }
     
+    private var calendarSyncBinding: Binding<Bool> {
+        Binding(
+            get: { dataManager.preferences.enableCalendarSync },
+            set: { newValue in
+                dataManager.preferences.enableCalendarSync = newValue
+                dataManager.savePreferences()
+                if newValue {
+                    Task {
+                        await createCalendarEvents(showSuccessAlert: false)
+                    }
+                }
+            }
+        )
+    }
+    
     private func createCalendarEvents(showSuccessAlert: Bool = true) async {
         guard !allInterviews.isEmpty else { return }
         
@@ -164,66 +172,39 @@ struct InterviewsView: View {
     
     private var listView: some View {
         List {
-            // Calendar sync section - always show if enabled in preferences
-            if dataManager.preferences.enableCalendarSync {
-                Section {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack(spacing: 6) {
-                                Image(systemName: calendarManager.calendarAccessGranted ? "calendar.badge.checkmark" : "calendar.badge.exclamationmark")
-                                    .foregroundColor(calendarManager.calendarAccessGranted ? .green : .orange)
-                                Text("Calendar Sync")
-                                    .font(.arial(size: 15, weight: .medium))
-                            }
-                            
-                            if calendarManager.calendarAccessGranted {
-                                Text("Interviews will be added to \"\(calendarManager.matchlyCalendar?.title ?? "Matchly Interviews")\" calendar")
-                                    .font(.arial(size: 13))
-                                    .foregroundColor(.secondary)
-                            } else {
-                                Text("Enable calendar access to create interview events")
-                                    .font(.arial(size: 13))
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        
-                        Spacer()
-                        
-                        Button(action: {
-                            Task {
-                                await createCalendarEvents()
-                            }
-                        }) {
-                            if isCreatingEvents {
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                            } else {
-                                Text(calendarManager.calendarAccessGranted ? "Sync Now" : "Enable")
-                                    .font(.arial(size: 14, weight: .medium))
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 8)
-                            }
-                        }
-                        .buttonStyle(.glassProminent)
-                        .tint(calendarManager.calendarAccessGranted ? AppColors.primaryBlue : .orange)
-                        .disabled(isCreatingEvents || allInterviews.isEmpty)
+            Section {
+                HStack(spacing: 12) {
+                    Image(systemName: calendarManager.calendarAccessGranted ? "calendar.badge.checkmark" : "calendar.badge.exclamationmark")
+                        .font(.arial(size: 18))
+                        .foregroundColor(calendarManager.calendarAccessGranted ? .green : .orange)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Calendar Sync")
+                            .font(.arial(size: 15, weight: .medium))
+                        Text(calendarManager.calendarAccessGranted
+                             ? "Interviews sync to \"\(calendarManager.matchlyCalendar?.title ?? "Matchly Interviews")\""
+                             : "Enable to add interviews to your device calendar")
+                            .font(.arial(size: 12))
+                            .foregroundColor(.secondary)
                     }
-                    .padding(.vertical, 4)
-                    .listRowBackground(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(.clear)
-                            .glassEffect(.regular, in: .rect(cornerRadius: 16))
-                            .padding(.vertical, 4)
-                    )
-                } header: {
-                    Text("Calendar")
-                } footer: {
-                    if calendarManager.calendarAccessGranted {
-                        Text("Your interviews are synced to your device calendar. Events will update automatically when you modify interview dates.")
-                    } else {
-                        Text("Add your interviews to your device calendar to get reminders and see them in your calendar app.")
+
+                    Spacer(minLength: 8)
+
+                    if isCreatingEvents {
+                        ProgressView()
+                            .scaleEffect(0.85)
                     }
+
+                    Toggle("", isOn: calendarSyncBinding)
+                        .labelsHidden()
                 }
+                .padding(.vertical, 4)
+                .listRowBackground(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(.clear)
+                        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+                        .padding(.vertical, 4)
+                )
             }
             
             if !programsNeedingDates.isEmpty {
@@ -355,18 +336,27 @@ struct InterviewsView: View {
                         Text("Interviews on \(Self.dayDateFormatter.string(from: selectedDate))")
                             .font(.arial(size: 16, weight: .semibold))
                             .padding(.horizontal, 16)
-                        
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 12) {
-                                ForEach(interviewsOnDate) { program in
-                                    NavigationLink(destination: ProgramEntryView(program: program)) {
-                                        CompactInterviewCard(program: program)
-                                    }
-                                    .buttonStyle(.plain)
+
+                        VStack(spacing: 12) {
+                            ForEach(interviewsOnDate) { program in
+                                NavigationLink(destination: ProgramEntryView(program: program)) {
+                                    InterviewRow(
+                                        program: program,
+                                        isUpcoming: (program.interviewDate ?? Date()) >= Date(),
+                                        style: .featured
+                                    )
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 12)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                            .fill(AppColors.accentTeal.opacity(0.08))
+                                    )
                                 }
+                                .buttonStyle(.plain)
                             }
-                            .padding(.horizontal, 16)
                         }
+                        .padding(.horizontal, 16)
                     }
                     .padding(.vertical, 12)
                     .frame(maxWidth: .infinity, alignment: .leading)

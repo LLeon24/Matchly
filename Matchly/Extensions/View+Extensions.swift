@@ -551,13 +551,23 @@ struct MatchlyProgramSpecialtyBadge: View {
 struct MatchlyProgramLocationAndIDRow: View {
     let program: Program
 
+    private var resolved: AddressFormatter.ResolvedAddress {
+        AddressFormatter.resolved(
+            hospital: program.hospital,
+            address: program.address,
+            city: program.city,
+            state: program.state,
+            accreditationID: program.accreditationID
+        )
+    }
+
     var body: some View {
         HStack(spacing: 8) {
-            if !program.city.isEmpty && !program.state.isEmpty {
+            if !resolved.city.isEmpty && !resolved.state.isEmpty {
                 HStack(spacing: 3) {
                     Image(systemName: "mappin.circle.fill")
                         .font(.arial(size: 9))
-                    Text("\(program.city), \(program.state)")
+                    Text("\(resolved.city), \(resolved.state)")
                         .font(.arial(size: 11))
                 }
                 .foregroundColor(.secondary)
@@ -575,6 +585,34 @@ struct MatchlyProgramLocationAndIDRow: View {
                 .foregroundColor(.secondary)
             }
         }
+    }
+}
+
+/// Prominent tinted capsule for primary list-page actions (Add, Compare, Edit).
+struct MatchlyActionChipLabel: View {
+    let icon: String
+    let text: String
+    let tint: Color
+    var isFilled: Bool = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.arial(size: 11, weight: .semibold))
+            Text(text)
+                .font(.arial(size: 12, weight: .semibold))
+        }
+        .foregroundColor(isFilled ? .white : tint)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            Capsule()
+                .fill(isFilled ? tint : tint.opacity(0.12))
+        )
+        .overlay(
+            Capsule()
+                .strokeBorder(isFilled ? Color.clear : tint.opacity(0.35), lineWidth: 1)
+        )
     }
 }
 

@@ -59,14 +59,7 @@ struct ProgramsListView: View {
                     let sortedSpecialties = groupedPrograms.keys.sorted()
                     
                     VStack(spacing: 0) {
-                        MatchlyListPageTitleRow(title: "My Programs") {
-                            Button {
-                                showAddProgram = true
-                            } label: {
-                                MatchlyToolbarAddProgramButton()
-                            }
-                            .buttonStyle(.plain)
-                        }
+                        MatchlyListPageTitleRow(title: "My Programs")
 
                         MatchlyColoredTabBar(options: programFilterTabs, selection: $listFilter)
                             .padding(.bottom, 4)
@@ -74,7 +67,7 @@ struct ProgramsListView: View {
                         programsFilterToolbar
 
                         programsSectionDivider
-                        programsSecondaryActionRow
+                        programsPrimaryActionRow
 
                         programsSectionDivider
                             .padding(.bottom, 4)
@@ -121,8 +114,7 @@ struct ProgramsListView: View {
                                         } else {
                                             NavigationLink(
                                                 destination: ProgramEntryView(
-                                                    program: program,
-                                                    scrollToFirstMissing: program.needsScoring(preferences: dataManager.preferences)
+                                                    program: program
                                                 )
                                             ) {
                                                 CompactProgramRowView(program: program)
@@ -196,7 +188,7 @@ struct ProgramsListView: View {
         .padding(.bottom, 10)
     }
 
-    private var programsSecondaryActionRow: some View {
+    private var programsPrimaryActionRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 10) {
                 if isEditMode {
@@ -209,11 +201,11 @@ struct ProgramsListView: View {
                         selectedPrograms.removeAll()
                         isEditMode = false
                     } label: {
-                        MatchlyFilterChipLabel(
+                        MatchlyActionChipLabel(
                             icon: "trash.fill",
-                            iconColor: selectedPrograms.isEmpty ? .secondary : AppColors.accentRed,
                             text: "Delete",
-                            showsChevron: false
+                            tint: selectedPrograms.isEmpty ? .secondary : AppColors.accentRed,
+                            isFilled: !selectedPrograms.isEmpty
                         )
                     }
                     .buttonStyle(.plain)
@@ -223,23 +215,34 @@ struct ProgramsListView: View {
                         isEditMode = false
                         selectedPrograms.removeAll()
                     } label: {
-                        MatchlyFilterChipLabel(
+                        MatchlyActionChipLabel(
                             icon: "checkmark",
-                            iconColor: AppColors.primaryBlue,
                             text: "Done",
-                            isActive: true,
-                            showsChevron: false
+                            tint: AppColors.primaryBlue,
+                            isFilled: true
                         )
                     }
                     .buttonStyle(.plain)
                 } else {
+                    Button {
+                        showAddProgram = true
+                    } label: {
+                        MatchlyActionChipLabel(
+                            icon: "plus",
+                            text: "Add Program",
+                            tint: AppColors.primaryBlue,
+                            isFilled: true
+                        )
+                    }
+                    .buttonStyle(.plain)
+
                     if dataManager.programs.count >= 2 {
                         NavigationLink(destination: ProgramComparisonView()) {
-                            MatchlyFilterChipLabel(
+                            MatchlyActionChipLabel(
                                 icon: "square.grid.2x2",
-                                iconColor: AppColors.primaryBlue,
-                                text: "Compare Programs",
-                                showsChevron: false
+                                text: "Compare",
+                                tint: AppColors.accentTeal,
+                                isFilled: true
                             )
                         }
                         .buttonStyle(.plain)
@@ -248,11 +251,11 @@ struct ProgramsListView: View {
                     Button {
                         isEditMode = true
                     } label: {
-                        MatchlyFilterChipLabel(
+                        MatchlyActionChipLabel(
                             icon: "pencil",
-                            iconColor: .secondary,
                             text: "Edit",
-                            showsChevron: false
+                            tint: AppColors.primaryBlue,
+                            isFilled: false
                         )
                     }
                     .buttonStyle(.plain)

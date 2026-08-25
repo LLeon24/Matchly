@@ -291,6 +291,37 @@ struct Questionnaire: Codable, Equatable {
         return weightedSum * 20 * completion
     }
 
+    /// Average 1–5 rating for a standard questionnaire section (e.g. "Section B"), or nil if none answered.
+    func standardSectionAverage(_ sectionPrefix: String, preferences: UserPreferences) -> Double? {
+        let allSections = sections + customSections
+        guard let section = allSections.first(where: { $0.title.hasPrefix(sectionPrefix) }) else {
+            return nil
+        }
+        guard sectionIsEnabled(section, preferences: preferences, allSections: allSections) else {
+            return nil
+        }
+        if section.title.localizedCaseInsensitiveContains("red flag") {
+            return nil
+        }
+
+        var sectionRatings: [Double] = []
+        let candidateItems = section.items + (preferences.customQuestionsInSections[section.id]?.map {
+            QuestionnaireItem(id: $0.id, question: $0.question)
+        } ?? [])
+
+        for item in section.items {
+            guard itemIsEnabled(item, section: section, preferences: preferences, candidateItems: candidateItems) else {
+                continue
+            }
+            if item.programRating > 0 && item.programRating < 6 {
+                sectionRatings.append(item.programRating)
+            }
+        }
+
+        guard !sectionRatings.isEmpty else { return nil }
+        return sectionRatings.reduce(0, +) / Double(sectionRatings.count)
+    }
+
     /// Share of enabled, non–red-flag questions that have a deliberate answer.
     /// Counts 1–5 ratings and N/A (6) as complete; ignores disabled sections/questions.
     /// When nothing is enabled, returns 1.0 (nothing left to score).

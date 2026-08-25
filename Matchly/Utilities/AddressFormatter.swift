@@ -177,6 +177,12 @@ enum AddressFormatter {
             state: "FL",
             siteName: "HCA Florida Aventura Hospital"
         ),
+        "1401100947": ResolvedAddress(
+            street: "1515 S Osprey Ave",
+            city: "Sarasota",
+            state: "FL",
+            siteName: "Sarasota Memorial Hospital"
+        ),
     ]
 
     // MARK: - Parsing

@@ -34,6 +34,9 @@ struct ProgramComparisonView: View {
             }
             .navigationTitle("Compare Programs")
             .appCanvasBackground()
+            .onAppear {
+                dataManager.recalculateAllScores()
+            }
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     if !selectedPrograms.isEmpty {
@@ -260,61 +263,53 @@ struct ProgramComparisonView: View {
     }
 
     private var metrics: [ComparisonMetric] {
+        let prefs = dataManager.preferences
+
+        func sectionMetric(
+            id: String,
+            title: String,
+            shortTitle: String,
+            sectionPrefix: String,
+            color: Color
+        ) -> ComparisonMetric {
+            ComparisonMetric(
+                id: id,
+                title: title,
+                shortTitle: shortTitle,
+                value: { program in
+                    guard let average = program.questionnaire.standardSectionAverage(sectionPrefix, preferences: prefs) else {
+                        return "—"
+                    }
+                    return String(format: "%.1f", average)
+                },
+                numericValue: { program in
+                    program.questionnaire.standardSectionAverage(sectionPrefix, preferences: prefs)
+                },
+                color: { _ in color },
+                prefersLower: false
+            )
+        }
+
         var list: [ComparisonMetric] = [
             ComparisonMetric(
                 id: "overall",
                 title: "Overall Score",
                 shortTitle: "Overall",
-                value: { String(format: "%.1f", $0.finalScore) },
-                numericValue: { $0.finalScore },
+                value: { program in
+                    guard program.finalScore > 0 else { return "—" }
+                    return String(format: "%.1f", program.finalScore)
+                },
+                numericValue: { program in
+                    program.finalScore > 0 ? program.finalScore : nil
+                },
                 color: { scoreColor($0.finalScore) },
                 prefersLower: false
             ),
-            ComparisonMetric(
-                id: "quality",
-                title: "Program Quality",
-                shortTitle: "Quality",
-                value: { String(format: "%.1f", $0.programQuality.average()) },
-                numericValue: { $0.programQuality.average() },
-                color: { _ in .blue },
-                prefersLower: false
-            ),
-            ComparisonMetric(
-                id: "culture",
-                title: "Culture Fit",
-                shortTitle: "Culture",
-                value: { String(format: "%.1f", $0.cultureFit.average()) },
-                numericValue: { $0.cultureFit.average() },
-                color: { _ in .purple },
-                prefersLower: false
-            ),
-            ComparisonMetric(
-                id: "location",
-                title: "Location",
-                shortTitle: "Location",
-                value: { String(format: "%.1f", $0.location.average()) },
-                numericValue: { $0.location.average() },
-                color: { _ in .green },
-                prefersLower: false
-            ),
-            ComparisonMetric(
-                id: "logistics",
-                title: "Logistics",
-                shortTitle: "Logistics",
-                value: { String(format: "%.1f", $0.logistics.average()) },
-                numericValue: { $0.logistics.average() },
-                color: { _ in .orange },
-                prefersLower: false
-            ),
-            ComparisonMetric(
-                id: "career",
-                title: "Career Alignment",
-                shortTitle: "Career",
-                value: { String(format: "%.1f", $0.careerAlignment.average()) },
-                numericValue: { $0.careerAlignment.average() },
-                color: { _ in .pink },
-                prefersLower: false
-            ),
+            sectionMetric(id: "quality", title: "Program Quality", shortTitle: "Quality", sectionPrefix: "Section B", color: .blue),
+            sectionMetric(id: "culture", title: "Culture Fit", shortTitle: "Culture", sectionPrefix: "Section D", color: .purple),
+            sectionMetric(id: "location", title: "Location & Lifestyle", shortTitle: "Location", sectionPrefix: "Section C", color: .green),
+            sectionMetric(id: "logistics", title: "Logistics", shortTitle: "Logistics", sectionPrefix: "Section E", color: .orange),
+            sectionMetric(id: "career", title: "Career Alignment", shortTitle: "Career", sectionPrefix: "Section A", color: .pink),
             ComparisonMetric(
                 id: "emr",
                 title: "EMR",
@@ -480,7 +475,7 @@ private struct ComparisonMetric: Identifiable {
     let title: String
     let shortTitle: String
     let value: (Program) -> String
-    let numericValue: ((Program) -> Double)?
+    let numericValue: ((Program) -> Double?)?
     let color: (Program) -> Color
     let prefersLower: Bool
 
@@ -493,7 +488,14 @@ private struct ComparisonMetric: Identifiable {
             return Standings(leadingProgramIDs: [])
         }
 
-        let scored = programs.map { (id: $0.id, score: numericValue($0)) }
+        let scored = programs.compactMap { program -> (id: String, score: Double)? in
+            guard let score = numericValue(program) else { return nil }
+            return (id: program.id, score: score)
+        }
+        guard !scored.isEmpty else {
+            return Standings(leadingProgramIDs: [])
+        }
+
         let target = prefersLower
             ? scored.map(\.score).min()
             : scored.map(\.score).max()

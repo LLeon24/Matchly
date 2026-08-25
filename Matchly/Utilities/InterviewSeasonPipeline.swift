@@ -10,8 +10,8 @@ import SwiftUI
 enum InterviewSeasonStage: String, CaseIterable, Identifiable {
     case needDate
     case upcoming
-    case scored
     case toReview
+    case scored
 
     var id: String { rawValue }
 
@@ -33,7 +33,7 @@ enum InterviewSeasonStage: String, CaseIterable, Identifiable {
         }
     }
 
-    /// One stage per program — priority: need date → to review → upcoming → scored.
+    /// One stage per program — priority: need date → upcoming → to review → scored.
     static func stage(
         for program: Program,
         preferences: UserPreferences,
@@ -42,11 +42,11 @@ enum InterviewSeasonStage: String, CaseIterable, Identifiable {
         if program.interviewDate == nil {
             return .needDate
         }
-        if program.needsScoring(preferences: preferences) {
-            return .toReview
-        }
         if let date = program.interviewDate, date >= now {
             return .upcoming
+        }
+        if program.needsScoring(preferences: preferences) {
+            return .toReview
         }
         if program.finalScore > 0 {
             return .scored
