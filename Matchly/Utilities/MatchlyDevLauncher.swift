@@ -2,7 +2,7 @@
 //  MatchlyDevLauncher.swift
 //  Matchly
 //
-//  DEBUG-only helpers for switching between onboarding, auth, and the full app.
+//  DEBUG-only preview helpers — used from ContentView.swift in Xcode Previews only.
 //
 
 #if DEBUG
@@ -38,6 +38,7 @@ enum MatchlyDevLauncher {
     }
 }
 
+/// Segmented picker for `ContentView` Xcode Previews — not shown in the shipped app.
 struct MatchlyDevScreenPicker: View {
     @AppStorage(MatchlyDevLauncher.storageKey) private var devScreenRaw = MatchlyDevLauncher.Screen.automatic.rawValue
 

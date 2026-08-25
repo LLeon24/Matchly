@@ -86,14 +86,6 @@ struct SplashView: View {
                     .zIndex(20)
             }
         }
-        #if DEBUG
-        .overlay(alignment: .top) {
-            if !showSplash {
-                MatchlyDevScreenPicker()
-                    .zIndex(30)
-            }
-        }
-        #endif
         .matchlyKeyboardDismissOverlay()
         .alert(
             "Use \(authManager.biometricDisplayName)?",
@@ -112,41 +104,6 @@ struct SplashView: View {
     
     @ViewBuilder
     private var contentView: some View {
-        #if DEBUG
-        if devScreenOverride != .automatic {
-            debugRoutedContent
-        } else {
-            productionContentView
-        }
-        #else
-        productionContentView
-        #endif
-    }
-
-    #if DEBUG
-    @AppStorage(MatchlyDevLauncher.storageKey) private var devScreenRaw = MatchlyDevLauncher.Screen.automatic.rawValue
-
-    private var devScreenOverride: MatchlyDevLauncher.Screen {
-        MatchlyDevLauncher.Screen(rawValue: devScreenRaw) ?? .automatic
-    }
-
-    @ViewBuilder
-    private var debugRoutedContent: some View {
-        switch devScreenOverride {
-        case .automatic:
-            productionContentView
-        case .onboarding:
-            OnboardingFlowView()
-        case .mainApp:
-            MainTabView()
-        case .auth:
-            AuthenticationView()
-        }
-    }
-    #endif
-
-    @ViewBuilder
-    private var productionContentView: some View {
         switch authManager.authState {
         case .loading:
             launchPlaceholder

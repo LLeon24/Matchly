@@ -4,7 +4,8 @@
 //
 //  Created by Leoh Leon on 11/14/25.
 //
-//  Preview helper for development - use this to preview views while making changes
+//  Preview helper for development — use this to preview views while making changes.
+//  The live app launches through SplashView in MatchlyApp.swift, not ContentView.
 
 import SwiftUI
 
