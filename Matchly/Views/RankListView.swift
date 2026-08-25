@@ -771,8 +771,8 @@ struct ExportView: View {
             if let acgmeID = program.accreditationID, !acgmeID.isEmpty {
                 text += " (ID: \(acgmeID))"
             }
-            if !program.city.isEmpty && !program.state.isEmpty {
-                text += " - \(program.city), \(program.state)"
+            if program.hasDisplayLocation {
+                text += " - \(program.displayCityState)"
             }
             if !program.specialty.isEmpty {
                 text += " - \(program.specialty)"

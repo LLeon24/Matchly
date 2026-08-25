@@ -1836,8 +1836,8 @@ struct TopProgramRow: View {
                     .fixedSize(horizontal: false, vertical: true)
                 
                 HStack(spacing: 6) {
-                    if !program.city.isEmpty && !program.state.isEmpty {
-                        Text("\(program.city), \(program.state)")
+                    if program.hasDisplayLocation {
+                        Text(program.displayCityState)
                             .font(.arial(size: 13))
                             .foregroundColor(.secondary)
                     }

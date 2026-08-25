@@ -26,8 +26,8 @@ struct ProgramDetailView: View {
                             .foregroundColor(.secondary)
                     }
                     
-                    if !program.city.isEmpty && !program.state.isEmpty {
-                        Text("\(program.city), \(program.state)")
+                    if program.hasDisplayLocation {
+                        Text(program.displayCityState)
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                     }

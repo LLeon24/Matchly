@@ -32,12 +32,38 @@ enum AddressFormatter {
 
     /// Full string for Maps / geocoding.
     static func geocodingQuery(for program: Program) -> String {
-        let r = resolved(
+        geocodingQuery(
             hospital: program.hospital,
             address: program.address,
             city: program.city,
             state: program.state,
             accreditationID: program.accreditationID
+        )
+    }
+
+    static func geocodingQuery(for program: ResidencyProgramInfo) -> String {
+        geocodingQuery(
+            hospital: program.hospital,
+            address: program.address,
+            city: program.city,
+            state: program.state,
+            accreditationID: program.accreditationID
+        )
+    }
+
+    static func geocodingQuery(
+        hospital: String,
+        address: String?,
+        city: String,
+        state: String,
+        accreditationID: String? = nil
+    ) -> String {
+        let r = resolved(
+            hospital: hospital,
+            address: address,
+            city: city,
+            state: state,
+            accreditationID: accreditationID
         )
         if !r.street.isEmpty {
             return "\(r.street), \(r.city), \(r.state)"
@@ -45,18 +71,11 @@ enum AddressFormatter {
         if let site = r.siteName, !site.isEmpty {
             return "\(site), \(r.city), \(r.state)"
         }
-        return "\(program.hospital), \(r.city), \(r.state)"
-    }
-
-    static func geocodingQuery(for program: ResidencyProgramInfo) -> String {
-        let r = resolved(for: program)
-        if !r.street.isEmpty {
-            return "\(r.street), \(r.city), \(r.state)"
+        let formattedHospital = HospitalNameFormatter.format(hospital)
+        if !formattedHospital.isEmpty {
+            return "\(formattedHospital), \(r.city), \(r.state)"
         }
-        if let site = r.siteName, !site.isEmpty {
-            return "\(site), \(r.city), \(r.state)"
-        }
-        return "\(program.hospital), \(r.city), \(r.state)"
+        return "\(r.city), \(r.state)"
     }
 
     static func resolved(for program: ResidencyProgramInfo) -> ResolvedAddress {
@@ -74,14 +93,14 @@ enum AddressFormatter {
         address: String?,
         city: String,
         state: String,
-        accreditationID: String?
+        accreditationID: String? = nil
     ) -> ResolvedAddress {
         let raw = address ?? ""
 
         let normalizedState = USState.abbreviation(for: state)
         let normalizedCity = city.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        if let override = campusOverride(hospital: hospital, rawAddress: raw, accreditationID: accreditationID) {
+        if let override = campusOverride(hospital: hospital, rawAddress: raw) {
             return override
         }
 
@@ -91,34 +110,64 @@ enum AddressFormatter {
                !normalizedState.isEmpty,
                parsedState != normalizedState {
                 // PDF blobs sometimes contain a different campus address; keep catalog city/state.
-                return ResolvedAddress(street: "", city: normalizedCity, state: normalizedState, siteName: nil)
+                return catalogOnlyAddress(
+                    hospital: hospital,
+                    city: normalizedCity,
+                    state: normalizedState
+                )
             }
             return ResolvedAddress(
                 street: parsed.street,
                 city: parsed.city.isEmpty ? normalizedCity : parsed.city,
                 state: parsed.state.isEmpty ? normalizedState : parsedState,
-                siteName: nil
+                siteName: extractCareSiteName(from: hospital)
             )
         }
 
         if looksLikeGarbageAddress(raw) {
-            return ResolvedAddress(street: "", city: normalizedCity, state: normalizedState, siteName: nil)
+            return catalogOnlyAddress(
+                hospital: hospital,
+                city: normalizedCity,
+                state: normalizedState
+            )
+        }
+
+        let trimmedStreet = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedStreet.isEmpty {
+            return catalogOnlyAddress(
+                hospital: hospital,
+                city: normalizedCity,
+                state: normalizedState
+            )
         }
 
         return ResolvedAddress(
-            street: raw.trimmingCharacters(in: .whitespacesAndNewlines),
+            street: trimmedStreet,
             city: normalizedCity,
             state: normalizedState,
-            siteName: nil
+            siteName: extractCareSiteName(from: hospital)
         )
     }
 
-    // MARK: - Campus overrides (multi-site programs)
+    /// City/state from the catalog only — never inferred from map coordinates.
+    private static func catalogOnlyAddress(
+        hospital: String,
+        city: String,
+        state: String
+    ) -> ResolvedAddress {
+        ResolvedAddress(
+            street: "",
+            city: city,
+            state: state,
+            siteName: extractCareSiteName(from: hospital)
+        )
+    }
+
+    // MARK: - Campus overrides (multi-site programs detected by hospital name)
 
     private static func campusOverride(
         hospital: String,
-        rawAddress: String,
-        accreditationID: String?
+        rawAddress: String
     ) -> ResolvedAddress? {
         let h = hospital.lowercased()
         let raw = rawAddress.lowercased()
@@ -126,7 +175,6 @@ enum AddressFormatter {
         let isLakeNona = raw.contains("lake nona") || raw.contains("6850")
 
         if (h.contains("central florida") && h.contains("hca")) || (h.contains("ucf") && h.contains("hca")) {
-            // Hospital campus label wins over a mismatched street line in the PDF blob.
             if h.contains("osceola") && !h.contains("lake nona") {
                 return ResolvedAddress(
                     street: "700 W Oak St",
@@ -145,45 +193,52 @@ enum AddressFormatter {
             }
         }
 
-        if let id = accreditationID, let byID = overridesByAccreditationID[id] {
-            return byID
+        return nil
+    }
+
+    /// Pull a care-site name from a sponsoring-institution / hospital string for geocoding.
+    /// Example: "Florida State University College of Medicine/Sarasota Memorial Hospital"
+    /// → "Sarasota Memorial Hospital"
+    static func extractCareSiteName(from hospital: String) -> String? {
+        let formatted = HospitalNameFormatter.format(hospital.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard !formatted.isEmpty else { return nil }
+
+        let slashParts = formatted.split(separator: "/").map {
+            String($0).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if slashParts.count > 1 {
+            for part in slashParts.reversed() where looksLikeCareSite(part) && !looksLikeAcademicShell(part) {
+                return part
+            }
+        }
+
+        if looksLikeCareSite(formatted), !looksLikeAcademicShell(formatted) {
+            return formatted
         }
 
         return nil
     }
 
-    private static let overridesByAccreditationID: [String: ResolvedAddress] = [
-        "1101100194": ResolvedAddress(
-            street: "700 W Oak St",
-            city: "Kissimmee",
-            state: "FL",
-            siteName: "HCA Florida Osceola Hospital"
-        ),
-        "1101100196": ResolvedAddress(
-            street: "20900 Biscayne Blvd",
-            city: "Aventura",
-            state: "FL",
-            siteName: "HCA Florida Aventura Hospital"
-        ),
-        "1411114290": ResolvedAddress(
-            street: "20900 Biscayne Blvd",
-            city: "Aventura",
-            state: "FL",
-            siteName: "HCA Florida Aventura Hospital"
-        ),
-        "1401100924": ResolvedAddress(
-            street: "20900 Biscayne Blvd",
-            city: "Aventura",
-            state: "FL",
-            siteName: "HCA Florida Aventura Hospital"
-        ),
-        "1401100947": ResolvedAddress(
-            street: "1515 S Osprey Ave",
-            city: "Sarasota",
-            state: "FL",
-            siteName: "Sarasota Memorial Hospital"
-        ),
-    ]
+    private static func looksLikeCareSite(_ name: String) -> Bool {
+        let lower = name.lowercased()
+        let markers = [
+            "hospital", "medical center", "medical centre", "health system",
+            "healthcare", "health network", "memorial", "clinic", "medical group",
+            "regional medical", "community hospital"
+        ]
+        return markers.contains { lower.contains($0) }
+    }
+
+    private static func looksLikeAcademicShell(_ name: String) -> Bool {
+        let lower = name.lowercased()
+        if lower.contains("college of medicine") && !looksLikeCareSite(name) {
+            return true
+        }
+        if lower.contains("school of medicine") && !looksLikeCareSite(name) {
+            return true
+        }
+        return false
+    }
 
     // MARK: - Parsing
 
@@ -228,5 +283,40 @@ enum AddressFormatter {
         street
             .replacingOccurrences(of: "  ", with: " ")
             .trimmingCharacters(in: CharacterSet(charactersIn: " ,;"))
+    }
+}
+
+extension Program {
+    var resolvedAddress: AddressFormatter.ResolvedAddress {
+        AddressFormatter.resolved(
+            hospital: hospital,
+            address: address,
+            city: city,
+            state: state,
+            accreditationID: accreditationID
+        )
+    }
+
+    /// City, ST for display — from catalog-normalized resolution, never geocoding.
+    var displayCityState: String {
+        let resolved = resolvedAddress
+        guard !resolved.city.isEmpty, !resolved.state.isEmpty else { return "" }
+        return "\(resolved.city), \(resolved.state)"
+    }
+
+    var hasDisplayLocation: Bool {
+        !displayCityState.isEmpty
+    }
+}
+
+extension ResidencyProgramInfo {
+    var resolvedAddress: AddressFormatter.ResolvedAddress {
+        AddressFormatter.resolved(for: self)
+    }
+
+    var displayCityState: String {
+        let resolved = resolvedAddress
+        guard !resolved.city.isEmpty, !resolved.state.isEmpty else { return "" }
+        return "\(resolved.city), \(resolved.state)"
     }
 }

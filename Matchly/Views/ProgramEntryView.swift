@@ -1006,12 +1006,20 @@ struct ProgramEntryView: View {
     }
 
     private var programHeaderMetadataRow: some View {
-        HStack(spacing: 8) {
-            if !city.isEmpty && !state.isEmpty {
+        let resolved = AddressFormatter.resolved(
+            hospital: hospital,
+            address: address.isEmpty ? nil : address,
+            city: city,
+            state: state,
+            accreditationID: accreditationID
+        )
+
+        return HStack(spacing: 8) {
+            if !resolved.city.isEmpty && !resolved.state.isEmpty {
                 HStack(spacing: 3) {
                     Image(systemName: "mappin.circle.fill")
                         .font(.arial(size: 9))
-                    Text("\(city), \(state)")
+                    Text("\(resolved.city), \(resolved.state)")
                         .font(.arial(size: 11))
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)

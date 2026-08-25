@@ -66,6 +66,20 @@ enum GeocodingHelper {
             await coordinateCache.store(coordinate, for: query)
             return coordinate
         } catch {
+            // When street is missing, retry with the extracted care-site name before city fallback.
+            if resolved.street.isEmpty, let site = resolved.siteName, !site.isEmpty {
+                let siteQuery = "\(site), \(resolved.city), \(resolved.state)"
+                if siteQuery != query {
+                    do {
+                        let location = try await geocodeAddress(siteQuery, expectedState: expectedState)
+                        let coordinate = location.coordinate
+                        await coordinateCache.store(coordinate, for: query)
+                        return coordinate
+                    } catch {
+                        // Fall through to city/state centroid — map pin only, not displayed address.
+                    }
+                }
+            }
             return fallbackCoordinate(for: program)
         }
     }

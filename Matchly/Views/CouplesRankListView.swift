@@ -179,7 +179,7 @@ struct CouplesRankListView: View {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(program.hospital.isEmpty ? program.name : program.hospital)
                                         .font(.arial(size: 14, weight: .medium))
-                                    Text("\(program.city), \(program.state)")
+                                    Text(program.displayCityState)
                                         .font(.arial(size: 12))
                                         .foregroundColor(.secondary)
                                 }

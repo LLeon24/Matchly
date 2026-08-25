@@ -520,8 +520,8 @@ private struct ComparisonProgramHeaderRow: View {
     }
 
     private var locationLine: String {
-        if !program.city.isEmpty && !program.state.isEmpty {
-            return "\(program.city), \(program.state)"
+        if program.hasDisplayLocation {
+            return program.displayCityState
         }
         if !program.state.isEmpty { return program.state }
         return program.specialty
@@ -674,9 +674,11 @@ struct ProgramComparisonPickerView: View {
                                     Text(HospitalNameFormatter.format(program.hospital))
                                         .font(.arial(size: 16, weight: .semibold))
                                         .foregroundColor(.primary)
-                                    Text("\(program.city), \(program.state)")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
+                                    if program.hasDisplayLocation {
+                                        Text(program.displayCityState)
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
                                 }
 
                                 Spacer()

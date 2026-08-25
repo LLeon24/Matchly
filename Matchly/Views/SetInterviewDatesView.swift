@@ -143,8 +143,8 @@ struct SetInterviewDateSheet: View {
                         .foregroundColor(.primary)
                         .lineLimit(2)
 
-                    if !program.city.isEmpty && !program.state.isEmpty {
-                        Label("\(program.city), \(program.state)", systemImage: "mappin.circle.fill")
+                    if program.hasDisplayLocation {
+                        Label(program.displayCityState, systemImage: "mappin.circle.fill")
                             .font(.arial(size: 13))
                             .foregroundColor(.secondary)
                     }

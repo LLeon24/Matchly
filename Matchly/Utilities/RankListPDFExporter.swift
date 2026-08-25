@@ -474,8 +474,8 @@ private struct DrawState {
     }
 
     func formattedLocation(for program: Program) -> String {
-        if !program.city.isEmpty, !program.state.isEmpty {
-            return "\(program.city), \(program.state)"
+        if program.hasDisplayLocation {
+            return program.displayCityState
         }
         if !program.state.isEmpty { return program.state }
         if !program.city.isEmpty { return program.city }

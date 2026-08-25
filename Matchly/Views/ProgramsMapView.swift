@@ -282,15 +282,18 @@ struct ProgramMapCard: View {
                                 }
                             }
                             
-                            if let address = program.address, !address.isEmpty {
-                                Text(address)
+                            let resolved = program.resolvedAddress
+                            if !resolved.street.isEmpty {
+                                Text(resolved.street)
                                     .font(.arial(size: 13, weight: .medium))
                                     .foregroundColor(.primary)
-                                Text("\(program.city), \(program.state)")
-                                    .font(.arial(size: 12))
-                                    .foregroundColor(.secondary)
-                            } else {
-                                Text("\(program.city), \(program.state)")
+                            }
+                            if program.hasDisplayLocation {
+                                Text(program.displayCityState)
+                                    .font(.arial(size: resolved.street.isEmpty ? 14 : 12, weight: resolved.street.isEmpty ? .regular : .medium))
+                                    .foregroundColor(resolved.street.isEmpty ? .secondary : .secondary)
+                            } else if let site = resolved.siteName, !site.isEmpty {
+                                Text(site)
                                     .font(.arial(size: 14))
                                     .foregroundColor(.secondary)
                             }

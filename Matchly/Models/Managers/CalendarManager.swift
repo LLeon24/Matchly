@@ -215,11 +215,14 @@ class CalendarManager: ObservableObject {
         if !program.specialty.isEmpty {
             notes += "Specialty: \(program.specialty)\n"
         }
-        if !program.city.isEmpty && !program.state.isEmpty {
-            notes += "Location: \(program.city), \(program.state)\n"
+        if program.hasDisplayLocation {
+            notes += "Location: \(program.displayCityState)\n"
         }
-        if let address = program.address, !address.isEmpty {
-            notes += "Address: \(address)\n"
+        let resolved = program.resolvedAddress
+        if !resolved.street.isEmpty {
+            notes += "Address: \(resolved.street)\n"
+        } else if let site = resolved.siteName, !site.isEmpty {
+            notes += "Site: \(site)\n"
         }
         if let coordinator = program.programCoordinator, !coordinator.isEmpty {
             notes += "Coordinator: \(coordinator)\n"
@@ -239,7 +242,7 @@ class CalendarManager: ObservableObject {
         notes += "\nProgram ID: \(program.id)"
         
         event.notes = notes
-        event.location = program.address ?? "\(program.city), \(program.state)"
+        event.location = calendarEventLocation(for: program)
         
         // Set alarm 1 day before
         let alarm = EKAlarm(relativeOffset: -86400) // 24 hours before
@@ -258,11 +261,14 @@ class CalendarManager: ObservableObject {
         if !program.specialty.isEmpty {
             notes += "Specialty: \(program.specialty)\n"
         }
-        if !program.city.isEmpty && !program.state.isEmpty {
-            notes += "Location: \(program.city), \(program.state)\n"
+        if program.hasDisplayLocation {
+            notes += "Location: \(program.displayCityState)\n"
         }
-        if let address = program.address, !address.isEmpty {
-            notes += "Address: \(address)\n"
+        let resolved = program.resolvedAddress
+        if !resolved.street.isEmpty {
+            notes += "Address: \(resolved.street)\n"
+        } else if let site = resolved.siteName, !site.isEmpty {
+            notes += "Site: \(site)\n"
         }
         if let coordinator = program.programCoordinator, !coordinator.isEmpty {
             notes += "Coordinator: \(coordinator)\n"
@@ -282,7 +288,7 @@ class CalendarManager: ObservableObject {
         notes += "\nProgram ID: \(program.id)"
         
         event.notes = notes
-        event.location = program.address ?? "\(program.city), \(program.state)"
+        event.location = calendarEventLocation(for: program)
     }
     
     func removeEventsForProgram(_ program: Program) throws {
@@ -305,6 +311,20 @@ class CalendarManager: ObservableObject {
         }
         
         try eventStore.commit()
+    }
+
+    private func calendarEventLocation(for program: Program) -> String {
+        let resolved = program.resolvedAddress
+        if !resolved.street.isEmpty {
+            if program.hasDisplayLocation {
+                return "\(resolved.street), \(program.displayCityState)"
+            }
+            return resolved.street
+        }
+        if let site = resolved.siteName, !site.isEmpty, program.hasDisplayLocation {
+            return "\(site), \(program.displayCityState)"
+        }
+        return program.displayCityState
     }
     
     func removeAllMatchlyEvents() throws {

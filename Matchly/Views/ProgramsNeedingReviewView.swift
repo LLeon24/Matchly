@@ -106,11 +106,11 @@ struct ProgramsNeedingReviewView: View {
                                             }
 
                                             HStack(spacing: 8) {
-                                                if !program.city.isEmpty && !program.state.isEmpty {
+                                                if program.hasDisplayLocation {
                                                     HStack(spacing: 3) {
                                                         Image(systemName: "mappin.circle.fill")
                                                             .font(.arial(size: 9))
-                                                        Text("\(program.city), \(program.state)")
+                                                        Text(program.displayCityState)
                                                             .font(.arial(size: 11))
                                                     }
                                                     .foregroundColor(.secondary)
