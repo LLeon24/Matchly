@@ -9,40 +9,57 @@
 import SwiftUI
 
 struct ContentView: View {
-    // Use @ObservedObject for singleton instances
     @ObservedObject private var dataManager = DataManager.shared
     @ObservedObject private var authManager = AuthManager.shared
-    
+
     var body: some View {
-        // Show the full interactive app
+        #if DEBUG
+        VStack(spacing: 0) {
+            MatchlyDevScreenPicker()
+            previewContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .environmentObject(dataManager)
+        .environmentObject(authManager)
+        #else
         MainTabView()
             .environmentObject(dataManager)
             .environmentObject(authManager)
+        #endif
     }
+
+    #if DEBUG
+    @AppStorage(MatchlyDevLauncher.storageKey) private var devScreenRaw = MatchlyDevLauncher.Screen.automatic.rawValue
+
+    private var devScreen: MatchlyDevLauncher.Screen {
+        MatchlyDevLauncher.Screen(rawValue: devScreenRaw) ?? .automatic
+    }
+
+    @ViewBuilder
+    private var previewContent: some View {
+        switch devScreen {
+        case .automatic, .mainApp:
+            MainTabView()
+        case .onboarding:
+            OnboardingFlowView()
+        case .auth:
+            AuthenticationView()
+        }
+    }
+    #endif
 }
 
-// Preview for the full app
-#Preview("Matchly App") {
+#Preview("Dev Launcher") {
     ContentView()
 }
 
-// Alternative previews for specific views - uncomment to test individual views
-// #Preview("Dashboard") {
-//     MatchlyNavigationView {
-//         DashboardView()
-//             .environmentObject(DataManager.shared)
-//     }
-// }
+#Preview("Full App") {
+    MainTabView()
+        .environmentObject(DataManager.shared)
+        .environmentObject(AuthManager.shared)
+}
 
-// #Preview("Programs List") {
-//     ProgramsListView()
-//         .environmentObject(DataManager.shared)
-// }
-
-// #Preview("Settings") {
-//     MatchlyNavigationView {
-//         SettingsView()
-//             .environmentObject(DataManager.shared)
-//     }
-// }
-
+#Preview("Onboarding") {
+    OnboardingFlowView()
+        .environmentObject(DataManager.shared)
+}

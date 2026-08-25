@@ -16,6 +16,9 @@ struct MatchlyApp: App {
     @ObservedObject private var coupleSync = CoupleSyncCoordinator.shared
 
     init() {
+        #if DEBUG
+        MatchlyDevLauncher.applyLaunchArgumentsIfNeeded()
+        #endif
         if FeatureFlags.couplesMatchEnabled {
             DataManager.shared.startCoupleSyncIfNeeded()
         }

@@ -33,23 +33,20 @@ enum InterviewSeasonStage: String, CaseIterable, Identifiable {
         }
     }
 
-    /// One stage per program — priority: need date → upcoming → to review → scored.
+    /// One stage per program — priority: scored → need date → upcoming → to review.
     static func stage(
         for program: Program,
         preferences: UserPreferences,
         now: Date = Date()
     ) -> InterviewSeasonStage {
+        if !program.needsScoring(preferences: preferences) {
+            return .scored
+        }
         if program.interviewDate == nil {
             return .needDate
         }
         if let date = program.interviewDate, date >= now {
             return .upcoming
-        }
-        if program.needsScoring(preferences: preferences) {
-            return .toReview
-        }
-        if program.finalScore > 0 {
-            return .scored
         }
         return .toReview
     }
