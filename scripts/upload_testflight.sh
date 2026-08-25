@@ -1,8 +1,10 @@
 #!/bin/bash
 # Archive Matchly and upload to App Store Connect (TestFlight).
 #
-# Develop with Xcode 27 beta, but upload with Xcode 26.6 CLI — Apple rejects
-# iphoneos27.0 beta SDK uploads (error 90534). Stable Xcode CLI works on macOS 27 beta.
+# Develop with Xcode 27 beta on macOS Golden Gate, but upload must use an
+# accepted Xcode 26.x toolchain. Xcode 26 does not launch on Golden Gate, and
+# Apple rejects iphoneos27.0 beta SDK uploads (ITMS-90111). Use Xcode Cloud,
+# a Tahoe Mac/VM, or an APFS volume booted into macOS 26 for archives.
 #
 # Usage: ./scripts/upload_testflight.sh
 set -euo pipefail
