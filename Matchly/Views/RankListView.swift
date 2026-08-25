@@ -233,11 +233,11 @@ struct RankListView: View {
             HStack(spacing: 10) {
                 if dataManager.programs.count >= 2 {
                     NavigationLink(destination: ProgramComparisonView()) {
-                        MatchlyFilterChipLabel(
+                        MatchlyActionChipLabel(
                             icon: "square.grid.2x2",
-                            iconColor: AppColors.primaryBlue,
-                            text: "Compare Programs",
-                            showsChevron: false
+                            text: "Compare",
+                            tint: AppColors.accentTeal,
+                            isFilled: true
                         )
                     }
                     .buttonStyle(.plain)
@@ -248,12 +248,11 @@ struct RankListView: View {
                         isEditing.toggle()
                     }
                 } label: {
-                    MatchlyFilterChipLabel(
-                        icon: "line.3.horizontal",
-                        iconColor: isEditing ? AppColors.primaryBlue : .secondary,
+                    MatchlyActionChipLabel(
+                        icon: isEditing ? "checkmark" : "line.3.horizontal",
                         text: isEditing ? "Done" : "Reorder",
-                        isActive: isEditing,
-                        showsChevron: false
+                        tint: AppColors.primaryBlue,
+                        isFilled: isEditing
                     )
                 }
                 .buttonStyle(.plain)
@@ -264,11 +263,11 @@ struct RankListView: View {
                         saveManualOrder()
                         isEditing = false
                     } label: {
-                        MatchlyFilterChipLabel(
+                        MatchlyActionChipLabel(
                             icon: "arrow.counterclockwise",
-                            iconColor: .secondary,
                             text: "Reset",
-                            showsChevron: false
+                            tint: .secondary,
+                            isFilled: false
                         )
                     }
                     .buttonStyle(.plain)
@@ -572,7 +571,7 @@ struct RankListItemView: View {
                     HStack(spacing: 5) {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .font(.arial(size: 9))
-                        Text("Flagged program ranked here")
+                        Text("Flagged program")
                             .font(.arial(size: 11, weight: .semibold))
                     }
                     .foregroundColor(.red.opacity(0.88))

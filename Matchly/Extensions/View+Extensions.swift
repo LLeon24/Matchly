@@ -106,7 +106,7 @@ struct MatchlySpecialtySectionHeader: View {
                     ? SpecialtyFormatter.displayNameWithAbbreviation(specialty)
                     : SpecialtyFormatter.abbreviation(for: specialty)
             )
-            .font(.arial(size: 13, weight: .regular))
+            .font(.arial(size: 13, weight: .semibold))
             .foregroundColor(color)
             .kerning(0.3)
         }

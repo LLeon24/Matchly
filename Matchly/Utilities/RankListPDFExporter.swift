@@ -291,7 +291,7 @@ private struct DrawState {
                 .font: Fonts.semibold(8),
                 .foregroundColor: Colors.red.withAlphaComponent(0.9)
             ]
-            "Flagged program ranked here".draw(
+            "Flagged program".draw(
                 in: bannerRect.insetBy(dx: 6, dy: 2),
                 withAttributes: bannerAttributes
             )
