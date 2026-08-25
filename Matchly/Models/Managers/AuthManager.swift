@@ -95,6 +95,7 @@ class AuthManager: ObservableObject {
     /// Keychain identifiers for the persisted Apple login id.
     private static let keychainService = "com.matchly.auth"
     private static let keychainAppleUserAccount = "apple_user_id"
+    private static let keychainAppleDisplayNameAccount = "apple_display_name"
     private static let keychainCachedUserAccount = "cached_user_session"
     private static let biometricEnabledKey = "matchly_biometric_login_enabled"
     private static let biometricOfferDeclinedKey = "matchly_biometric_offer_declined"
@@ -188,6 +189,7 @@ class AuthManager: ObservableObject {
         guard let firebaseUser = Auth.auth().currentUser else { return }
         let user = makeUser(from: firebaseUser, existing: currentUser)
         signIn(user: user)
+        repairStoredDisplayNames()
     }
     
     // MARK: - Auth State Management
@@ -204,6 +206,7 @@ class AuthManager: ObservableObject {
             if isBiometricLoginEnabled && BiometricAuthManager.shared.canAuthenticate {
                 self.isAppLocked = true
             }
+            repairStoredDisplayNames()
         } else {
             self.authState = .signedOut
             self.isAppLocked = false
@@ -227,6 +230,11 @@ class AuthManager: ObservableObject {
         if updatedUser.displayName == nil, let existing = self.currentUser {
             updatedUser.displayName = existing.displayName
         }
+
+        updatedUser.displayName = Self.sanitizedDisplayName(
+            updatedUser.displayName,
+            email: updatedUser.email
+        )
         
         if let encoded = try? JSONEncoder().encode(updatedUser) {
             UserDefaults.standard.set(encoded, forKey: authKey)
@@ -243,7 +251,15 @@ class AuthManager: ObservableObject {
 
         Task {
             _ = await DataManager.shared.mergeWithAccountCloudIfNeeded(trigger: "signIn")
-            DataManager.shared.applyAuthDisplayNameToProfileIfNeeded(updatedUser.displayName)
+            let profileName = DataManager.shared.preferences.profile.name
+            if let resolvedName = resolvedAuthDisplayName(
+                stored: updatedUser.displayName,
+                profileName: profileName,
+                email: updatedUser.email
+            ) {
+                DataManager.shared.applyAuthDisplayNameToProfileIfNeeded(resolvedName)
+            }
+            DataManager.shared.clearEmailDerivedProfileNameIfNeeded(email: updatedUser.email)
         }
     }
 
@@ -376,30 +392,37 @@ class AuthManager: ObservableObject {
 
         if !isBiometricLoginEnabled {
             Self.keychainDelete(account: Self.keychainAppleUserAccount)
+            Self.keychainDelete(account: Self.keychainAppleDisplayNameAccount)
             Self.keychainDelete(account: Self.keychainCachedUserAccount)
         }
     }
 
-    /// Best available name for UI: auth display name, profile name, email local-part, then fallback.
+    /// Best available name for UI: profile name, auth display name, cached Apple name — never the email prefix.
     func preferredDisplayName(profileName: String = "") -> String {
-        if let displayName = currentUser?.displayName?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !displayName.isEmpty {
-            return displayName
-        }
         let trimmedProfile = profileName.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedProfile.isEmpty {
+        if !trimmedProfile.isEmpty,
+           !Self.isEmailDerivedDisplayName(trimmedProfile, email: currentUser?.email) {
             return trimmedProfile
         }
-        if let email = currentUser?.email?.trimmingCharacters(in: .whitespacesAndNewlines), !email.isEmpty {
-            let localPart = email.components(separatedBy: "@").first ?? ""
-            if !localPart.isEmpty {
-                return localPart.capitalized
-            }
-            return email
+
+        if let displayName = currentUser?.displayName?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !displayName.isEmpty,
+           !Self.isEmailDerivedDisplayName(displayName, email: currentUser?.email) {
+            return displayName
         }
-        if let phone = currentUser?.phoneNumber, !phone.isEmpty {
-            return phone
+
+        if let cachedAppleName = Self.keychainRead(account: Self.keychainAppleDisplayNameAccount)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !cachedAppleName.isEmpty {
+            return cachedAppleName
         }
+
+        if let firebaseName = Auth.auth().currentUser?.displayName?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !firebaseName.isEmpty,
+           !Self.isEmailDerivedDisplayName(firebaseName, email: currentUser?.email) {
+            return firebaseName
+        }
+
         return "User"
     }
 
@@ -556,11 +579,11 @@ class AuthManager: ObservableObject {
         }()
 
         var displayName: String? = existingUser?.displayName
-        if let givenName = appleIDCredential.fullName?.givenName,
-           let familyName = appleIDCredential.fullName?.familyName {
-            displayName = "\(givenName) \(familyName)"
-        } else if let givenName = appleIDCredential.fullName?.givenName {
-            displayName = givenName
+        if let appleName = Self.formattedDisplayName(from: appleIDCredential.fullName) {
+            displayName = appleName
+            Self.keychainSave(appleName, account: Self.keychainAppleDisplayNameAccount)
+        } else if displayName == nil || displayName?.isEmpty == true {
+            displayName = Self.keychainRead(account: Self.keychainAppleDisplayNameAccount)
         }
 
         do {
@@ -570,14 +593,15 @@ class AuthManager: ObservableObject {
                 fullName: appleIDCredential.fullName
             )
             let authResult = try await Auth.auth().signIn(with: credential)
+            try? await authResult.user.reload()
 
-            var finalDisplayName = displayName ?? authResult.user.displayName ?? existingUser?.displayName
-            let email = appleIDCredential.email ?? authResult.user.email ?? existingUser?.email
-            if (finalDisplayName == nil || finalDisplayName?.isEmpty == true),
-               let email, !email.isEmpty {
-                let local = email.components(separatedBy: "@").first ?? ""
-                if !local.isEmpty { finalDisplayName = local.capitalized }
-            }
+            var finalDisplayName = Self.firstNonEmpty([
+                displayName,
+                authResult.user.displayName,
+                existingUser?.displayName,
+                Self.keychainRead(account: Self.keychainAppleDisplayNameAccount)
+            ])
+            finalDisplayName = Self.sanitizedDisplayName(finalDisplayName, email: appleIDCredential.email ?? authResult.user.email ?? existingUser?.email)
 
             if let finalDisplayName,
                authResult.user.displayName == nil || authResult.user.displayName?.isEmpty == true {
@@ -669,17 +693,21 @@ class AuthManager: ObservableObject {
         existing: User?
     ) -> User {
         let resolvedProvider = provider ?? Self.provider(for: firebaseUser) ?? existing?.provider ?? .email
-        var name = displayName ?? firebaseUser.displayName ?? existing?.displayName
-        if (name == nil || name?.isEmpty == true),
-           let email = firebaseUser.email ?? existing?.email {
-            let local = email.components(separatedBy: "@").first ?? ""
-            if !local.isEmpty { name = local.capitalized }
-        }
+        let email = firebaseUser.email ?? existing?.email
+        let resolvedName = Self.sanitizedDisplayName(
+            Self.firstNonEmpty([
+                displayName,
+                firebaseUser.displayName,
+                existing?.displayName,
+                Self.keychainRead(account: Self.keychainAppleDisplayNameAccount)
+            ]),
+            email: email
+        )
         return User(
             id: firebaseUser.uid,
-            email: firebaseUser.email ?? existing?.email,
+            email: email,
             phoneNumber: firebaseUser.phoneNumber ?? existing?.phoneNumber,
-            displayName: name,
+            displayName: resolvedName,
             photoURL: firebaseUser.photoURL?.absoluteString ?? existing?.photoURL,
             provider: resolvedProvider,
             cloudKitUserRecordName: existing?.cloudKitUserRecordName,
@@ -872,6 +900,88 @@ class AuthManager: ObservableObject {
         let inputData = Data(input.utf8)
         let hashed = SHA256.hash(data: inputData)
         return hashed.map { String(format: "%02x", $0) }.joined()
+    }
+
+    // MARK: - Display Name Helpers
+
+    static func formattedDisplayName(from components: PersonNameComponents?) -> String? {
+        guard let components else { return nil }
+        let formatter = PersonNameComponentsFormatter()
+        formatter.style = .default
+        let formatted = formatter.string(from: components)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return formatted.isEmpty ? nil : formatted
+    }
+
+    static func isEmailDerivedDisplayName(_ name: String, email: String?) -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let email else { return false }
+        let localPart = email.components(separatedBy: "@").first?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !localPart.isEmpty else { return false }
+        return trimmed.caseInsensitiveCompare(localPart) == .orderedSame
+            || trimmed.caseInsensitiveCompare(localPart.capitalized) == .orderedSame
+    }
+
+    static func sanitizedDisplayName(_ name: String?, email: String?) -> String? {
+        guard let name = name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else {
+            return nil
+        }
+        if isEmailDerivedDisplayName(name, email: email) {
+            return nil
+        }
+        return name
+    }
+
+    private static func firstNonEmpty(_ values: [String?]) -> String? {
+        for value in values {
+            let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !trimmed.isEmpty {
+                return trimmed
+            }
+        }
+        return nil
+    }
+
+    private func resolvedAuthDisplayName(stored: String?, profileName: String, email: String?) -> String? {
+        Self.sanitizedDisplayName(
+            Self.firstNonEmpty([
+                stored,
+                profileName,
+                Self.keychainRead(account: Self.keychainAppleDisplayNameAccount),
+                Auth.auth().currentUser?.displayName
+            ]),
+            email: email
+        )
+    }
+
+    @MainActor
+    private func repairStoredDisplayNames() {
+        guard var user = currentUser else { return }
+
+        let repaired = Self.sanitizedDisplayName(
+            Self.firstNonEmpty([
+                user.displayName,
+                Auth.auth().currentUser?.displayName,
+                Self.keychainRead(account: Self.keychainAppleDisplayNameAccount),
+                DataManager.shared.preferences.profile.name
+            ]),
+            email: user.email
+        )
+
+        if user.displayName != repaired {
+            user.displayName = repaired
+            persist(user)
+            if isBiometricLoginEnabled {
+                cacheUserForBiometricLogin(user)
+            }
+        }
+
+        DataManager.shared.clearEmailDerivedProfileNameIfNeeded(email: user.email)
+
+        if let repaired, !repaired.isEmpty {
+            DataManager.shared.applyAuthDisplayNameToProfileIfNeeded(repaired)
+        }
     }
 
     // MARK: - Keychain

@@ -313,6 +313,9 @@ class DataManager: ObservableObject {
     func applyAuthDisplayNameToProfileIfNeeded(_ displayName: String?) {
         guard let displayName = displayName?.trimmingCharacters(in: .whitespacesAndNewlines),
               !displayName.isEmpty else { return }
+        guard !AuthManager.isEmailDerivedDisplayName(displayName, email: AuthManager.shared.currentUser?.email) else {
+            return
+        }
 
         let split = UserProfile.splitLegacyName(displayName)
         var profile = preferences.profile
@@ -332,6 +335,32 @@ class DataManager: ObservableObject {
         savePreferences()
         objectWillChange.send()
         Self.logger.info("Applied auth display name to profile")
+    }
+
+    /// Removes profile names that were incorrectly copied from an email prefix (e.g. "Lleon").
+    @MainActor
+    func clearEmailDerivedProfileNameIfNeeded(email: String?) {
+        guard let email else { return }
+        var profile = preferences.profile
+        var changed = false
+
+        let first = profile.firstName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let last = profile.lastName.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if AuthManager.isEmailDerivedDisplayName(first, email: email) {
+            profile.firstName = ""
+            changed = true
+        }
+        if !last.isEmpty, AuthManager.isEmailDerivedDisplayName(profile.name, email: email) {
+            profile.lastName = ""
+            changed = true
+        }
+
+        guard changed else { return }
+        preferences.profile = profile
+        savePreferences()
+        objectWillChange.send()
+        Self.logger.info("Cleared email-derived profile name")
     }
     
     func loadData() {
