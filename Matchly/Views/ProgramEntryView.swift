@@ -82,6 +82,8 @@ struct ProgramEntryView: View {
 
     /// Positions the next question below mid-screen so the just-answered question stays visible above.
     private static let nextQuestionScrollAnchor = UnitPoint(x: 0.5, y: 0.42)
+    private static let questionScrollAnimation = Animation.easeInOut(duration: 0.2)
+    private static let questionScrollDelay: TimeInterval = 0.08
     
     init(program: Program?, scrollToFirstMissing: Bool = false) {
         self.program = program
@@ -164,6 +166,7 @@ struct ProgramEntryView: View {
                             .padding(.horizontal, 20)
                             .padding(.vertical, 14)
                     }
+                    .id("program-entry-top")
                     .glassEffect(.regular, in: .rect(cornerRadius: 16))
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
@@ -244,9 +247,9 @@ struct ProgramEntryView: View {
                             }
                             .onChange(of: isNotesFocused) { oldValue, newValue in
                                 if newValue {
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                                         if let proxy = scrollProxy {
-                                            withAnimation(.easeInOut(duration: 0.3)) {
+                                            withAnimation(Self.questionScrollAnimation) {
                                                 proxy.scrollTo("notes-section", anchor: .center)
                                             }
                                         }
@@ -956,6 +959,10 @@ struct ProgramEntryView: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
                         scrollToFirstUnansweredQuestion()
                     }
+                } else {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        scrollProxy?.scrollTo("program-entry-top", anchor: .top)
+                    }
                 }
             }
     }
@@ -1390,9 +1397,9 @@ struct ProgramEntryView: View {
 
         let questionId = "\(sectionId)-\(itemId)"
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.questionScrollDelay) {
             if let proxy = scrollProxy {
-                withAnimation(.easeInOut(duration: 0.35)) {
+                withAnimation(Self.questionScrollAnimation) {
                     proxy.scrollTo(questionId, anchor: Self.nextQuestionScrollAnchor)
                 }
             }

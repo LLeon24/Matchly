@@ -459,10 +459,7 @@ struct RankListView: View {
             Section(header: unrankedHeader) {
                 ForEach(unrankedPrograms) { program in
                     NavigationLink(
-                        destination: ProgramEntryView(
-                            program: program,
-                            scrollToFirstMissing: program.needsScoring(preferences: dataManager.preferences)
-                        )
+                        destination: ProgramEntryView(program: program)
                     ) {
                         UnrankedProgramRow(program: program, reason: unrankedReason(for: program))
                     }

@@ -206,6 +206,7 @@ struct MatchlyNavigationView<Content: View>: View {
     var body: some View {
         NavigationStack {
             content()
+                .matchlyKeyboardDismissToolbar()
         }
     }
 }
@@ -328,6 +329,22 @@ struct DashboardCardStyle: ViewModifier {
 extension View {
     func hideKeyboard() {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+
+    /// Adds a keyboard accessory bar with a hide-keyboard control.
+    func matchlyKeyboardDismissToolbar() -> some View {
+        toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button {
+                    hideKeyboard()
+                } label: {
+                    Image(systemName: "keyboard.chevron.compact.down")
+                        .font(.arial(size: 16, weight: .semibold))
+                }
+                .accessibilityLabel("Hide keyboard")
+            }
+        }
     }
 }
 

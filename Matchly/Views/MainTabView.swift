@@ -92,6 +92,7 @@ struct MainTabView: View {
             }
         }
         .matchlyAdaptiveLayout()
+        .matchlyKeyboardDismissToolbar()
         .environmentObject(dataManager)
         .onAppear {
             if FeatureFlags.couplesMatchEnabled {

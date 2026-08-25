@@ -56,10 +56,7 @@ struct ProgramsNeedingReviewView: View {
                         ) {
                             ForEach(groupedPrograms[specialty] ?? []) { program in
                                 NavigationLink(
-                                    destination: ProgramEntryView(
-                                        program: program,
-                                        scrollToFirstMissing: true
-                                    )
+                                    destination: ProgramEntryView(program: program)
                                 ) {
                                     let completionRatio = program.questionnaireCompletionRatio(preferences: dataManager.preferences)
                                     let completionPercent = Int((completionRatio * 100).rounded())
