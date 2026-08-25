@@ -86,6 +86,7 @@ struct SplashView: View {
                     .zIndex(20)
             }
         }
+        .matchlyKeyboardDismissOverlay()
         .alert(
             "Use \(authManager.biometricDisplayName)?",
             isPresented: $showBiometricSetupAlert

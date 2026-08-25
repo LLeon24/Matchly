@@ -56,7 +56,7 @@ struct InterviewsView: View {
                 ],
                 selection: $viewMode
             )
-            .padding(.bottom, 8)
+            .padding(.bottom, 2)
             
             if viewMode == .list {
                 listView
@@ -198,12 +198,11 @@ struct InterviewsView: View {
                     Toggle("", isOn: calendarSyncBinding)
                         .labelsHidden()
                 }
-                .padding(.vertical, 4)
+                .padding(.vertical, 2)
                 .listRowBackground(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .fill(.clear)
                         .glassEffect(.regular, in: .rect(cornerRadius: 16))
-                        .padding(.vertical, 4)
                 )
             }
             
@@ -216,8 +215,6 @@ struct InterviewsView: View {
                     }
                 } header: {
                     interviewsSectionHeader("Needs a Date (\(programsNeedingDates.count))")
-                } footer: {
-                    Text("Tap a program to add its interview date and time.")
                 }
             }
             
@@ -270,6 +267,7 @@ struct InterviewsView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .contentMargins(.top, 0, for: .scrollContent)
         .scrollContentBackground(.hidden)
         .matchlyScrollTabBarClearance()
     }

@@ -654,23 +654,32 @@ struct InterviewPrepView: View {
     }
 
     private var redFlagsReminderCard: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "flag.fill")
-                .font(.arial(size: 14))
-                .foregroundColor(.red)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("You flagged concerns for this program")
-                    .font(.arial(size: 14, weight: .semibold))
-                    .foregroundColor(.primary)
-                Text("Review your red flags before the interview so you can ask thoughtful follow-up questions.")
-                    .font(.arial(size: 12))
+        NavigationLink(destination: ProgramEntryView(program: liveProgram, scrollToRedFlags: true)) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "flag.fill")
+                    .font(.arial(size: 14))
+                    .foregroundColor(.red)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("You flagged concerns for this program")
+                        .font(.arial(size: 14, weight: .semibold))
+                        .foregroundColor(.primary)
+                    Text("Review your red flags before the interview so you can ask thoughtful follow-up questions.")
+                        .font(.arial(size: 12))
+                        .foregroundColor(.secondary)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.arial(size: 12, weight: .semibold))
                     .foregroundColor(.secondary)
+                    .padding(.top, 2)
             }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.red.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.red.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .buttonStyle(.plain)
     }
 
     private var notesCard: some View {

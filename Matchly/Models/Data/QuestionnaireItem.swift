@@ -373,6 +373,25 @@ struct Questionnaire: Codable, Equatable {
         unansweredQuestions(preferences: preferences).first
     }
 
+    /// First red-flag question the user marked Yes (or No on inverted positive questions).
+    func firstFlaggedRedFlagQuestion() -> QuestionnaireQuestionRef? {
+        let positiveYesNoQuestions = [
+            "Do you feel you could see yourself living"
+        ]
+
+        for section in sections + customSections {
+            guard isRedFlagSection(section) else { continue }
+            for item in section.items {
+                let isPositiveQuestion = positiveYesNoQuestions.contains { item.question.contains($0) }
+                let isFlagged = isPositiveQuestion ? item.programRating == 2 : item.programRating == 1
+                if isFlagged {
+                    return QuestionnaireQuestionRef(sectionId: section.id, itemId: item.id)
+                }
+            }
+        }
+        return nil
+    }
+
     func unansweredCount(preferences: UserPreferences) -> Int {
         unansweredQuestions(preferences: preferences).count
     }

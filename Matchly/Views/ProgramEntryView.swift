@@ -21,6 +21,7 @@ struct ProgramEntryView: View {
     
     let program: Program?
     let scrollToFirstMissing: Bool
+    let scrollToRedFlags: Bool
     
     @State private var specialty: String = ""
     @State private var name: String = ""
@@ -85,9 +86,10 @@ struct ProgramEntryView: View {
     private static let questionScrollAnimation = Animation.easeInOut(duration: 0.2)
     private static let questionScrollDelay: TimeInterval = 0.08
     
-    init(program: Program?, scrollToFirstMissing: Bool = false) {
+    init(program: Program?, scrollToFirstMissing: Bool = false, scrollToRedFlags: Bool = false) {
         self.program = program
         self.scrollToFirstMissing = scrollToFirstMissing
+        self.scrollToRedFlags = scrollToRedFlags
     }
     
     // MARK: - Form Content (now using ScrollView for better scrolling)
@@ -955,7 +957,11 @@ struct ProgramEntryView: View {
                     expandedSections.insert(sectionA.id)
                 }
 
-                if scrollToFirstMissing {
+                if scrollToRedFlags {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                        scrollToFirstRedFlag()
+                    }
+                } else if scrollToFirstMissing {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
                         scrollToFirstUnansweredQuestion()
                     }
@@ -1395,6 +1401,11 @@ struct ProgramEntryView: View {
 
     private func scrollToFirstUnansweredQuestion() {
         guard let target = questionnaire.firstUnansweredQuestion(preferences: dataManager.preferences) else { return }
+        scrollToQuestion(sectionId: target.sectionId, itemId: target.itemId)
+    }
+
+    private func scrollToFirstRedFlag() {
+        guard let target = questionnaire.firstFlaggedRedFlagQuestion() else { return }
         scrollToQuestion(sectionId: target.sectionId, itemId: target.itemId)
     }
 

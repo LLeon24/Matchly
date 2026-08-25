@@ -25,6 +25,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         if FeatureFlags.couplesMatchEnabled {
             CoupleNotificationService.shared.configure()
         }
+
+        KeyboardDismissAccessoryManager.installIfNeeded()
         return true
     }
 

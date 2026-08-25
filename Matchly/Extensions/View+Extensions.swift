@@ -206,8 +206,8 @@ struct MatchlyNavigationView<Content: View>: View {
     var body: some View {
         NavigationStack {
             content()
-                .matchlyKeyboardDismissToolbar()
         }
+        .matchlyKeyboardDismissToolbar()
     }
 }
 
@@ -331,20 +331,89 @@ extension View {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
+    /// Floating Done bar above the keyboard. Works on pushed navigation destinations where
+    /// `.toolbar(placement: .keyboard)` does not.
+    func matchlyKeyboardDismissOverlay() -> some View {
+        modifier(MatchlyKeyboardDismissOverlayModifier())
+    }
+
     /// Adds a keyboard accessory bar with a hide-keyboard control.
     func matchlyKeyboardDismissToolbar() -> some View {
         toolbar {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
-                Button {
+                Button("Done") {
                     hideKeyboard()
-                } label: {
-                    Image(systemName: "keyboard.chevron.compact.down")
-                        .font(.arial(size: 16, weight: .semibold))
                 }
-                .accessibilityLabel("Hide keyboard")
+                .font(.arial(size: 15, weight: .semibold))
             }
         }
+    }
+}
+
+private struct MatchlyKeyboardDismissOverlayModifier: ViewModifier {
+    @State private var keyboardHeight: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(alignment: .bottom) {
+                if keyboardHeight > 0 {
+                    keyboardAccessoryBar
+                        .padding(.bottom, keyboardHeight)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .zIndex(1000)
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { notification in
+                guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+                withAnimation(keyboardAnimation(from: notification)) {
+                    keyboardHeight = frame.height
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { notification in
+                withAnimation(keyboardAnimation(from: notification)) {
+                    keyboardHeight = 0
+                }
+            }
+    }
+
+    private var keyboardAccessoryBar: some View {
+        HStack(spacing: 16) {
+            Spacer()
+            Button {
+                hideKeyboard()
+            } label: {
+                Image(systemName: "keyboard.chevron.compact.down")
+                    .font(.system(size: 17, weight: .medium))
+            }
+            .accessibilityLabel("Hide keyboard")
+
+            Button("Done") {
+                hideKeyboard()
+            }
+            .font(.arial(size: 17, weight: .semibold))
+        }
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity)
+        .frame(height: 44)
+        .background(.bar)
+        .overlay(alignment: .top) {
+            Divider()
+        }
+    }
+
+    private func keyboardAnimation(from notification: Notification) -> Animation {
+        let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
+        return .easeOut(duration: duration)
+    }
+
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+        )
     }
 }
 

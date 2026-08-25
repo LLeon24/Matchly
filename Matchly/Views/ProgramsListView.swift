@@ -395,6 +395,18 @@ struct CompactProgramRowView: View {
     private var showsIncompleteBadge: Bool {
         program.needsScoring(preferences: dataManager.preferences)
     }
+
+    private var completionPercent: Int {
+        Int((completionRatio * 100).rounded())
+    }
+
+    private var completionTint: Color {
+        switch completionPercent {
+        case 80...: return AppColors.accentGreen
+        case 50..<80: return AppColors.pipelineNeedDate
+        default: return AppColors.pipelineToReview
+        }
+    }
     
     var body: some View {
         HStack(spacing: 12) {
@@ -434,8 +446,18 @@ struct CompactProgramRowView: View {
                 
                 SavedProgramIMGBadge(program: program)
                 
-                // Signal and Red Flags on third line
+                // Signal, red flags, and questionnaire status
                 HStack(spacing: 8) {
+                    if showsIncompleteBadge {
+                        HStack(spacing: 3) {
+                            Image(systemName: completionPercent == 0 ? "circle" : "circle.lefthalf.filled")
+                                .font(.arial(size: 8))
+                            Text(completionPercent == 0 ? "Questionnaire not started" : "Questionnaire \(completionPercent)% complete")
+                                .font(.arial(size: 10, weight: .medium))
+                        }
+                        .foregroundColor(completionTint)
+                    }
+
                     // Signal indicator - clear tag showing signal type
                     if program.signalType != .none {
                         let isTiered = SignalLimits.isTiered(for: program.specialty)
