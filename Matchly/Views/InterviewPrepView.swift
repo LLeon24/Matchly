@@ -467,6 +467,8 @@ struct InterviewPrepView: View {
                     ClearableTextField("Type your own question…", text: $newCustomQuestionText, axis: .vertical)
                         .lineLimit(1...3)
                         .font(.arial(size: 14))
+                        .submitLabel(.done)
+                        .onSubmit { hideKeyboard() }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 10)
                         .background(Color.primary.opacity(0.04))

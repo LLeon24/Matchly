@@ -217,7 +217,6 @@ struct MatchlyNavigationView<Content: View>: View {
         NavigationStack {
             content()
         }
-        .matchlyKeyboardDismissToolbar()
     }
 }
 

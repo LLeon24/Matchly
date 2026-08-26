@@ -124,7 +124,6 @@ struct OnboardingFlowView: View {
                 selectedPhoto = nil
             }
         }
-        .matchlyKeyboardDismissToolbar()
     }
     
     // MARK: - Progress Indicator
