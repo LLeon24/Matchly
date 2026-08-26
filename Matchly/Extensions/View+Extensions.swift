@@ -217,6 +217,7 @@ struct MatchlyNavigationView<Content: View>: View {
         NavigationStack {
             content()
         }
+        .matchlyKeyboardDismissToolbar()
     }
 }
 
@@ -376,7 +377,7 @@ private struct MatchlyKeyboardDismissOverlayModifier: ViewModifier {
             .ignoresSafeArea(.keyboard, edges: .bottom)
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { notification in
                 guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
-                let inset = max(0, UIScreen.main.bounds.height - frame.origin.y)
+                let inset = max(0, frame.height)
                 withAnimation(keyboardAnimation(from: notification)) {
                     keyboardHeight = inset
                 }

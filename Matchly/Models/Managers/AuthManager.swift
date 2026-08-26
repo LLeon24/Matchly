@@ -789,8 +789,11 @@ class AuthManager: ObservableObject {
             return UIWindow(windowScene: windowScene)
         }
 
-        Self.logger.error("Apple Sign In: No window scene available — using fallback window")
-        return UIWindow(frame: UIScreen.main.bounds)
+        Self.logger.error("Apple Sign In: No window scene available")
+        if #unavailable(iOS 26.0) {
+            return UIWindow(frame: UIScreen.main.bounds)
+        }
+        preconditionFailure("Apple Sign In requires an active window scene")
     }
 
     // MARK: - CloudKit Identity

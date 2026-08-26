@@ -139,7 +139,6 @@ struct InterviewPrepView: View {
         .matchlyScrollTabBarClearance()
         .navigationTitle("Interview Prep")
         .navigationBarTitleDisplayMode(.inline)
-        .matchlyKeyboardDismissToolbar()
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {

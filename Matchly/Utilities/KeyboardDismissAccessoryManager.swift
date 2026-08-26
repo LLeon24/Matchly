@@ -15,17 +15,7 @@ enum KeyboardDismissAccessoryManager {
         guard !isInstalled else { return }
         isInstalled = true
 
-        NotificationCenter.default.addObserver(
-            forName: UITextField.textDidBeginEditingNotification,
-            object: nil,
-            queue: .main
-        ) { notification in
-            guard let field = notification.object as? UITextField else { return }
-            DispatchQueue.main.async {
-                attachToolbar(to: field)
-            }
-        }
-
+        // SwiftUI screens use `.matchlyKeyboardDismissToolbar()`; only hook multi-line UIKit editors here.
         NotificationCenter.default.addObserver(
             forName: UITextView.textDidBeginEditingNotification,
             object: nil,
@@ -36,11 +26,6 @@ enum KeyboardDismissAccessoryManager {
                 attachToolbar(to: textView)
             }
         }
-    }
-
-    private static func attachToolbar(to field: UITextField) {
-        if field.inputAccessoryView?.tag == toolbarTag { return }
-        field.inputAccessoryView = makeToolbar()
     }
 
     private static func attachToolbar(to textView: UITextView) {
@@ -71,14 +56,21 @@ enum KeyboardDismissAccessoryManager {
 
         let flex = UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil)
         let done = UIBarButtonItem(
-            image: UIImage(systemName: "checkmark"),
-            style: .done,
+            title: "Done",
+            style: keyboardDoneBarButtonStyle,
             target: KeyboardDismissTarget.shared,
             action: #selector(KeyboardDismissTarget.dismissKeyboard)
         )
         done.accessibilityLabel = "Hide keyboard"
         toolbar.items = [previous, next, flex, done]
         return toolbar
+    }
+
+    private static var keyboardDoneBarButtonStyle: UIBarButtonItem.Style {
+        if #available(iOS 26.0, *) {
+            return .prominent
+        }
+        return .done
     }
 }
 

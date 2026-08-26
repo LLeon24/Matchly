@@ -243,6 +243,7 @@ struct AuthenticationView: View {
         } message: {
             Text(errorMessage)
         }
+        .matchlyKeyboardDismissToolbar()
     }
 
     private func signInWithBiometrics() {

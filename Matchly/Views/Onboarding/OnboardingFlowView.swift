@@ -124,6 +124,7 @@ struct OnboardingFlowView: View {
                 selectedPhoto = nil
             }
         }
+        .matchlyKeyboardDismissToolbar()
     }
     
     // MARK: - Progress Indicator
@@ -529,7 +530,7 @@ struct OnboardingFlowView: View {
             loadMatchPreferencesState()
         }
         .sheet(isPresented: $showQuestionnaireCustomization) {
-            NavigationStack {
+            MatchlyNavigationView {
                 QuestionnaireCustomizationView()
                     .environmentObject(dataManager)
                     .navigationTitle("Program Scoring")
