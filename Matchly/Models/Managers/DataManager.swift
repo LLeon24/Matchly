@@ -35,7 +35,11 @@ class DataManager: ObservableObject {
     private var isApplyingRemoteCloudSnapshot = false
     private var isApplyingAccountCloudSnapshot = false
     private var accountCloudPushWorkItem: DispatchWorkItem?
+    private var cloudMergeWorkItem: DispatchWorkItem?
+    private var lastCloudMergeAt: Date?
+    private var lastAccountCloudMergeAt: Date?
     private let manualRankOrderKey = "manual_rank_order"
+    private static let cloudMergeDebounce: TimeInterval = 45
     
     // Performance optimization: Debounce save operations
     private var saveProgramsWorkItem: DispatchWorkItem?
@@ -100,31 +104,54 @@ class DataManager: ObservableObject {
         observeCatalogReadiness()
         observeCloudSyncTriggers()
         validateAndSanitizeSignals()
-        DispatchQueue.main.async { [weak self] in
-            self?.mergeWithCloudIfNeeded(trigger: "launch")
-            Task { [weak self] in
-                await self?.mergeWithAccountCloudIfNeeded(trigger: "launch")
-            }
-        }
+        // Defer cloud sync so the first frame can render from local storage.
+        scheduleCloudMerge(trigger: "launch", delay: 1.25)
+        scheduleAccountCloudMerge(trigger: "launch", delay: 1.75)
     }
 
     private func observeCloudSyncTriggers() {
         NotificationCenter.default.publisher(for: .matchlyCloudDataDidChange)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
-                self?.mergeWithCloudIfNeeded(trigger: "icloud-external")
+                self?.scheduleCloudMerge(trigger: "icloud-external", delay: 0.5)
             }
             .store(in: &cancellables)
 
         NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
-                self?.mergeWithCloudIfNeeded(trigger: "foreground")
-                Task { [weak self] in
-                    await self?.mergeWithAccountCloudIfNeeded(trigger: "foreground")
-                }
+                self?.scheduleCloudMerge(trigger: "foreground", delay: 0.75)
+                self?.scheduleAccountCloudMerge(trigger: "foreground", delay: 1.0)
             }
             .store(in: &cancellables)
+    }
+
+    private func scheduleCloudMerge(trigger: String, delay: TimeInterval) {
+        cloudMergeWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            Task { await self?.mergeWithCloudIfNeeded(trigger: trigger) }
+        }
+        cloudMergeWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    private func scheduleAccountCloudMerge(trigger: String, delay: TimeInterval) {
+        let work = DispatchWorkItem { [weak self] in
+            Task { await self?.mergeWithAccountCloudIfNeeded(trigger: trigger) }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    private func shouldDebounceCloudMerge(trigger: String) -> Bool {
+        guard trigger != "launch" else { return false }
+        guard let lastCloudMergeAt else { return false }
+        return Date().timeIntervalSince(lastCloudMergeAt) < Self.cloudMergeDebounce
+    }
+
+    private func shouldDebounceAccountCloudMerge(trigger: String) -> Bool {
+        guard trigger != "launch" else { return false }
+        guard let lastAccountCloudMergeAt else { return false }
+        return Date().timeIntervalSince(lastAccountCloudMergeAt) < Self.cloudMergeDebounce
     }
 
     private func observeCatalogReadiness() {
@@ -286,11 +313,7 @@ class DataManager: ObservableObject {
                 preferences = decoded
             } catch {
                 Self.logger.error("Error loading preferences: \(error.localizedDescription, privacy: .public)")
-                // Try to load from iCloud as backup
-                if let cloudData = cloudSync.loadFromCloud().preferences {
-                    preferences = cloudData
-                    Self.logger.info("Loaded preferences from iCloud backup")
-                }
+                // Keep local defaults; deferred cloud merge may restore preferences later.
             }
         }
         applyInterviewPrepListMigrationIfNeeded(persist: true)
@@ -309,11 +332,12 @@ class DataManager: ObservableObject {
     }
 
     /// Fills empty profile name fields from Apple/Google/email auth display names.
+    /// Pass `authEmail` when called from auth flows so we never touch `AuthManager.shared` during singleton init.
     @MainActor
-    func applyAuthDisplayNameToProfileIfNeeded(_ displayName: String?) {
+    func applyAuthDisplayNameToProfileIfNeeded(_ displayName: String?, authEmail: String? = nil) {
         guard let displayName = displayName?.trimmingCharacters(in: .whitespacesAndNewlines),
               !displayName.isEmpty else { return }
-        guard !AuthManager.isEmailDerivedDisplayName(displayName, email: AuthManager.shared.currentUser?.email) else {
+        guard !AuthManager.isEmailDerivedDisplayName(displayName, email: authEmail) else {
             return
         }
 
@@ -365,9 +389,32 @@ class DataManager: ObservableObject {
     
     func loadData() {
         loadPrograms()
+        deduplicateProgramsByID()
         deduplicateSavedPrograms()
         loadPreferences()
-        recalculateAllScores()
+        DispatchQueue.main.async { [weak self] in
+            self?.recalculateAllScores()
+        }
+    }
+
+    /// Removes duplicate program IDs (keeps the first entry). Prevents SwiftUI `ForEach` and
+    /// `Dictionary(uniqueKeysWithValues:)` crashes when cloud sync merges stale snapshots.
+    private func deduplicateProgramsByID() {
+        var seen = Set<String>()
+        var unique: [Program] = []
+        var removed = 0
+        for program in programs {
+            if seen.contains(program.id) {
+                removed += 1
+            } else {
+                seen.insert(program.id)
+                unique.append(program)
+            }
+        }
+        guard removed > 0 else { return }
+        programs = unique
+        savePrograms()
+        Self.logger.info("Removed \(removed, privacy: .public) duplicate program ID(s)")
     }
 
     /// Removes duplicate saved programs, keeping the earliest entry for each ACGME listing.
@@ -430,11 +477,15 @@ class DataManager: ObservableObject {
         UserDefaults.standard.set(date.timeIntervalSince1970, forKey: localPreferencesUpdatedAtKey)
     }
 
+    @MainActor
     @discardableResult
-    func mergeWithCloudIfNeeded(trigger: String) -> CloudSyncMergeOutcome {
+    func mergeWithCloudIfNeeded(trigger: String) async -> CloudSyncMergeOutcome {
         guard cloudSync.isCloudAvailable, !isApplyingRemoteCloudSnapshot else { return .noChange }
+        guard !shouldDebounceCloudMerge(trigger: trigger) else { return .noChange }
 
-        let cloud = cloudSync.loadFromCloud()
+        let cloud = await cloudSync.loadFromCloudAsync()
+        lastCloudMergeAt = Date()
+
         let localProgramsAt = localProgramsUpdatedAt ?? .distantPast
         let localPreferencesAt = localPreferencesUpdatedAt ?? .distantPast
         let cloudProgramsAt = cloud.programsUpdatedAt ?? .distantPast
@@ -498,6 +549,7 @@ class DataManager: ObservableObject {
             programs = cloudPrograms
             persistProgramsToDisk()
             setLocalProgramsTimestamp(cloudProgramsAt == .distantPast ? Date() : cloudProgramsAt)
+            deduplicateProgramsByID()
             deduplicateSavedPrograms()
         }
 
@@ -556,8 +608,10 @@ class DataManager: ObservableObject {
     @discardableResult
     func mergeWithAccountCloudIfNeeded(trigger: String) async -> Bool {
         guard accountCloudSync.isSignedIn, !isApplyingAccountCloudSnapshot else { return false }
+        guard !shouldDebounceAccountCloudMerge(trigger: trigger) else { return false }
 
         guard let backup = await accountCloudSync.pull() else { return false }
+        lastAccountCloudMergeAt = Date()
 
         let localProgramsAt = localProgramsUpdatedAt ?? .distantPast
         let localPreferencesAt = localPreferencesUpdatedAt ?? .distantPast
@@ -578,6 +632,7 @@ class DataManager: ObservableObject {
                     self.programs = remotePrograms
                     self.persistProgramsToDisk()
                     self.setLocalProgramsTimestamp(remoteProgramsAt == .distantPast ? Date() : remoteProgramsAt)
+                    self.deduplicateProgramsByID()
                     self.deduplicateSavedPrograms()
                 }
                 pulledSomething = true

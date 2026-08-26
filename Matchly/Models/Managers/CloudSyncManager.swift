@@ -188,15 +188,45 @@ class CloudSyncManager: ObservableObject {
         }
     }
     
+    /// Loads the latest iCloud snapshot without blocking the main thread.
+    /// `NSUbiquitousKeyValueStore.synchronize()` can take several seconds on a cold launch.
+    func loadFromCloudAsync() async -> CloudSyncPayload {
+        guard isCloudAvailable else {
+            Self.logger.warning("Cannot load from iCloud: iCloud not available")
+            return emptyCloudPayload
+        }
+
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                guard let self else {
+                    continuation.resume(returning: CloudSyncPayload(
+                        programs: nil,
+                        preferences: nil,
+                        programsUpdatedAt: nil,
+                        preferencesUpdatedAt: nil
+                    ))
+                    return
+                }
+                self.store.synchronize()
+                continuation.resume(returning: self.readCloudPayloadFromStore())
+            }
+        }
+    }
+
     func loadFromCloud() -> CloudSyncPayload {
         guard isCloudAvailable else {
             Self.logger.warning("Cannot load from iCloud: iCloud not available")
-            return CloudSyncPayload(programs: nil, preferences: nil, programsUpdatedAt: nil, preferencesUpdatedAt: nil)
+            return emptyCloudPayload
         }
-
-        // Synchronize first to get latest data
         store.synchronize()
+        return readCloudPayloadFromStore()
+    }
 
+    private var emptyCloudPayload: CloudSyncPayload {
+        CloudSyncPayload(programs: nil, preferences: nil, programsUpdatedAt: nil, preferencesUpdatedAt: nil)
+    }
+
+    private func readCloudPayloadFromStore() -> CloudSyncPayload {
         let programs = decodePrograms(from: store.data(forKey: programsKey))
         let preferences = decodePreferences(from: store.data(forKey: preferencesKey))
         let programsUpdatedAt = date(forKey: programsUpdatedAtKey)

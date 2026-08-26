@@ -8,6 +8,7 @@
 import SwiftUI
 import Combine
 import GoogleSignIn
+import FirebaseCore
 
 @main
 struct MatchlyApp: App {
@@ -16,6 +17,12 @@ struct MatchlyApp: App {
     @ObservedObject private var coupleSync = CoupleSyncCoordinator.shared
 
     init() {
+        if FirebaseApp.app() == nil {
+            FirebaseApp.configure()
+        }
+        // Finish singleton construction before SplashView / AppDelegate tasks can re-enter them.
+        _ = AuthManager.shared
+        _ = DataManager.shared
         if FeatureFlags.couplesMatchEnabled {
             DataManager.shared.startCoupleSyncIfNeeded()
         }

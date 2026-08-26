@@ -70,7 +70,10 @@ struct RankListView: View {
             programs = applySortOption(dataManager.programs)
         } else {
             // Use manual order if available - optimize with dictionary lookup (O(1) instead of O(n))
-            let programsById = Dictionary(uniqueKeysWithValues: dataManager.programs.map { ($0.id, $0) })
+            let programsById = Dictionary(
+                dataManager.programs.map { ($0.id, $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
             var ordered: [Program] = []
             for id in manualOrder {
                 if let program = programsById[id] {
@@ -522,8 +525,13 @@ struct RankListView: View {
     
     private func loadManualOrder() {
         if let saved = UserDefaults.standard.array(forKey: "manual_rank_order") as? [String] {
-            manualOrder = saved
+            manualOrder = Self.uniquePreservingOrder(saved)
         }
+    }
+
+    private static func uniquePreservingOrder(_ ids: [String]) -> [String] {
+        var seen = Set<String>()
+        return ids.filter { seen.insert($0).inserted }
     }
 }
 

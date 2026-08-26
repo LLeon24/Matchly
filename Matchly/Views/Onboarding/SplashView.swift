@@ -6,14 +6,16 @@
 //
 
 import SwiftUI
+import Combine
 
 struct SplashView: View {
     @ObservedObject private var authManager = AuthManager.shared
-    @ObservedObject private var dataManager = DataManager.shared
     @Environment(\.scenePhase) private var scenePhase
     @State private var showSplash = true
     @State private var revealProgress: Double = 0
     @State private var showBiometricSetupAlert = false
+    @State private var appearanceMode: AppearanceMode = DataManager.shared.preferences.appearanceMode
+    @State private var hasCompletedOnboarding = DataManager.shared.preferences.hasCompletedOnboarding
     
     var body: some View {
         Group {
@@ -35,15 +37,16 @@ struct SplashView: View {
                     }
                 }
                 .onAppear {
-                    withAnimation(.easeOut(duration: 1.0)) {
+                    guard revealProgress == 0 else { return }
+                    withAnimation(.easeOut(duration: 0.85)) {
                         revealProgress = 1
                     }
 
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
-                        withAnimation(.easeInOut(duration: 0.55)) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                        withAnimation(.easeInOut(duration: 0.45)) {
                             revealProgress = 0
                         }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
                             showSplash = false
                         }
                     }
@@ -53,7 +56,18 @@ struct SplashView: View {
                 contentView
             }
         }
-        .preferredColorScheme(dataManager.preferences.appearanceMode.preferredColorScheme)
+        .preferredColorScheme(appearanceMode.preferredColorScheme)
+        .environmentObject(DataManager.shared)
+        .onReceive(DataManager.shared.$preferences.map(\.appearanceMode).removeDuplicates()) { mode in
+            appearanceMode = mode
+        }
+        .onReceive(DataManager.shared.$preferences.map(\.hasCompletedOnboarding).removeDuplicates()) { completed in
+            hasCompletedOnboarding = completed
+        }
+        .onAppear {
+            appearanceMode = DataManager.shared.preferences.appearanceMode
+            hasCompletedOnboarding = DataManager.shared.preferences.hasCompletedOnboarding
+        }
         .onChange(of: authManager.authState) { oldValue, newState in
             // React to auth state changes immediately
             if case .signedIn = newState {
@@ -110,7 +124,7 @@ struct SplashView: View {
         case .signedOut:
             AuthenticationView()
         case .signedIn:
-            if dataManager.preferences.hasCompletedOnboarding {
+            if hasCompletedOnboarding {
                 MainTabView()
             } else {
                 OnboardingFlowView()
@@ -120,8 +134,16 @@ struct SplashView: View {
 
     /// Avoid flashing login or main UI while session restoration finishes.
     private var launchPlaceholder: some View {
-        AppColors.dashboardCanvas
-            .ignoresSafeArea()
+        ZStack {
+            AppColors.dashboardCanvas
+                .ignoresSafeArea()
+
+            VStack(spacing: 18) {
+                MatchlyBrandInlineLockup(glyphSize: .feature)
+                ProgressView()
+                    .tint(AppColors.primaryBlue)
+            }
+        }
     }
 }
 

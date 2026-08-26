@@ -175,8 +175,9 @@ class AuthManager: ObservableObject {
     
     init() {
         checkAuthState()
-        // Revalidate Apple credential + resolve CloudKit identity off the launch path.
-        Task { [weak self] in
+        // Profile repair touches DataManager; defer until both singletons finish initializing.
+        Task { @MainActor [weak self] in
+            self?.repairStoredDisplayNames()
             await self?.revalidateAppleCredentialState()
             await self?.refreshCloudKitIdentity()
         }
@@ -189,7 +190,6 @@ class AuthManager: ObservableObject {
         guard let firebaseUser = Auth.auth().currentUser else { return }
         let user = makeUser(from: firebaseUser, existing: currentUser)
         signIn(user: user)
-        repairStoredDisplayNames()
     }
     
     // MARK: - Auth State Management
@@ -206,7 +206,6 @@ class AuthManager: ObservableObject {
             if isBiometricLoginEnabled && BiometricAuthManager.shared.canAuthenticate {
                 self.isAppLocked = true
             }
-            repairStoredDisplayNames()
         } else {
             self.authState = .signedOut
             self.isAppLocked = false
@@ -257,7 +256,7 @@ class AuthManager: ObservableObject {
                 profileName: profileName,
                 email: updatedUser.email
             ) {
-                DataManager.shared.applyAuthDisplayNameToProfileIfNeeded(resolvedName)
+                DataManager.shared.applyAuthDisplayNameToProfileIfNeeded(resolvedName, authEmail: updatedUser.email)
             }
             DataManager.shared.clearEmailDerivedProfileNameIfNeeded(email: updatedUser.email)
         }
@@ -790,8 +789,8 @@ class AuthManager: ObservableObject {
             return UIWindow(windowScene: windowScene)
         }
 
-        Self.logger.error("Apple Sign In: No window scene available")
-        preconditionFailure("Apple Sign In requires an active window scene")
+        Self.logger.error("Apple Sign In: No window scene available — using fallback window")
+        return UIWindow(frame: UIScreen.main.bounds)
     }
 
     // MARK: - CloudKit Identity
@@ -980,7 +979,7 @@ class AuthManager: ObservableObject {
         DataManager.shared.clearEmailDerivedProfileNameIfNeeded(email: user.email)
 
         if let repaired, !repaired.isEmpty {
-            DataManager.shared.applyAuthDisplayNameToProfileIfNeeded(repaired)
+            DataManager.shared.applyAuthDisplayNameToProfileIfNeeded(repaired, authEmail: user.email)
         }
     }
 

@@ -54,7 +54,10 @@ struct InterviewPrepView: View {
     }
 
     private var orderedListItems: [PrepListItem] {
-        let byId = Dictionary(uniqueKeysWithValues: listItems.map { ($0.id, $0) })
+        let byId = Dictionary(
+            listItems.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
         var result: [PrepListItem] = prepState.priorityQuestionIds.compactMap { byId[$0] }
         let prioritySet = Set(prepState.priorityQuestionIds)
         for id in prepState.questionListOrder where !prioritySet.contains(id) {
@@ -106,19 +109,17 @@ struct InterviewPrepView: View {
                 .background(Color(.systemBackground).opacity(0.98))
                 .shadow(color: Color.black.opacity(0.04), radius: 6, y: 2)
 
+            if hasAnyListItems {
+                questionsListToolbar
+            }
+
             ScrollView {
-                LazyVStack(spacing: 16, pinnedViews: [.sectionHeaders]) {
+                VStack(alignment: .leading, spacing: 16) {
                     if liveProgram.hasRedFlags() {
                         redFlagsReminderCard
                     }
 
-                    Section {
-                        questionsCard
-                    } header: {
-                        if hasAnyListItems {
-                            questionsListToolbar
-                        }
-                    }
+                    questionsCard
 
                     quickTipsCard
 
@@ -133,11 +134,12 @@ struct InterviewPrepView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 32)
             }
+            .scrollDisabled(isReorderMode)
         }
         .matchlyScrollTabBarClearance()
         .navigationTitle("Interview Prep")
         .navigationBarTitleDisplayMode(.inline)
-        .matchlyKeyboardDismissOverlay()
+        .matchlyKeyboardDismissToolbar()
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
@@ -579,45 +581,17 @@ struct InterviewPrepView: View {
                 .environment(\.editMode, $reorderEditMode)
                 .frame(height: prepListHeight(for: orderedListItems.count))
             } else if isSelectMode {
-                List {
+                VStack(spacing: 8) {
                     ForEach(orderedListItems) { item in
                         selectListRow(item)
-                            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-                            .listRowSeparator(.hidden)
-                            .listRowBackground(Color.clear)
-                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                Button(role: .destructive) {
-                                    removeFromList(item.id)
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
-                            }
                     }
                 }
-                .listStyle(.plain)
-                .scrollDisabled(true)
-                .scrollContentBackground(.hidden)
-                .frame(height: prepListHeight(for: orderedListItems.count))
             } else {
-                List {
+                VStack(spacing: 8) {
                     ForEach(orderedListItems) { item in
                         yourListRow(item)
-                            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-                            .listRowSeparator(.hidden)
-                            .listRowBackground(Color.clear)
-                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                Button(role: .destructive) {
-                                    removeFromList(item.id)
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
-                            }
                     }
                 }
-                .listStyle(.plain)
-                .scrollDisabled(true)
-                .scrollContentBackground(.hidden)
-                .frame(height: prepListHeight(for: orderedListItems.count))
             }
         }
     }
@@ -629,7 +603,7 @@ struct InterviewPrepView: View {
         if isReorderMode {
             return "Drag to reorder · tap Done when finished"
         }
-        return "Tap ★ to pin up to \(Self.maxPriorityCount) to the top · tap row when asked · swipe left to delete"
+        return "Tap ★ to pin up to \(Self.maxPriorityCount) to the top · tap row when asked · long-press to remove"
     }
 
     private func prepListHeight(for count: Int) -> CGFloat {
@@ -906,6 +880,11 @@ struct InterviewPrepView: View {
         .buttonStyle(.plain)
     }
 
+    private static func uniquePreservingOrder(_ ids: [String]) -> [String] {
+        var seen = Set<String>()
+        return ids.filter { seen.insert($0).inserted }
+    }
+
     // MARK: - State
 
     private func loadPrepStateIfNeeded() {
@@ -924,7 +903,9 @@ struct InterviewPrepView: View {
         if state.priorityQuestionIds.count > Self.maxPriorityCount {
             state.priorityQuestionIds = Array(state.priorityQuestionIds.prefix(Self.maxPriorityCount))
         }
-        state.questionListOrder = state.questionListOrder.filter { allValidIds.contains($0) }
+        state.questionListOrder = Self.uniquePreservingOrder(
+            state.questionListOrder.filter { allValidIds.contains($0) }
+        )
         state.selectedQuestionIds = state.selectedQuestionIds
             .intersection(validQuestionnaireIds)
             .intersection(Set(state.questionListOrder))
@@ -941,7 +922,9 @@ struct InterviewPrepView: View {
         prepState.selectedQuestionIds = prepState.selectedQuestionIds
             .intersection(validQuestionnaireIds)
             .intersection(Set(prepState.questionListOrder))
-        prepState.questionListOrder = prepState.questionListOrder.filter { allValidIds.contains($0) }
+        prepState.questionListOrder = Self.uniquePreservingOrder(
+            prepState.questionListOrder.filter { allValidIds.contains($0) }
+        )
         prepState.priorityQuestionIds = prepState.priorityQuestionIds.filter { allValidIds.contains($0) }
         prepState.askedQuestionIds = prepState.askedQuestionIds.intersection(allValidIds)
         if prepState.priorityQuestionIds.count > Self.maxPriorityCount {

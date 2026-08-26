@@ -28,7 +28,7 @@ final class AccountCloudSyncManager: ObservableObject {
     @Published var lastSyncDate: Date?
     @Published var syncError: String?
 
-    private let db = Firestore.firestore()
+    private lazy var db = Firestore.firestore()
     private static let logger = Logger(subsystem: "com.matchly", category: "AccountCloudSync")
 
     private init() {}

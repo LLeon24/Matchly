@@ -12,6 +12,8 @@ struct MatchlyCalendarSyncRow: View {
 
     var syncOnAppearIfEnabled: Bool = false
 
+    private static var didAutoSyncThisSession = false
+
     @State private var showCalendarPermissionAlert = false
     @State private var showCalendarSuccessAlert = false
     @State private var showCalendarErrorAlert = false
@@ -47,13 +49,13 @@ struct MatchlyCalendarSyncRow: View {
             }
             .onAppear {
                 calendarManager.checkAuthorizationStatus()
-                if syncOnAppearIfEnabled,
-                   dataManager.preferences.enableCalendarSync,
-                   calendarManager.calendarAccessGranted,
-                   !interviewPrograms.isEmpty {
-                    Task {
-                        await createCalendarEvents(showSuccessAlert: false)
-                    }
+                guard syncOnAppearIfEnabled, !Self.didAutoSyncThisSession else { return }
+                guard dataManager.preferences.enableCalendarSync,
+                      calendarManager.calendarAccessGranted,
+                      !interviewPrograms.isEmpty else { return }
+                Self.didAutoSyncThisSession = true
+                Task {
+                    await createCalendarEvents(showSuccessAlert: false)
                 }
             }
     }
