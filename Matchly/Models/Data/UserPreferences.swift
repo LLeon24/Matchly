@@ -58,12 +58,31 @@ struct UserPreferences: Codable, Hashable {
     var dashboardLayout: DashboardLayout = DashboardLayout()
     var dashboardPreferences: DashboardPreferences = DashboardPreferences()
 
+    /// App light/dark appearance. Auto follows the system setting.
+    var appearanceMode: AppearanceMode = .auto
+
     /// Per-program interview prep selections (questions, top must-ask, checklist).
     var interviewPrepByProgram: [String: InterviewPrepState] = [:]
     /// One-time cleanup after interview prep switched to explicit add-only question lists.
     var interviewPrepCuratedListMigrated: Bool = false
     /// Reusable question list applied to new programs via Load default questions.
     var interviewPrepDefaultQuestions: InterviewPrepDefaultQuestions?
+}
+
+enum AppearanceMode: String, Codable, CaseIterable, Identifiable {
+    case auto
+    case light
+    case dark
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .auto: return "Auto"
+        case .light: return "Light"
+        case .dark: return "Dark"
+        }
+    }
 }
 
 struct InterviewPrepDefaultQuestions: Codable, Hashable {
@@ -265,20 +284,6 @@ struct DashboardLayout: Codable, Hashable {
         for id in defaultSectionOrder where !normalized.contains(id) {
             normalized.append(id)
         }
-        if let heroIndex = normalized.firstIndex(of: "overviewHero"),
-           let needsIndex = normalized.firstIndex(of: "needsAttention"),
-           needsIndex != heroIndex + 1 {
-            normalized.remove(at: needsIndex)
-            let insertIndex = (normalized.firstIndex(of: "overviewHero") ?? heroIndex) + 1
-            normalized.insert("needsAttention", at: insertIndex)
-        }
-        if let needsIndex = normalized.firstIndex(of: "needsAttention"),
-           let analyticsIndex = normalized.firstIndex(of: "analytics"),
-           analyticsIndex != needsIndex + 1 {
-            normalized.remove(at: analyticsIndex)
-            let insertIndex = (normalized.firstIndex(of: "needsAttention") ?? needsIndex) + 1
-            normalized.insert("analytics", at: insertIndex)
-        }
         return normalized
     }
 
@@ -364,6 +369,7 @@ extension UserPreferences {
         self.includeRedFlaggedProgramsInRankList = try container.decodeIfPresent(Bool.self, forKey: .includeRedFlaggedProgramsInRankList) ?? true
         self.dashboardLayout = try container.decodeIfPresent(DashboardLayout.self, forKey: .dashboardLayout) ?? DashboardLayout()
         self.dashboardPreferences = try container.decodeIfPresent(DashboardPreferences.self, forKey: .dashboardPreferences) ?? DashboardPreferences()
+        self.appearanceMode = try container.decodeIfPresent(AppearanceMode.self, forKey: .appearanceMode) ?? .auto
         self.interviewPrepByProgram = try container.decodeIfPresent([String: InterviewPrepState].self, forKey: .interviewPrepByProgram) ?? [:]
         self.interviewPrepCuratedListMigrated = try container.decodeIfPresent(Bool.self, forKey: .interviewPrepCuratedListMigrated) ?? false
         self.interviewPrepDefaultQuestions = try container.decodeIfPresent(InterviewPrepDefaultQuestions.self, forKey: .interviewPrepDefaultQuestions)

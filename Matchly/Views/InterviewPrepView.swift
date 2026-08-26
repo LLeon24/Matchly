@@ -22,6 +22,7 @@ struct InterviewPrepView: View {
     @State private var showSaveDefaultQuestionsConfirmation = false
     @State private var showShareSheet = false
     @State private var pdfURL: URL?
+    @State private var showProgramInfo = false
 
     private struct PrepListItem: Identifiable {
         let id: String
@@ -106,12 +107,18 @@ struct InterviewPrepView: View {
                 .shadow(color: Color.black.opacity(0.04), radius: 6, y: 2)
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                LazyVStack(spacing: 16, pinnedViews: [.sectionHeaders]) {
                     if liveProgram.hasRedFlags() {
                         redFlagsReminderCard
                     }
 
-                    questionsCard
+                    Section {
+                        questionsCard
+                    } header: {
+                        if hasAnyListItems {
+                            questionsListToolbar
+                        }
+                    }
 
                     quickTipsCard
 
@@ -130,6 +137,7 @@ struct InterviewPrepView: View {
         .matchlyScrollTabBarClearance()
         .navigationTitle("Interview Prep")
         .navigationBarTitleDisplayMode(.inline)
+        .matchlyKeyboardDismissOverlay()
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
@@ -151,6 +159,9 @@ struct InterviewPrepView: View {
             if let pdfURL {
                 ShareSheet(activityItems: [pdfURL])
             }
+        }
+        .sheet(isPresented: $showProgramInfo) {
+            programInfoSheet
         }
         .sheet(isPresented: $showQuestionnairePicker) {
             InterviewPrepQuestionnairePickerSheet(
@@ -205,7 +216,23 @@ struct InterviewPrepView: View {
                 MatchlyProgramSpecialtyBadge(specialty: liveProgram.specialty, useFullName: true)
             }
 
-            MatchlyProgramLocationAndIDRow(program: liveProgram)
+            HStack(alignment: .center, spacing: 8) {
+                MatchlyProgramLocationAndIDRow(program: liveProgram)
+
+                if hasProgramInfoDetails {
+                    Button {
+                        showProgramInfo = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                            .font(.arial(size: 14))
+                            .foregroundColor(AppColors.primaryBlue)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Program information")
+                }
+
+                Spacer(minLength: 0)
+            }
 
             if !liveProgram.type.isEmpty {
                 HStack(spacing: 5) {
@@ -296,48 +323,131 @@ struct InterviewPrepView: View {
 
     // MARK: - Questions
 
-    private var questionsCard: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                prepSectionHeader(title: "Questions to Ask", icon: "text.bubble.fill", tint: AppColors.accentGreen)
-                Spacer(minLength: 8)
-            HStack(spacing: 16) {
-                if hasAnyListItems {
-                    if isSelectMode {
-                        Button("Cancel") {
-                            exitSelectMode()
-                        }
-                        .font(.arial(size: 13, weight: .semibold))
-                        .foregroundColor(AppColors.primaryBlue)
+    private var hasProgramInfoDetails: Bool {
+        programInfoAddressText != nil || programDirectorDisplayName != nil
+    }
 
-                        Button("Delete (\(selectedForRemoval.count))") {
-                            showDeleteSelectedConfirmation = true
-                        }
-                        .font(.arial(size: 13, weight: .semibold))
-                        .foregroundColor(.red)
-                        .disabled(selectedForRemoval.isEmpty)
-                    } else if isReorderMode {
-                        Button("Done") {
-                            exitReorderMode()
-                        }
-                        .font(.arial(size: 13, weight: .semibold))
-                        .foregroundColor(AppColors.primaryBlue)
-                    } else {
-                        Button("Edit") {
-                            enterSelectMode()
-                        }
-                        .font(.arial(size: 13, weight: .semibold))
-                        .foregroundColor(AppColors.primaryBlue)
+    private var programInfoAddressText: String? {
+        let resolved = AddressFormatter.resolved(
+            hospital: liveProgram.hospital,
+            address: liveProgram.address,
+            city: liveProgram.city,
+            state: liveProgram.state,
+            accreditationID: liveProgram.accreditationID
+        )
+        let street = resolved.street
+        if !street.isEmpty, !resolved.city.isEmpty, !resolved.state.isEmpty {
+            return "\(street)\n\(resolved.city), \(resolved.state)"
+        }
+        if !street.isEmpty {
+            return street
+        }
+        if !resolved.city.isEmpty, !resolved.state.isEmpty {
+            return "\(resolved.city), \(resolved.state)"
+        }
+        return nil
+    }
 
-                        Button("Reorder") {
-                            enterReorderMode()
-                        }
-                        .font(.arial(size: 13, weight: .semibold))
-                        .foregroundColor(AppColors.primaryBlue)
+    private var programDirectorDisplayName: String? {
+        DirectorNameFormatter.displayDirector(
+            programDirector: liveProgram.programDirector,
+            contactEmail: liveProgram.contactEmail
+        )
+    }
+
+    private var programInfoSheet: some View {
+        NavigationStack {
+            List {
+                if let addressText = programInfoAddressText {
+                    Section("Address") {
+                        Text(addressText)
+                            .font(.arial(size: 15))
+                            .foregroundColor(.primary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                if let directorName = programDirectorDisplayName {
+                    Section("Program Director") {
+                        Text(directorName)
+                            .font(.arial(size: 15))
+                            .foregroundColor(.primary)
                     }
                 }
             }
+            .navigationTitle("Program Information")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        showProgramInfo = false
+                    }
+                }
             }
+        }
+        .presentationDetents([.medium])
+    }
+
+    private var questionsListToolbar: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Spacer(minLength: 0)
+            questionsListToolbarActions
+        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 8)
+        .background(Color(.systemBackground).opacity(0.98))
+    }
+
+    @ViewBuilder
+    private var questionsListToolbarActions: some View {
+        if hasAnyListItems {
+            if isSelectMode {
+                prepListActionChip(title: "Cancel", icon: "xmark", tint: AppColors.primaryBlue) {
+                    exitSelectMode()
+                }
+
+                prepListActionChip(
+                    title: selectedForRemoval.isEmpty ? "Delete" : "Delete (\(selectedForRemoval.count))",
+                    icon: "trash",
+                    tint: .red,
+                    isFilled: !selectedForRemoval.isEmpty
+                ) {
+                    showDeleteSelectedConfirmation = true
+                }
+                .disabled(selectedForRemoval.isEmpty)
+                .opacity(selectedForRemoval.isEmpty ? 0.55 : 1)
+            } else if isReorderMode {
+                prepListActionChip(title: "Done", icon: "checkmark", tint: AppColors.primaryBlue, isFilled: true) {
+                    exitReorderMode()
+                }
+            } else {
+                prepListActionChip(title: "Edit", icon: "checkmark.circle", tint: AppColors.primaryBlue) {
+                    enterSelectMode()
+                }
+
+                prepListActionChip(title: "Reorder", icon: "line.3.horizontal", tint: AppColors.accentGreen) {
+                    enterReorderMode()
+                }
+            }
+        }
+    }
+
+    private func prepListActionChip(
+        title: String,
+        icon: String,
+        tint: Color,
+        isFilled: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            MatchlyActionChipLabel(icon: icon, text: title, tint: tint, isFilled: isFilled)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var questionsCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            prepSectionHeader(title: "Questions to Ask", icon: "text.bubble.fill", tint: AppColors.accentGreen)
 
             addQuestionControls
             yourListSection
@@ -465,36 +575,65 @@ struct InterviewPrepView: View {
                 }
                 .listStyle(.plain)
                 .scrollDisabled(true)
+                .scrollContentBackground(.hidden)
                 .environment(\.editMode, $reorderEditMode)
-                .frame(height: prepReorderListHeight(for: orderedListItems.count))
+                .frame(height: prepListHeight(for: orderedListItems.count))
             } else if isSelectMode {
-                VStack(spacing: 8) {
+                List {
                     ForEach(orderedListItems) { item in
                         selectListRow(item)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    removeFromList(item.id)
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
                     }
                 }
+                .listStyle(.plain)
+                .scrollDisabled(true)
+                .scrollContentBackground(.hidden)
+                .frame(height: prepListHeight(for: orderedListItems.count))
             } else {
-                VStack(spacing: 8) {
+                List {
                     ForEach(orderedListItems) { item in
                         yourListRow(item)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    removeFromList(item.id)
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
                     }
                 }
+                .listStyle(.plain)
+                .scrollDisabled(true)
+                .scrollContentBackground(.hidden)
+                .frame(height: prepListHeight(for: orderedListItems.count))
             }
         }
     }
 
     private var listHelperText: String {
         if isSelectMode {
-            return "Tap questions to select · Delete removes selected"
+            return "Tap questions to select · Delete removes selected · Swipe left to remove one"
         }
         if isReorderMode {
             return "Drag to reorder · tap Done when finished"
         }
-        return "Tap ★ to pin up to \(Self.maxPriorityCount) to the top · tap row when asked"
+        return "Tap ★ to pin up to \(Self.maxPriorityCount) to the top · tap row when asked · swipe left to delete"
     }
 
-    private func prepReorderListHeight(for count: Int) -> CGFloat {
-        max(CGFloat(count) * 64 + 8, 0)
+    private func prepListHeight(for count: Int) -> CGFloat {
+        max(CGFloat(count) * 72 + 8, 0)
     }
 
     private func yourListRow(_ item: PrepListItem) -> some View {
@@ -825,6 +964,10 @@ struct InterviewPrepView: View {
             prepState.askedQuestionIds.remove(id)
         }
         selectedForRemoval.subtract(ids)
+        if prepState.questionListOrder.isEmpty {
+            exitSelectMode()
+            exitReorderMode()
+        }
         persistPrepState()
     }
 

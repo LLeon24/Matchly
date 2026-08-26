@@ -188,6 +188,26 @@ struct SettingsView: View {
             }
             .pickerStyle(.menu)
 
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Appearance")
+                    .font(.arial(size: 15))
+
+                Picker("Appearance", selection: Binding(
+                    get: { dataManager.preferences.appearanceMode },
+                    set: { newValue in
+                        dataManager.preferences.appearanceMode = newValue
+                        dataManager.savePreferences()
+                    }
+                )) {
+                    ForEach(AppearanceMode.allCases) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            }
+            .padding(.vertical, 4)
+
             if !dataManager.preferences.specialties.isEmpty {
                 ForEach(dataManager.preferences.specialties, id: \.self) { specialty in
                     HStack(spacing: 8) {
@@ -217,28 +237,8 @@ struct SettingsView: View {
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden, edges: .bottom)
 
-            SettingsLabeledToggle(
-                title: "Sync Interviews to Calendar",
-                infoMessage: "When enabled, sync interview dates to the Matchly Interviews calendar from the Interviews tab.",
-                systemImage: "calendar.badge.plus",
-                isOn: Binding(
-                    get: { dataManager.preferences.enableCalendarSync },
-                    set: { newValue in
-                        dataManager.preferences.enableCalendarSync = newValue
-                        dataManager.savePreferences()
-                        if newValue {
-                            Task {
-                                let granted = await CalendarManager.shared.requestAccess()
-                                if granted {
-                                    try? await CalendarManager.shared.syncAllInterviewPrograms(
-                                        dataManager.programs
-                                    )
-                                }
-                            }
-                        }
-                    }
-                )
-            )
+            MatchlyCalendarSyncRow()
+                .listRowBackground(Color.clear)
         } header: {
             MatchlyFormSectionHeader(title: "Preferences")
         }

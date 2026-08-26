@@ -97,7 +97,7 @@ struct DashboardCustomizationView: View {
                         dashboardOrder.move(fromOffsets: source, toOffset: destination)
                     }
                 } footer: {
-                    Text("Interview Season includes the key metrics row. Needs Attention and Signals & Status stay near the top by default.")
+                    Text("Drag sections to reorder. Turn sections off to hide them from your dashboard.")
                 }
 
                 Section {
@@ -164,7 +164,7 @@ struct DashboardCustomizationView: View {
 
     private func saveCustomization() {
         var updatedLayout = dataManager.preferences.dashboardLayout
-        updatedLayout.sectionOrder = dashboardOrder
+        updatedLayout.sectionOrder = DashboardLayout.normalizeSectionOrder(dashboardOrder)
         updatedLayout.disabledSections = DashboardLayout.normalizeSectionIDs(disabledSections)
 
         var prefs = draftPreferences

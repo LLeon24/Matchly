@@ -20,10 +20,12 @@ struct ContentView: View {
             previewContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .preferredColorScheme(dataManager.preferences.appearanceMode.preferredColorScheme)
         .environmentObject(dataManager)
         .environmentObject(authManager)
         #else
         MainTabView()
+            .preferredColorScheme(dataManager.preferences.appearanceMode.preferredColorScheme)
             .environmentObject(dataManager)
             .environmentObject(authManager)
         #endif

@@ -21,7 +21,7 @@ enum CatalogProgramMapper {
             contactEmail: info.contactEmail,
             contactPhone: info.contactPhone,
             programCoordinator: info.programCoordinator,
-            programDirector: nil,
+            programDirector: info.programDirector,
             isIMGFriendly: info.isIMGFriendly
         )
     }
@@ -39,7 +39,7 @@ enum CatalogProgramMapper {
         program.contactEmail = mapped.contactEmail
         program.contactPhone = mapped.contactPhone
         program.programCoordinator = mapped.programCoordinator
-        program.programDirector = nil
+        program.programDirector = mapped.programDirector
         program.isIMGFriendly = mapped.isIMGFriendly
     }
 }

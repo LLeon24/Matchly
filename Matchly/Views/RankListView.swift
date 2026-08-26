@@ -109,14 +109,23 @@ struct RankListView: View {
         return programs
     }
 
-    /// Programs with a computed score — eligible for numbered rank positions.
+    /// Scored programs with a completed questionnaire — eligible for numbered rank positions.
     private var scoredRankedPrograms: [Program] {
-        rankedPrograms.filter { $0.finalScore > 0 }
+        rankedPrograms.filter {
+            !$0.needsScoring(preferences: dataManager.preferences) && $0.finalScore > 0
+        }
     }
 
-    /// Tracked programs that are not scored yet — shown below the ranked list.
+    /// Questionnaires still in progress — shown at the bottom for completion.
+    private var incompleteQuestionnairePrograms: [Program] {
+        rankedPrograms.filter { $0.needsScoring(preferences: dataManager.preferences) }
+    }
+
+    /// Tracked programs that are complete but not scored yet — shown below incomplete questionnaires.
     private var unrankedPrograms: [Program] {
-        rankedPrograms.filter { $0.finalScore <= 0 }
+        rankedPrograms.filter {
+            !$0.needsScoring(preferences: dataManager.preferences) && $0.finalScore <= 0
+        }
     }
 
     private func unrankedReason(for program: Program) -> String {
@@ -372,7 +381,7 @@ struct RankListView: View {
     
     private var programListContent: some View {
         List {
-            if scoredRankedPrograms.isEmpty && !unrankedPrograms.isEmpty {
+            if scoredRankedPrograms.isEmpty && (!unrankedPrograms.isEmpty || !incompleteQuestionnairePrograms.isEmpty) {
                 Section {
                     Text("Complete questionnaires and score your visits to build a ranked list.")
                         .font(.arial(size: 14))
@@ -382,6 +391,7 @@ struct RankListView: View {
             }
 
             rankedProgramsSection
+            incompleteQuestionnaireSection
             unrankedSection
         }
         .listStyle(.insetGrouped)
@@ -453,6 +463,33 @@ struct RankListView: View {
     }
     
     @ViewBuilder
+    private var incompleteQuestionnaireSection: some View {
+        if !incompleteQuestionnairePrograms.isEmpty {
+            Section(header: incompleteQuestionnaireHeader) {
+                ForEach(incompleteQuestionnairePrograms) { program in
+                    NavigationLink(
+                        destination: ProgramEntryView(program: program, scrollToFirstMissing: true)
+                    ) {
+                        IncompleteQuestionnaireRow(program: program)
+                    }
+                    .listRowInsets(rankListRowInsets)
+                }
+            }
+        }
+    }
+
+    private var incompleteQuestionnaireHeader: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "circle.lefthalf.filled")
+                .font(.arial(size: 12))
+                .foregroundColor(AppColors.pipelineToReview)
+            Text("Incomplete Questionnaires (\(incompleteQuestionnairePrograms.count))")
+                .font(.arial(size: 13, weight: .semibold))
+                .foregroundColor(AppColors.pipelineToReview)
+        }
+    }
+
+    @ViewBuilder
     private var unrankedSection: some View {
         if !unrankedPrograms.isEmpty {
             Section(header: unrankedHeader) {
@@ -520,6 +557,40 @@ struct RankListProgramRow: View {
                 showsElevatedRedFlag: showsElevatedRedFlag
             )
         }
+    }
+}
+
+struct IncompleteQuestionnaireRow: View {
+    @EnvironmentObject private var dataManager: DataManager
+    let program: Program
+
+    private var completionPercent: Int {
+        Int((program.questionnaireCompletionRatio(preferences: dataManager.preferences) * 100).rounded())
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(HospitalNameFormatter.format(
+                program.hospital.isEmpty
+                    ? (program.name.isEmpty ? "Unnamed Program" : program.name)
+                    : program.hospital
+            ))
+            .font(.arial(size: 15, weight: .semibold))
+            .foregroundColor(.primary)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
+
+            if !program.specialty.isEmpty {
+                MatchlyProgramSpecialtyBadge(specialty: program.specialty)
+            }
+
+            MatchlyProgramLocationAndIDRow(program: program)
+
+            Text(completionPercent == 0 ? "Questionnaire not started" : "Questionnaire \(completionPercent)% complete")
+                .font(.arial(size: 12, weight: .semibold))
+                .foregroundColor(AppColors.pipelineToReview)
+        }
+        .padding(.vertical, 4)
     }
 }
 
@@ -907,9 +978,10 @@ struct ExportView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
-        .background(
+        .background {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white)
+                .fill(.clear)
+                .glassEffect(.regular, in: .rect(cornerRadius: 14))
                 .overlay(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 2, style: .continuous)
                         .fill(AppColors.primaryBlue)
@@ -917,11 +989,7 @@ struct ExportView: View {
                         .padding(.vertical, 12)
                         .padding(.leading, 10)
                 }
-                .overlay {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(AppColors.secondaryText.opacity(0.18), lineWidth: 0.5)
-                }
-        )
+        }
         .padding(.horizontal)
     }
 

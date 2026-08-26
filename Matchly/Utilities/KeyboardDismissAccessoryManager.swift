@@ -21,7 +21,9 @@ enum KeyboardDismissAccessoryManager {
             queue: .main
         ) { notification in
             guard let field = notification.object as? UITextField else { return }
-            attachToolbar(to: field)
+            DispatchQueue.main.async {
+                attachToolbar(to: field)
+            }
         }
 
         NotificationCenter.default.addObserver(
@@ -30,7 +32,9 @@ enum KeyboardDismissAccessoryManager {
             queue: .main
         ) { notification in
             guard let textView = notification.object as? UITextView else { return }
-            attachToolbar(to: textView)
+            DispatchQueue.main.async {
+                attachToolbar(to: textView)
+            }
         }
     }
 
@@ -49,21 +53,31 @@ enum KeyboardDismissAccessoryManager {
         toolbar.tag = toolbarTag
         toolbar.sizeToFit()
 
-        let flex = UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil)
-        let hide = UIBarButtonItem(
-            image: UIImage(systemName: "keyboard.chevron.compact.down"),
+        let previous = UIBarButtonItem(
+            image: UIImage(systemName: "chevron.up"),
             style: .plain,
-            target: KeyboardDismissTarget.shared,
-            action: #selector(KeyboardDismissTarget.dismissKeyboard)
+            target: nil,
+            action: NSSelectorFromString("selectPrevious:")
         )
-        hide.accessibilityLabel = "Hide keyboard"
+        previous.accessibilityLabel = "Previous field"
+
+        let next = UIBarButtonItem(
+            image: UIImage(systemName: "chevron.down"),
+            style: .plain,
+            target: nil,
+            action: NSSelectorFromString("selectNext:")
+        )
+        next.accessibilityLabel = "Next field"
+
+        let flex = UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil)
         let done = UIBarButtonItem(
-            title: "Done",
+            image: UIImage(systemName: "checkmark"),
             style: .done,
             target: KeyboardDismissTarget.shared,
             action: #selector(KeyboardDismissTarget.dismissKeyboard)
         )
-        toolbar.items = [flex, hide, done]
+        done.accessibilityLabel = "Hide keyboard"
+        toolbar.items = [previous, next, flex, done]
         return toolbar
     }
 }

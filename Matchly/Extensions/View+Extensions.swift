@@ -66,6 +66,16 @@ extension Font {
     }
 }
 
+extension AppearanceMode {
+    var preferredColorScheme: ColorScheme? {
+        switch self {
+        case .auto: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+}
+
 extension View {
     /// Applies Matchly's default Arial environment font.
     func arialFont() -> some View {
@@ -207,7 +217,6 @@ struct MatchlyNavigationView<Content: View>: View {
         NavigationStack {
             content()
         }
-        .matchlyKeyboardDismissToolbar()
     }
 }
 
@@ -364,10 +373,12 @@ private struct MatchlyKeyboardDismissOverlayModifier: ViewModifier {
                         .zIndex(1000)
                 }
             }
+            .ignoresSafeArea(.keyboard, edges: .bottom)
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { notification in
                 guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+                let inset = max(0, UIScreen.main.bounds.height - frame.origin.y)
                 withAnimation(keyboardAnimation(from: notification)) {
-                    keyboardHeight = frame.height
+                    keyboardHeight = inset
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { notification in

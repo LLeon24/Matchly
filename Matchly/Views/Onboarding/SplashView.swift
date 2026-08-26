@@ -53,6 +53,7 @@ struct SplashView: View {
                 contentView
             }
         }
+        .preferredColorScheme(dataManager.preferences.appearanceMode.preferredColorScheme)
         .onChange(of: authManager.authState) { oldValue, newState in
             // React to auth state changes immediately
             if case .signedIn = newState {
@@ -86,7 +87,6 @@ struct SplashView: View {
                     .zIndex(20)
             }
         }
-        .matchlyKeyboardDismissOverlay()
         .alert(
             "Use \(authManager.biometricDisplayName)?",
             isPresented: $showBiometricSetupAlert

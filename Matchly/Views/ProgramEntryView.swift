@@ -59,6 +59,7 @@ struct ProgramEntryView: View {
     @State private var contactEmail: String = ""
     @State private var contactPhone: String = ""
     @State private var programCoordinator: String = ""
+    @State private var programDirector: String = ""
     
     // IMG-friendly status
     @State private var isIMGFriendly: Bool? = nil
@@ -533,7 +534,7 @@ struct ProgramEntryView: View {
             contactEmail: contactEmail.isEmpty ? nil : contactEmail,
             contactPhone: contactPhone.isEmpty ? nil : contactPhone,
             programCoordinator: programCoordinator.isEmpty ? nil : programCoordinator,
-            programDirector: nil,
+            programDirector: programDirector.isEmpty ? nil : programDirector,
             isIMGFriendly: isIMGFriendly,
             emr: emr,
             signalType: signalType,
@@ -707,6 +708,7 @@ struct ProgramEntryView: View {
                 contactEmail = mapped.contactEmail ?? ""
                 contactPhone = mapped.contactPhone ?? ""
                 programCoordinator = mapped.programCoordinator ?? ""
+                programDirector = mapped.programDirector ?? ""
                 isIMGFriendly = mapped.isIMGFriendly
                 revalidateSignalAssignment()
                 showProgramSearch = false
@@ -776,6 +778,7 @@ struct ProgramEntryView: View {
                                     contactEmail: contactEmail.isEmpty ? nil : contactEmail,
                                     contactPhone: contactPhone.isEmpty ? nil : contactPhone,
                                     programCoordinator: programCoordinator.isEmpty ? nil : programCoordinator,
+                                    programDirector: programDirector.isEmpty ? nil : programDirector,
                                     isIMGFriendly: isIMGFriendly,
                                     emr: emr,
                                     signalType: signalType,
@@ -797,40 +800,25 @@ struct ProgramEntryView: View {
         }
         .sheet(isPresented: $showContactInfo) {
             MatchlyNavigationView {
-                Form {
-                    Section("Address") {
-                        ClearableTextField("Street Address", text: $address)
-                            .autocapitalization(.words)
-                    }
-                    
-                    Section("Contact Information") {
-                        // Website URL with open button
-                        HStack {
-                            ClearableTextField("Website URL", text: $websiteURL)
-                                .keyboardType(.URL)
-                                .autocapitalization(.none)
-                                if !websiteURL.isEmpty, let url = URL(string: websiteURL) {
-                                Button(action: {
-                                    UIApplication.shared.open(url)
-                                }) {
-                                    Image(systemName: "arrow.up.right.square")
-                                        .foregroundColor(.blue)
-                                }
-                            }
+                List {
+                    if let addressText = programInfoAddressText {
+                        Section("Address") {
+                            Text(addressText)
+                                .font(.arial(size: 15))
+                                .foregroundColor(.primary)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
-                        
-                        ClearableTextField("Contact Email", text: $contactEmail)
-                            .keyboardType(.emailAddress)
-                            .autocapitalization(.none)
-                        
-                        ClearableTextField("Contact Phone", text: $contactPhone)
-                            .keyboardType(.phonePad)
-                        
-                        ClearableTextField("Program Coordinator", text: $programCoordinator)
-                                .autocapitalization(.words)
+                    }
+
+                    if let directorName = programDirectorDisplayName {
+                        Section("Program Director") {
+                            Text(directorName)
+                                .font(.arial(size: 15))
+                                .foregroundColor(.primary)
+                        }
                     }
                 }
-                .navigationTitle("Contact Information")
+                .navigationTitle("Program Information")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .navigationBarTrailing) {
@@ -838,9 +826,10 @@ struct ProgramEntryView: View {
                             showContactInfo = false
                         }
                     }
-                    }
                 }
             }
+            .presentationDetents([.medium])
+        }
     }
     
     private var contentWithAlerts: some View {
@@ -973,6 +962,38 @@ struct ProgramEntryView: View {
             }
     }
 
+    private var hasProgramInfoDetails: Bool {
+        programInfoAddressText != nil || programDirectorDisplayName != nil
+    }
+
+    private var programInfoAddressText: String? {
+        let resolved = AddressFormatter.resolved(
+            hospital: hospital,
+            address: address.isEmpty ? nil : address,
+            city: city,
+            state: state,
+            accreditationID: accreditationID
+        )
+        let street = resolved.street
+        if !street.isEmpty, !resolved.city.isEmpty, !resolved.state.isEmpty {
+            return "\(street)\n\(resolved.city), \(resolved.state)"
+        }
+        if !street.isEmpty {
+            return street
+        }
+        if !resolved.city.isEmpty, !resolved.state.isEmpty {
+            return "\(resolved.city), \(resolved.state)"
+        }
+        return nil
+    }
+
+    private var programDirectorDisplayName: String? {
+        DirectorNameFormatter.displayDirector(
+            programDirector: programDirector.isEmpty ? nil : programDirector,
+            contactEmail: contactEmail.isEmpty ? nil : contactEmail
+        )
+    }
+
     @ViewBuilder
     private var programHeaderActionButtons: some View {
         HStack(spacing: 8) {
@@ -998,7 +1019,7 @@ struct ProgramEntryView: View {
                 .buttonStyle(.plain)
             }
 
-            if !address.isEmpty || !websiteURL.isEmpty || !contactEmail.isEmpty || !contactPhone.isEmpty || !programCoordinator.isEmpty {
+            if hasProgramInfoDetails {
                 Button(action: {
                     showContactInfo = true
                 }) {
@@ -1237,6 +1258,7 @@ struct ProgramEntryView: View {
         contactEmail = program.contactEmail ?? ""
         contactPhone = program.contactPhone ?? ""
         programCoordinator = program.programCoordinator ?? ""
+        programDirector = program.programDirector ?? ""
         
         // Load IMG-friendly status
         isIMGFriendly = program.isIMGFriendly
@@ -1296,7 +1318,7 @@ struct ProgramEntryView: View {
             contactEmail: contactEmail.isEmpty ? nil : contactEmail,
             contactPhone: contactPhone.isEmpty ? nil : contactPhone,
             programCoordinator: programCoordinator.isEmpty ? nil : programCoordinator,
-            programDirector: nil,
+            programDirector: programDirector.isEmpty ? nil : programDirector,
             isIMGFriendly: isIMGFriendly,
             emr: emr,
             signalType: signalType,
@@ -1507,7 +1529,8 @@ struct ProgramEntryView: View {
                         websiteURL: websiteURL.isEmpty ? nil : websiteURL,
                         contactEmail: contactEmail.isEmpty ? nil : contactEmail,
                         contactPhone: contactPhone.isEmpty ? nil : contactPhone,
-                        programCoordinator: programCoordinator.isEmpty ? nil : programCoordinator
+                        programCoordinator: programCoordinator.isEmpty ? nil : programCoordinator,
+                        programDirector: programDirector.isEmpty ? nil : programDirector
                     )
                     
                     try await calendarManager.createEventsForInterviews([tempProgram])
