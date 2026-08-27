@@ -17,6 +17,8 @@ struct UserPreferences: Codable, Hashable {
     var hasCompletedFeatureTour: Bool = false
     /// Spotlight tour for the Couple tab when couples matching is first activated.
     var hasCompletedCoupleFeatureTour: Bool = false
+    /// Opens program search once after onboarding when the user has no programs yet.
+    var shouldPromptFirstProgramAdd: Bool = false
     
     // User profile
     var profile: UserProfile = UserProfile()
@@ -354,6 +356,7 @@ extension UserPreferences {
             // Linked users who finished the main tour before the couple tour existed.
             self.hasCompletedCoupleFeatureTour = self.hasCompletedFeatureTour && (self.couple?.isLinked == true)
         }
+        self.shouldPromptFirstProgramAdd = try container.decodeIfPresent(Bool.self, forKey: .shouldPromptFirstProgramAdd) ?? false
         self.couplesPreferences = try container.decodeIfPresent(CouplesPreferences.self, forKey: .couplesPreferences) ?? CouplesPreferences()
         self.couplesRankPairs = try container.decodeIfPresent([CouplesRankPair].self, forKey: .couplesRankPairs) ?? []
         self.couplesRankListUpdatedAt = try container.decodeIfPresent(Date.self, forKey: .couplesRankListUpdatedAt)

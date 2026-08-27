@@ -203,9 +203,6 @@ class AuthManager: ObservableObject {
            let user = try? JSONDecoder().decode(User.self, from: userData) {
             self.currentUser = user
             self.authState = .signedIn(user)
-            if isBiometricLoginEnabled && BiometricAuthManager.shared.canAuthenticate {
-                self.isAppLocked = true
-            }
         } else {
             self.authState = .signedOut
             self.isAppLocked = false
@@ -476,16 +473,6 @@ class AuthManager: ObservableObject {
         } catch {
             throw mapFirebaseAuthError(error)
         }
-    }
-
-    // MARK: - Phone Number Authentication
-    func signInWithPhone(phoneNumber: String) async throws {
-        guard Self.allowsNonAppleProviders else { throw AuthError.notImplemented }
-        throw AuthError.notImplemented
-    }
-
-    func verifyPhoneCode(code: String) async throws {
-        throw AuthError.notImplemented
     }
 
     // MARK: - Social Authentication

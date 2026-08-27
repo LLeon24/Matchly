@@ -37,6 +37,10 @@ struct SplashView: View {
                     }
                 }
                 .onAppear {
+                    if case .signedIn = authManager.authState {
+                        showSplash = false
+                        return
+                    }
                     guard revealProgress == 0 else { return }
                     withAnimation(.easeOut(duration: 0.85)) {
                         revealProgress = 1

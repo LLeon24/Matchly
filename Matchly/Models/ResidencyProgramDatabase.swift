@@ -7,6 +7,7 @@
 
 import Foundation
 import Combine
+import OSLog
 
 struct ResidencyProgramInfo: Identifiable, Codable {
     let id: String
@@ -121,6 +122,7 @@ struct ProgramSearchResults {
 
 final class ResidencyProgramDatabase: ObservableObject {
     static let shared = ResidencyProgramDatabase()
+    private static let logger = Logger(subsystem: "com.matchly", category: "ResidencyProgramDatabase")
 
     static let defaultResultLimit = 300
 
@@ -447,15 +449,15 @@ final class ResidencyProgramDatabase: ObservableObject {
     func loadFromERASJSONFile(filename: String) {
         guard let url = Bundle.main.url(forResource: filename, withExtension: "json"),
               let data = try? Data(contentsOf: url) else {
-            print("Warning: Could not load ERAS data file: \(filename).json")
+            Self.logger.warning("Could not load ERAS data file: \(filename).json")
             return
         }
         
         do {
             try loadFromERASJSON(data: data)
-            print("Successfully loaded ERAS data from \(filename).json")
+            Self.logger.info("Loaded ERAS data from \(filename).json")
         } catch {
-            print("Error loading ERAS data: \(error)")
+            Self.logger.error("Error loading ERAS data: \(error.localizedDescription, privacy: .public)")
         }
     }
     
@@ -481,10 +483,10 @@ final class ResidencyProgramDatabase: ObservableObject {
                let data = try? Data(contentsOf: url) {
                 do {
                     try replaceWithERASData(data: data)
-                    print("✓ Loaded programs from \(name) database")
+                    Self.logger.info("Loaded programs from \(name) database")
                     return
                 } catch {
-                    print("⚠️ Error loading program data, falling back to hardcoded programs: \(error)")
+                    Self.logger.error("Error loading program data, falling back to hardcoded programs: \(error.localizedDescription, privacy: .public)")
                 }
             }
         }

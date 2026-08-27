@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import OSLog
 
 private struct ERASPARSpecialtyIndex: Decodable {
   let residencyByCode: [String: String]
@@ -16,12 +17,14 @@ private struct ERASPARSpecialtyIndex: Decodable {
 }
 
 enum ERASTrainingLevel {
+  private static let logger = Logger(subsystem: "com.matchly", category: "ERASTrainingLevel")
+
   private static let index: ERASPARSpecialtyIndex? = {
     guard let url = Bundle.main.url(forResource: "ERAS_PAR_specialties", withExtension: "json"),
       let data = try? Data(contentsOf: url),
       let decoded = try? JSONDecoder().decode(ERASPARSpecialtyIndex.self, from: data)
     else {
-      print("Warning: Could not load ERAS_PAR_specialties.json — falling back to ACGME hierarchy")
+      logger.warning("Could not load ERAS_PAR_specialties.json — falling back to ACGME hierarchy")
       return nil
     }
     return decoded

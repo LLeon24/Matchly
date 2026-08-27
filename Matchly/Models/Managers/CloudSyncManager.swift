@@ -11,6 +11,7 @@ import OSLog
 
 extension Notification.Name {
     static let matchlyCloudDataDidChange = Notification.Name("matchlyCloudDataDidChange")
+    static let matchlyPromptFirstProgramAdd = Notification.Name("matchlyPromptFirstProgramAdd")
 }
 
 struct CloudSyncPayload {

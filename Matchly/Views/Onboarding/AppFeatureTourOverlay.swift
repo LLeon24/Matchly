@@ -62,7 +62,7 @@ enum AppFeatureTourSteps {
                 tabIndex: MainTabLayout.programsIndex,
                 anchorID: FeatureTourAnchorID.programsTab,
                 title: "My Programs",
-                message: "Search and add programs, complete questionnaires after interviews, and track signals, red flags, and voice memos.",
+                message: "Search and add programs, complete questionnaires after interviews, and open Interview Prep to build question lists for each visit.",
                 placesBubbleAboveSpotlight: true
             ),
             FeatureTourStep(
@@ -70,7 +70,7 @@ enum AppFeatureTourSteps {
                 tabIndex: MainTabLayout.interviewsIndex,
                 anchorID: FeatureTourAnchorID.interviewsTab,
                 title: "Interviews",
-                message: "See upcoming and past interviews in a list or calendar, set missing dates, and sync to your device calendar.",
+                message: "See upcoming and past interviews in a list or calendar, set missing dates, sync to your device calendar, and use Interview Prep for each program.",
                 placesBubbleAboveSpotlight: true
             ),
             FeatureTourStep(

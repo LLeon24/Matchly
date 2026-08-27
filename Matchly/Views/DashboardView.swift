@@ -122,6 +122,31 @@ struct DashboardView: View {
             }
             .matchlyExpandedSheet()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .matchlyPromptFirstProgramAdd)) { _ in
+            presentFirstProgramAddIfNeeded()
+        }
+        .onChange(of: dataManager.programs.isEmpty) { _, isEmpty in
+            if !isEmpty {
+                clearFirstProgramAddPrompt()
+            }
+        }
+        .onChange(of: showAddProgram) { _, isPresented in
+            if !isPresented {
+                clearFirstProgramAddPrompt()
+            }
+        }
+    }
+
+    private func presentFirstProgramAddIfNeeded() {
+        guard dataManager.preferences.shouldPromptFirstProgramAdd,
+              dataManager.programs.isEmpty else { return }
+        showAddProgram = true
+    }
+
+    private func clearFirstProgramAddPrompt() {
+        guard dataManager.preferences.shouldPromptFirstProgramAdd else { return }
+        dataManager.preferences.shouldPromptFirstProgramAdd = false
+        dataManager.savePreferences()
     }
 
     // MARK: - Persistent Header
@@ -1162,7 +1187,7 @@ struct DashboardView: View {
                     .kerning(1)
 
                 MatchlyEditorialBody(
-                    text: "Add your first residency program to begin building your rank list."
+                    text: "Search the ACGME catalog and add your first program to start scoring, ranking, and interview prep."
                 )
                 .padding(.horizontal, 28)
             }
@@ -1183,7 +1208,7 @@ struct DashboardView: View {
                     .kerning(1)
 
                 MatchlyEditorialBody(
-                    text: "Add your first residency program to begin building your rank list.",
+                    text: "Search the ACGME catalog and add your first program to start scoring, ranking, and interview prep.",
                     alignment: .leading
                 )
                 .frame(maxWidth: 420, alignment: .leading)

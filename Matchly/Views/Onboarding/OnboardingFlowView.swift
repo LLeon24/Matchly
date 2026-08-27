@@ -57,7 +57,7 @@ struct OnboardingFlowView: View {
             case .aamcID: return "Your AAMC ID helps us provide better program matching"
             case .photo: return "Upload a photo or pick an avatar"
             case .matchPreferences: return "A few defaults to get your rank list and scoring right from the start."
-            case .calendarSync: return "Would you like to sync your interviews to your device calendar? You can change this anytime in Settings."
+            case .calendarSync: return "Would you like to sync your interviews to your device calendar? After you add programs, Interview Prep helps you build question lists for each visit."
             }
         }
     }
@@ -158,6 +158,7 @@ struct OnboardingFlowView: View {
                         FeatureRow(icon: "chart.bar.fill", text: "Build Your NRMP Rank List")
                         FeatureRow(icon: "star.fill", text: "Manage ERAS Signals")
                         FeatureRow(icon: "calendar", text: "Plan Interview Dates")
+                        FeatureRow(icon: "calendar.badge.clock", text: "Prep Questions for Each Interview")
                         if FeatureFlags.couplesMatchEnabled {
                             FeatureRow(icon: "heart.fill", text: "Couples Match with Your Partner")
                         }
@@ -621,7 +622,7 @@ struct OnboardingFlowView: View {
                             Text("Sync Interviews to Calendar")
                                 .font(.arial(size: 22, weight: .semibold))
                             
-                            Text("Automatically add your interview dates to your device calendar with reminders and all program details.")
+                            Text("Automatically add your interview dates to your device calendar with reminders and all program details. Open Interview Prep on any program to build your must-ask question list.")
                                 .font(.arial(size: 15))
                                 .foregroundColor(.secondary)
                                 .multilineTextAlignment(.center)
@@ -784,6 +785,7 @@ struct OnboardingFlowView: View {
         // Mark onboarding as complete
         dataManager.preferences.hasCompletedOnboarding = true
         dataManager.preferences.hasCompletedFeatureTour = false
+        dataManager.preferences.shouldPromptFirstProgramAdd = true
         dataManager.savePreferences()
         
         if dataManager.preferences.preferredEMR != nil {

@@ -15,7 +15,6 @@ struct AuthenticationView: View {
     @ObservedObject private var authManager = AuthManager.shared
     @State private var showSignUp = false
     @State private var showEmailLogin = false
-    @State private var showPhoneLogin = false
     @State private var showError = false
     @State private var errorMessage = ""
     @State private var isBiometricSigningIn = false
@@ -170,14 +169,14 @@ struct AuthenticationView: View {
                                         case .invalidResponse:
                                             errorMessage = "Invalid response from Apple. Please try again."
                                         case .notHandled:
-                                            errorMessage = "Apple Sign In not handled. Make sure the capability is enabled in Xcode."
+                                            errorMessage = "Apple Sign In couldn't be completed. Please try again."
                                         case .unknown:
                                             errorMessage = "Unknown error occurred. Please try again."
                                         default:
                                             errorMessage = "Apple Sign In failed: \(error.localizedDescription)"
                                         }
                                     } else {
-                                        errorMessage = "Apple Sign In failed: \(error.localizedDescription)\n\nMake sure:\n1. Sign in with Apple capability is enabled in Xcode\n2. You're signed in to an Apple ID on this device\n3. The app is properly configured in Apple Developer"
+                                        errorMessage = "Apple Sign In failed. Make sure you're signed in to an Apple ID on this device and try again."
                                     }
                                     showError = true
                                 }
@@ -234,9 +233,6 @@ struct AuthenticationView: View {
         }
         .sheet(isPresented: $showEmailLogin) {
             EmailLoginView()
-        }
-        .sheet(isPresented: $showPhoneLogin) {
-            PhoneLoginView()
         }
         .alert("Sign In Error", isPresented: $showError) {
             Button("OK", role: .cancel) { }

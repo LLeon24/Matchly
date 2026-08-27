@@ -101,6 +101,8 @@ struct MainTabView: View {
                 featureTourMode = .full
                 showFeatureTour = true
                 featureTourStepIndex = 0
+            } else {
+                promptFirstProgramAddIfNeeded()
             }
         }
         .onPreferenceChange(FeatureTourAnchorPreferenceKey.self) { tourAnchorRects = $0 }
@@ -171,6 +173,14 @@ struct MainTabView: View {
         dataManager.savePreferences()
         showFeatureTour = false
         featureTourMode = .full
+        promptFirstProgramAddIfNeeded()
+    }
+
+    private func promptFirstProgramAddIfNeeded() {
+        guard dataManager.preferences.shouldPromptFirstProgramAdd,
+              dataManager.programs.isEmpty else { return }
+        selectedTab = MainTabLayout.dashboardIndex
+        NotificationCenter.default.post(name: .matchlyPromptFirstProgramAdd, object: nil)
     }
 }
 

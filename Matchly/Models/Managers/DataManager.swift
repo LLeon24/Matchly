@@ -246,11 +246,7 @@ class DataManager: ObservableObject {
                 programs = decoded
             } catch {
                 Self.logger.error("Error loading programs: \(error.localizedDescription, privacy: .public)")
-                // Try to load from iCloud as backup
-                if let cloudData = cloudSync.loadFromCloud().programs {
-                    programs = cloudData
-                    Self.logger.info("Loaded programs from iCloud backup")
-                }
+                // Keep local empty; deferred cloud merge may restore programs later.
             }
         }
     }
