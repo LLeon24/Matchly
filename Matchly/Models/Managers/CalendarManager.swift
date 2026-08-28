@@ -9,6 +9,7 @@ import Foundation
 import EventKit
 import Combine
 import UIKit
+import CoreLocation
 import OSLog
 
 class CalendarManager: ObservableObject {
@@ -29,59 +30,29 @@ class CalendarManager: ObservableObject {
     // MARK: - Authorization
     
     func requestAccess() async -> Bool {
-        if #available(iOS 17.0, *) {
-            // Use iOS 17+ API
-            do {
-                let granted = try await eventStore.requestFullAccessToEvents()
-                await MainActor.run {
-                    authorizationStatus = EKEventStore.authorizationStatus(for: .event)
-                    calendarAccessGranted = granted
-                    if granted {
-                        findOrCreateMatchlyCalendar()
-                    }
+        do {
+            let granted = try await eventStore.requestFullAccessToEvents()
+            await MainActor.run {
+                authorizationStatus = EKEventStore.authorizationStatus(for: .event)
+                calendarAccessGranted = granted
+                if granted {
+                    findOrCreateMatchlyCalendar()
                 }
-                return granted
-            } catch {
-                Self.logger.error("Calendar access request failed: \(error.localizedDescription, privacy: .public)")
-                await MainActor.run {
-                    authorizationStatus = EKEventStore.authorizationStatus(for: .event)
-                    calendarAccessGranted = false
-                }
-                return false
             }
-        } else {
-            // Fallback for iOS < 17
-            do {
-                let status = try await eventStore.requestAccess(to: .event)
-                await MainActor.run {
-                    authorizationStatus = EKEventStore.authorizationStatus(for: .event)
-                    calendarAccessGranted = status
-                    if status {
-                        findOrCreateMatchlyCalendar()
-                    }
-                }
-                return status
-            } catch {
-                Self.logger.error("Calendar access request failed: \(error.localizedDescription, privacy: .public)")
-                await MainActor.run {
-                    authorizationStatus = EKEventStore.authorizationStatus(for: .event)
-                    calendarAccessGranted = false
-                }
-                return false
+            return granted
+        } catch {
+            Self.logger.error("Calendar access request failed: \(error.localizedDescription, privacy: .public)")
+            await MainActor.run {
+                authorizationStatus = EKEventStore.authorizationStatus(for: .event)
+                calendarAccessGranted = false
             }
+            return false
         }
     }
     
     func checkAuthorizationStatus() {
         authorizationStatus = EKEventStore.authorizationStatus(for: .event)
-        
-        if #available(iOS 17.0, *) {
-            // iOS 17+ uses .fullAccess or .writeOnly instead of .authorized
-            calendarAccessGranted = (authorizationStatus == .fullAccess) || (authorizationStatus == .writeOnly)
-        } else {
-            // iOS < 17 uses .authorized
-            calendarAccessGranted = authorizationStatus == .authorized
-        }
+        calendarAccessGranted = (authorizationStatus == .fullAccess) || (authorizationStatus == .writeOnly)
         
         if calendarAccessGranted {
             findOrCreateMatchlyCalendar()
@@ -150,18 +121,21 @@ class CalendarManager: ObservableObject {
         for program in programs {
             guard let interviewDate = program.interviewDate else { continue }
             
+            // Same cached geocoder as the in-app map, so the event pin matches Directions.
+            let coordinate = await GeocodingHelper.coordinate(for: program)
+            
             do {
                 // Check if event already exists
                 let existingEvent = try await findExistingEvent(for: program, in: calendar)
                 
                 if let event = existingEvent {
                     // Update existing event
-                    updateEvent(event, with: program, interviewDate: interviewDate)
+                    applyEventDetails(to: event, program: program, interviewDate: interviewDate, coordinate: coordinate)
                     try eventStore.save(event, span: .thisEvent, commit: false)
                     updatedCount += 1
                 } else {
                     // Create new event
-                    let event = createEvent(for: program, interviewDate: interviewDate, in: calendar)
+                    let event = createEvent(for: program, interviewDate: interviewDate, in: calendar, coordinate: coordinate)
                     try eventStore.save(event, span: .thisEvent, commit: false)
                     createdCount += 1
                 }
@@ -202,47 +176,11 @@ class CalendarManager: ObservableObject {
         }
     }
     
-    private func createEvent(for program: Program, interviewDate: Date, in calendar: EKCalendar) -> EKEvent {
+    private func createEvent(for program: Program, interviewDate: Date, in calendar: EKCalendar, coordinate: CLLocationCoordinate2D) -> EKEvent {
         let event = EKEvent(eventStore: eventStore)
         event.calendar = calendar
-        event.title = "Interview: \(HospitalNameFormatter.format(program.hospital.isEmpty ? program.name : program.hospital))"
-        event.startDate = interviewDate
-        event.endDate = Calendar.current.date(byAdding: .hour, value: 2, to: interviewDate) ?? interviewDate // Default 2-hour duration
         event.isAllDay = false
-        
-        // Build event notes
-        var notes = "Residency Interview\n\n"
-        if !program.specialty.isEmpty {
-            notes += "Specialty: \(program.specialty)\n"
-        }
-        if program.hasDisplayLocation {
-            notes += "Location: \(program.displayCityState)\n"
-        }
-        let resolved = program.resolvedAddress
-        if !resolved.street.isEmpty {
-            notes += "Address: \(resolved.street)\n"
-        } else if let site = resolved.siteName, !site.isEmpty {
-            notes += "Site: \(site)\n"
-        }
-        if let coordinator = program.programCoordinator, !coordinator.isEmpty {
-            notes += "Coordinator: \(coordinator)\n"
-        }
-        if let email = program.contactEmail, !email.isEmpty {
-            notes += "Email: \(email)\n"
-        }
-        if let phone = program.contactPhone, !phone.isEmpty {
-            notes += "Phone: \(phone)\n"
-        }
-        if let website = program.websiteURL, !website.isEmpty {
-            notes += "Website: \(website)\n"
-        }
-        if !program.notes.isEmpty {
-            notes += "\nNotes: \(program.notes)\n"
-        }
-        notes += "\nProgram ID: \(program.id)"
-        
-        event.notes = notes
-        event.location = calendarEventLocation(for: program)
+        applyEventDetails(to: event, program: program, interviewDate: interviewDate, coordinate: coordinate)
         
         // Set alarm 1 day before
         let alarm = EKAlarm(relativeOffset: -86400) // 24 hours before
@@ -251,12 +189,22 @@ class CalendarManager: ObservableObject {
         return event
     }
     
-    private func updateEvent(_ event: EKEvent, with program: Program, interviewDate: Date) {
+    private func applyEventDetails(to event: EKEvent, program: Program, interviewDate: Date, coordinate: CLLocationCoordinate2D) {
         event.title = "Interview: \(HospitalNameFormatter.format(program.hospital.isEmpty ? program.name : program.hospital))"
         event.startDate = interviewDate
-        event.endDate = Calendar.current.date(byAdding: .hour, value: 2, to: interviewDate) ?? interviewDate
+        event.endDate = Calendar.current.date(byAdding: .hour, value: 2, to: interviewDate) ?? interviewDate // Default 2-hour duration
+        event.notes = eventNotes(for: program)
         
-        // Update notes (same as createEvent)
+        // Same address string as the in-app Directions button, with a map pin so
+        // Calendar shows the location and can offer travel time.
+        let locationString = AddressFormatter.geocodingQuery(for: program)
+        event.location = locationString
+        let structuredLocation = EKStructuredLocation(title: locationString)
+        structuredLocation.geoLocation = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        event.structuredLocation = structuredLocation
+    }
+    
+    private func eventNotes(for program: Program) -> String {
         var notes = "Residency Interview\n\n"
         if !program.specialty.isEmpty {
             notes += "Specialty: \(program.specialty)\n"
@@ -276,9 +224,6 @@ class CalendarManager: ObservableObject {
         if let email = program.contactEmail, !email.isEmpty {
             notes += "Email: \(email)\n"
         }
-        if let phone = program.contactPhone, !phone.isEmpty {
-            notes += "Phone: \(phone)\n"
-        }
         if let website = program.websiteURL, !website.isEmpty {
             notes += "Website: \(website)\n"
         }
@@ -286,9 +231,7 @@ class CalendarManager: ObservableObject {
             notes += "\nNotes: \(program.notes)\n"
         }
         notes += "\nProgram ID: \(program.id)"
-        
-        event.notes = notes
-        event.location = calendarEventLocation(for: program)
+        return notes
     }
     
     func removeEventsForProgram(_ program: Program) throws {
@@ -313,20 +256,6 @@ class CalendarManager: ObservableObject {
         try eventStore.commit()
     }
 
-    private func calendarEventLocation(for program: Program) -> String {
-        let resolved = program.resolvedAddress
-        if !resolved.street.isEmpty {
-            if program.hasDisplayLocation {
-                return "\(resolved.street), \(program.displayCityState)"
-            }
-            return resolved.street
-        }
-        if let site = resolved.siteName, !site.isEmpty, program.hasDisplayLocation {
-            return "\(site), \(program.displayCityState)"
-        }
-        return program.displayCityState
-    }
-    
     func removeAllMatchlyEvents() throws {
         guard calendarAccessGranted, let calendar = matchlyCalendar else {
             throw CalendarError.notAuthorized

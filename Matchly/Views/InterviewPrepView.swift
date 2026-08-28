@@ -166,7 +166,7 @@ struct InterviewPrepView: View {
         }
         .sheet(isPresented: $showQuestionnairePicker) {
             InterviewPrepQuestionnairePickerSheet(
-                program: liveProgram,
+                accentColor: SpecialtyFormatter.color(for: liveProgram.specialty),
                 availablePrompts: availablePrompts,
                 alreadyAddedIds: Set(prepState.questionListOrder),
                 onAdd: { ids in
@@ -1148,10 +1148,10 @@ struct InterviewPrepView: View {
 
 // MARK: - Questionnaire picker sheet
 
-private struct InterviewPrepQuestionnairePickerSheet: View {
+struct InterviewPrepQuestionnairePickerSheet: View {
     @Environment(\.dismiss) private var dismiss
 
-    let program: Program
+    let accentColor: Color
     let availablePrompts: [(id: String, sectionTitle: String, question: String)]
     let alreadyAddedIds: Set<String>
     let onAdd: (Set<String>) -> Void
@@ -1202,7 +1202,7 @@ private struct InterviewPrepQuestionnairePickerSheet: View {
                                 VStack(alignment: .leading, spacing: 8) {
                                     Text(shortSectionTitle(group.sectionTitle))
                                         .font(.arial(size: 11, weight: .semibold))
-                                        .foregroundColor(SpecialtyFormatter.color(for: program.specialty))
+                                        .foregroundColor(accentColor)
                                         .textCase(.uppercase)
                                         .padding(.horizontal, 16)
 

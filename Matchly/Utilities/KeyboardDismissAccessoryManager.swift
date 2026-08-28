@@ -121,7 +121,7 @@ enum KeyboardDismissAccessoryManager {
 
     private static func windowBarFrame(for keyboardFrame: CGRect, in window: UIWindow) -> CGRect {
         let convertedKeyboard: CGRect
-        if let coordinateSpace = window.windowScene?.coordinateSpace {
+        if let coordinateSpace = window.windowScene?.effectiveGeometry.coordinateSpace {
             convertedKeyboard = window.convert(keyboardFrame, from: coordinateSpace)
         } else {
             convertedKeyboard = keyboardFrame

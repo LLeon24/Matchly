@@ -16,6 +16,11 @@ struct SettingsView: View {
     @State private var showSignOutAlert = false
     @State private var showSpecialtyChange = false
     @State private var showLinkEmailPassword = false
+    @State private var showDeleteAccountAlert = false
+    @State private var showDeletePasswordPrompt = false
+    @State private var deleteAccountPassword = ""
+    @State private var isDeletingAccount = false
+    @State private var deleteAccountError: String?
     
     var body: some View {
         MatchlyNavigationView {
@@ -60,6 +65,34 @@ struct SettingsView: View {
                         ? "You'll sign out of this session. Tap Sign in with \(authManager.biometricDisplayName) when you're ready to return."
                         : "Are you sure you want to sign out? You'll need to sign in again to access your data."
                 )
+            }
+            .alert("Delete Account", isPresented: $showDeleteAccountAlert) {
+                Button("Cancel", role: .cancel) { }
+                Button("Delete", role: .destructive) {
+                    if authManager.deletionRequiresPassword {
+                        showDeletePasswordPrompt = true
+                    } else {
+                        deleteAccount(password: nil)
+                    }
+                }
+            } message: {
+                Text(deleteAccountMessage)
+            }
+            .alert("Confirm Password", isPresented: $showDeletePasswordPrompt) {
+                SecureField("Password", text: $deleteAccountPassword)
+                Button("Cancel", role: .cancel) {
+                    deleteAccountPassword = ""
+                }
+                Button("Delete", role: .destructive) {
+                    deleteAccount(password: deleteAccountPassword)
+                }
+            } message: {
+                Text("Enter your password to permanently delete your account.")
+            }
+            .alert("Couldn't Delete Account", isPresented: deleteAccountErrorBinding) {
+                Button("OK", role: .cancel) { deleteAccountError = nil }
+            } message: {
+                Text(deleteAccountError ?? "")
             }
             .sheet(isPresented: $showSpecialtyChange) {
                 SpecialtySelectionView()
@@ -296,6 +329,10 @@ struct SettingsView: View {
                         Text("Customize Questionnaire")
                     }
 
+                    NavigationLink(destination: DefaultPrepQuestionsView()) {
+                        Text("Default Interview Prep Questions")
+                    }
+
                     Picker("Preferred EMR", selection: Binding(
                         get: { dataManager.preferences.preferredEMR ?? "" },
                         set: { newValue in
@@ -419,8 +456,61 @@ struct SettingsView: View {
                         }
                     }
                     .buttonStyle(.glass)
+
+                    if authManager.currentUser != nil {
+                        Button(role: .destructive, action: {
+                            showDeleteAccountAlert = true
+                        }) {
+                            HStack {
+                                if isDeletingAccount {
+                                    ProgressView()
+                                } else {
+                                    Image(systemName: "trash")
+                                }
+                                Text("Delete Account")
+                            }
+                        }
+                        .buttonStyle(.glass)
+                        .disabled(isDeletingAccount)
+                    }
         } header: {
             MatchlyFormSectionHeader(title: "Account")
+        }
+    }
+
+    private var deleteAccountMessage: String {
+        let base = "This permanently deletes your account and all synced data. This cannot be undone."
+        switch authManager.currentUser?.provider {
+        case .apple:
+            return base + " You'll be asked to confirm with Sign in with Apple."
+        case .google:
+            return base + " You may be asked to confirm with your Google sign-in."
+        default:
+            return base
+        }
+    }
+
+    private var deleteAccountErrorBinding: Binding<Bool> {
+        Binding(
+            get: { deleteAccountError != nil },
+            set: { if !$0 { deleteAccountError = nil } }
+        )
+    }
+
+    private func deleteAccount(password: String?) {
+        isDeletingAccount = true
+        Task { @MainActor in
+            defer {
+                isDeletingAccount = false
+                deleteAccountPassword = ""
+            }
+            do {
+                try await authManager.deleteAccount(password: password)
+            } catch AuthError.canceled {
+                // User dismissed the reauthentication prompt — keep the account.
+            } catch {
+                deleteAccountError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            }
         }
     }
     

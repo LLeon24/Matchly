@@ -203,6 +203,11 @@ class AuthManager: ObservableObject {
            let user = try? JSONDecoder().decode(User.self, from: userData) {
             self.currentUser = user
             self.authState = .signedIn(user)
+            // Cold launches start locked so the app always asks for Face ID / passcode.
+            // (Backgrounding is handled separately via lockAppIfNeeded().)
+            if isBiometricLoginEnabled, BiometricAuthManager.shared.canAuthenticate {
+                self.isAppLocked = true
+            }
         } else {
             self.authState = .signedOut
             self.isAppLocked = false
@@ -318,7 +323,7 @@ class AuthManager: ObservableObject {
         guard isAppLocked else { return }
         let success = try await BiometricAuthManager.shared.authenticate(
             reason: "Unlock Matchly",
-            policy: .biometricsOnly
+            policy: .biometricsOrPasscode
         )
         guard success else { throw BiometricAuthError.failed }
         isAppLocked = false
@@ -390,6 +395,160 @@ class AuthManager: ObservableObject {
             Self.keychainDelete(account: Self.keychainAppleUserAccount)
             Self.keychainDelete(account: Self.keychainAppleDisplayNameAccount)
             Self.keychainDelete(account: Self.keychainCachedUserAccount)
+        }
+    }
+
+    // MARK: - Account Deletion
+
+    /// Whether account deletion needs the user's password to reauthenticate.
+    /// Apple and Google accounts reauthenticate through their own flows instead.
+    var deletionRequiresPassword: Bool {
+        guard let firebaseUser = Auth.auth().currentUser else { return false }
+        let ids = Set(firebaseUser.providerData.map(\.providerID))
+        return !ids.contains("apple.com") && !ids.contains("google.com") && ids.contains("password")
+    }
+
+    /// Permanently deletes the signed-in account: reauthenticates with the account's
+    /// provider, removes the Firestore backup, revokes the Sign in with Apple token when
+    /// applicable (App Review 5.1.1(v)), deletes the Firebase user, and wipes local data.
+    func deleteAccount(password: String? = nil) async throws {
+        guard let firebaseUser = Auth.auth().currentUser else { throw AuthError.userNotFound }
+
+        let providerIDs = Set(firebaseUser.providerData.map(\.providerID))
+
+        do {
+            if providerIDs.contains("apple.com") {
+                let (appleIDCredential, rawNonce) = try await performAppleAuthorizationRequest()
+                guard let identityTokenData = appleIDCredential.identityToken,
+                      let idTokenString = String(data: identityTokenData, encoding: .utf8),
+                      !idTokenString.isEmpty else {
+                    throw AuthError.invalidCredentials
+                }
+                let credential = OAuthProvider.appleCredential(
+                    withIDToken: idTokenString,
+                    rawNonce: rawNonce,
+                    fullName: nil
+                )
+                try await firebaseUser.reauthenticate(with: credential)
+
+                // Apple requires revoking the Sign in with Apple token on account deletion.
+                if let codeData = appleIDCredential.authorizationCode,
+                   let authorizationCode = String(data: codeData, encoding: .utf8) {
+                    try await Auth.auth().revokeToken(withAuthorizationCode: authorizationCode)
+                }
+            } else if providerIDs.contains("google.com") {
+                try await performGoogleReauthentication(for: firebaseUser)
+            } else if providerIDs.contains("password") {
+                guard let password, !password.isEmpty, let email = firebaseUser.email else {
+                    throw AuthError.invalidCredentials
+                }
+                let credential = EmailAuthProvider.credential(withEmail: email, password: password)
+                try await firebaseUser.reauthenticate(with: credential)
+            }
+
+            // Remove cloud data while still authenticated — security rules require it.
+            try await AccountCloudSyncManager.shared.deleteBackup()
+
+            try await firebaseUser.delete()
+            Self.logger.notice("Account deleted")
+        } catch let error as ASAuthorizationError where error.code == .canceled {
+            throw AuthError.canceled
+        } catch let error as AuthError {
+            throw error
+        } catch {
+            let nsError = error as NSError
+            if nsError.domain == "com.google.GIDSignIn", nsError.code == GIDSignInError.canceled.rawValue {
+                throw AuthError.canceled
+            }
+            throw mapFirebaseAuthError(error)
+        }
+
+        // Wipe local data only after the account is gone, so a failed deletion loses nothing.
+        DataManager.shared.programs = []
+        DataManager.shared.preferences = UserPreferences()
+        DataManager.shared.savePrograms()
+        DataManager.shared.savePreferences()
+
+        disableBiometricLogin()
+        UserDefaults.standard.removeObject(forKey: Self.biometricOfferDeclinedKey)
+        Self.keychainDelete(account: Self.keychainAppleUserAccount)
+        Self.keychainDelete(account: Self.keychainAppleDisplayNameAccount)
+        Self.keychainDelete(account: Self.keychainCachedUserAccount)
+
+        signOut()
+    }
+
+    /// Runs a bare Sign in with Apple authorization (no name/email scopes) for
+    /// reauthentication, returning the credential and the raw nonce sent with it.
+    private func performAppleAuthorizationRequest() async throws -> (ASAuthorizationAppleIDCredential, String) {
+        let appleIDProvider = ASAuthorizationAppleIDProvider()
+        let request = appleIDProvider.createRequest()
+        request.requestedScopes = []
+
+        let rawNonce = Self.randomNonceString()
+        request.nonce = Self.sha256(rawNonce)
+
+        let authorizationController = ASAuthorizationController(authorizationRequests: [request])
+        let result = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<ASAuthorization, Error>) in
+            let delegate = AppleSignInDelegate(continuation: continuation)
+            authorizationController.delegate = delegate
+            authorizationController.presentationContextProvider = delegate
+            delegate.retainController = authorizationController
+            delegate.retainSelf = delegate
+            authorizationController.performRequests()
+        }
+
+        guard let appleIDCredential = result.credential as? ASAuthorizationAppleIDCredential else {
+            throw AuthError.invalidCredentials
+        }
+        return (appleIDCredential, rawNonce)
+    }
+
+    private func performGoogleReauthentication(for firebaseUser: FirebaseAuth.User) async throws {
+        guard let clientID = FirebaseApp.app()?.options.clientID else {
+            throw AuthError.networkError
+        }
+        GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
+
+        // Prefer the on-device Google session — no "accounts.google.com" consent alert.
+        if let credential = await silentGoogleCredential() {
+            do {
+                try await firebaseUser.reauthenticate(with: credential)
+                return
+            } catch {
+                Self.logger.notice("Silent Google reauthentication failed, falling back to interactive: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+
+        guard let presenting = Self.topViewController() else {
+            throw AuthError.networkError
+        }
+        let gidResult = try await GIDSignIn.sharedInstance.signIn(withPresenting: presenting)
+        guard let idToken = gidResult.user.idToken?.tokenString else {
+            throw AuthError.invalidCredentials
+        }
+        let credential = GoogleAuthProvider.credential(
+            withIDToken: idToken,
+            accessToken: gidResult.user.accessToken.tokenString
+        )
+        try await firebaseUser.reauthenticate(with: credential)
+    }
+
+    /// Builds a Google credential from the restored on-device session, refreshing tokens
+    /// if needed. Returns `nil` when there is no usable previous sign-in.
+    private func silentGoogleCredential() async -> AuthCredential? {
+        guard GIDSignIn.sharedInstance.hasPreviousSignIn() else { return nil }
+        do {
+            let user = try await GIDSignIn.sharedInstance.restorePreviousSignIn()
+            let refreshed = try await user.refreshTokensIfNeeded()
+            guard let idToken = refreshed.idToken?.tokenString else { return nil }
+            return GoogleAuthProvider.credential(
+                withIDToken: idToken,
+                accessToken: refreshed.accessToken.tokenString
+            )
+        } catch {
+            Self.logger.notice("Could not restore Google session silently: \(error.localizedDescription, privacy: .public)")
+            return nil
         }
     }
 
