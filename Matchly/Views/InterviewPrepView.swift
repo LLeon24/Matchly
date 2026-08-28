@@ -20,9 +20,14 @@ struct InterviewPrepView: View {
     @State private var showClearQuestionsConfirmation = false
     @State private var showDeleteSelectedConfirmation = false
     @State private var showSaveDefaultQuestionsConfirmation = false
-    @State private var showShareSheet = false
-    @State private var pdfURL: URL?
+    @State private var pdfShareItem: PDFShareItem?
     @State private var showProgramInfo = false
+
+    /// Item-based sheet payload so the share sheet never presents before the URL exists.
+    private struct PDFShareItem: Identifiable {
+        let id = UUID()
+        let url: URL
+    }
 
     private struct PrepListItem: Identifiable {
         let id: String
@@ -156,10 +161,8 @@ struct InterviewPrepView: View {
         .onChange(of: availablePrompts.map(\.id)) { _, _ in
             sanitizePrepState()
         }
-        .sheet(isPresented: $showShareSheet, onDismiss: { pdfURL = nil }) {
-            if let pdfURL {
-                ShareSheet(activityItems: [pdfURL])
-            }
+        .sheet(item: $pdfShareItem) { item in
+            ShareSheet(activityItems: [item.url])
         }
         .sheet(isPresented: $showProgramInfo) {
             programInfoSheet
@@ -1102,8 +1105,7 @@ struct InterviewPrepView: View {
         )
 
         if let url = InterviewPrepPDFExporter.generatePDF(configuration: config) {
-            pdfURL = url
-            showShareSheet = true
+            pdfShareItem = PDFShareItem(url: url)
         }
     }
 

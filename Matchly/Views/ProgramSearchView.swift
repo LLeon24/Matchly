@@ -17,6 +17,9 @@ struct ProgramSearchView: View {
     @State private var tempSelectedStates: Set<String> = []
     @State private var tempShowAllStates: Bool = true
     @State private var selectedPrograms: Set<String> = []
+    /// Full catalog entries for every selected id — selections must survive new
+    /// searches and filter changes, which replace `searchResults` entirely.
+    @State private var selectedProgramInfoById: [String: ResidencyProgramInfo] = [:]
     @State private var selectedSpecialties: Set<String> = []
     @State private var showAllSpecialties: Bool = false // Track if user explicitly wants all
     @State private var showSpecialtyFilter: Bool = false
@@ -726,8 +729,10 @@ struct ProgramSearchView: View {
                 if allowMultiSelect {
                     if selectedPrograms.contains(program.id) {
                         selectedPrograms.remove(program.id)
+                        selectedProgramInfoById.removeValue(forKey: program.id)
                     } else {
                         selectedPrograms.insert(program.id)
+                        selectedProgramInfoById[program.id] = program
                     }
                 } else {
                     let mapped = CatalogProgramMapper.toSavedProgram(program)
@@ -803,7 +808,9 @@ struct ProgramSearchView: View {
                 var addedCount = 0
                 var skippedCount = 0
 
-                for program in searchResults where selectedPrograms.contains(program.id) {
+                for id in selectedPrograms {
+                    guard let program = selectedProgramInfoById[id]
+                        ?? searchResults.first(where: { $0.id == id }) else { continue }
                     switch dataManager.addProgram(CatalogProgramMapper.toSavedProgram(program)) {
                     case .added:
                         addedCount += 1
