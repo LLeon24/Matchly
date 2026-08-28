@@ -8,6 +8,7 @@
 import Foundation
 import Combine
 import OSLog
+import WidgetKit
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -100,6 +101,7 @@ class DataManager: ObservableObject {
     
     init() {
         loadData()
+        publishWidgetSnapshot()
         bootstrapLocalSyncTimestampsIfNeeded()
         observeCatalogReadiness()
         observeCloudSyncTriggers()
@@ -691,6 +693,48 @@ class DataManager: ObservableObject {
     private func persistProgramsToDisk() {
         guard let encoded = try? JSONEncoder().encode(programs) else { return }
         UserDefaults.standard.set(encoded, forKey: programsKey)
+        publishWidgetSnapshot()
+    }
+
+    // MARK: - Widget Snapshot
+
+    /// Shared with MatchlyWidgetExtension via the App Group container.
+    static let widgetAppGroupID = "group.com.lleonmd.Matchly"
+    static let widgetInterviewsKey = "widget_upcoming_interviews"
+
+    /// Publishes upcoming interviews (today onward) as plain plist values so the
+    /// widget can render without sharing any model code with the app.
+    func publishWidgetSnapshot() {
+        guard let shared = UserDefaults(suiteName: Self.widgetAppGroupID) else { return }
+
+        let today = Calendar.current.startOfDay(for: Date())
+        let upcoming: [[String: Any]] = programs
+            .compactMap { program -> (Date, [String: Any])? in
+                guard let date = program.interviewDate, date >= today else { return nil }
+                let title = HospitalNameFormatter.format(
+                    program.hospital.isEmpty ? (program.name.isEmpty ? "Program" : program.name) : program.hospital
+                )
+                var subtitleParts: [String] = []
+                if !program.specialty.isEmpty {
+                    subtitleParts.append(SpecialtyFormatter.abbreviation(for: program.specialty))
+                }
+                if program.hasDisplayLocation {
+                    subtitleParts.append(program.displayCityState)
+                }
+                let entry: [String: Any] = [
+                    "id": program.id,
+                    "title": title,
+                    "subtitle": subtitleParts.joined(separator: " • "),
+                    "date": date.timeIntervalSince1970
+                ]
+                return (date, entry)
+            }
+            .sorted { $0.0 < $1.0 }
+            .prefix(10)
+            .map(\.1)
+
+        shared.set(upcoming, forKey: Self.widgetInterviewsKey)
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     private func persistPreferencesToDisk() {

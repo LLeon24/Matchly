@@ -10,6 +10,9 @@
 		308DEA7A2F00000100E44F05 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 308DEA7C2F00000100E44F05 /* FirebaseAuth */; };
 		308DEA7B2F00000100E44F05 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 308DEA7D2F00000100E44F05 /* FirebaseFirestore */; };
 		308DEA7E2F00000100E44F05 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 308DEA7F2F00000100E44F05 /* GoogleSignIn */; };
+		30EEC08130417E5600F19A47 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 30EEC08030417E5600F19A47 /* WidgetKit.framework */; };
+		30EEC08330417E5600F19A47 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 30EEC08230417E5600F19A47 /* SwiftUI.framework */; };
+		30EEC09030417E5700F19A47 /* MatchlyWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 30EEC07E30417E5600F19A47 /* MatchlyWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -27,13 +30,48 @@
 			remoteGlobalIDString = 30A6C4262EC7311A00E44F05;
 			remoteInfo = Matchly;
 		};
+		30EEC08E30417E5700F19A47 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 30A6C41F2EC7311A00E44F05 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 30EEC07D30417E5600F19A47;
+			remoteInfo = MatchlyWidgetExtension;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		30EEC09130417E5700F19A47 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				30EEC09030417E5700F19A47 /* MatchlyWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		30A6C4272EC7311A00E44F05 /* Matchly.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Matchly.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		30A6C4342EC7311D00E44F05 /* MatchlyTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MatchlyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		30A6C43E2EC7311D00E44F05 /* MatchlyUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MatchlyUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		30EEC07E30417E5600F19A47 /* MatchlyWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MatchlyWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		30EEC08030417E5600F19A47 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		30EEC08230417E5600F19A47 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		30EEC09630417EB900F19A47 /* MatchlyWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MatchlyWidgetExtension.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		30EEC09430417E5700F19A47 /* Exceptions for "MatchlyWidget" folder in "MatchlyWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 30EEC07D30417E5600F19A47 /* MatchlyWidgetExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		30A6C4292EC7311A00E44F05 /* Matchly */ = {
@@ -49,6 +87,14 @@
 		30A6C4412EC7311D00E44F05 /* MatchlyUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = MatchlyUITests;
+			sourceTree = "<group>";
+		};
+		30EEC08430417E5600F19A47 /* MatchlyWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				30EEC09430417E5700F19A47 /* Exceptions for "MatchlyWidget" folder in "MatchlyWidgetExtension" target */,
+			);
+			path = MatchlyWidget;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -78,15 +124,27 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		30EEC07B30417E5600F19A47 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				30EEC08330417E5600F19A47 /* SwiftUI.framework in Frameworks */,
+				30EEC08130417E5600F19A47 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		30A6C41E2EC7311A00E44F05 = {
 			isa = PBXGroup;
 			children = (
+				30EEC09630417EB900F19A47 /* MatchlyWidgetExtension.entitlements */,
 				30A6C4292EC7311A00E44F05 /* Matchly */,
 				30A6C4372EC7311D00E44F05 /* MatchlyTests */,
 				30A6C4412EC7311D00E44F05 /* MatchlyUITests */,
+				30EEC08430417E5600F19A47 /* MatchlyWidget */,
+				30EEC07F30417E5600F19A47 /* Frameworks */,
 				30A6C4282EC7311A00E44F05 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -97,8 +155,18 @@
 				30A6C4272EC7311A00E44F05 /* Matchly.app */,
 				30A6C4342EC7311D00E44F05 /* MatchlyTests.xctest */,
 				30A6C43E2EC7311D00E44F05 /* MatchlyUITests.xctest */,
+				30EEC07E30417E5600F19A47 /* MatchlyWidgetExtension.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		30EEC07F30417E5600F19A47 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				30EEC08030417E5600F19A47 /* WidgetKit.framework */,
+				30EEC08230417E5600F19A47 /* SwiftUI.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -111,10 +179,12 @@
 				30A6C4232EC7311A00E44F05 /* Sources */,
 				30A6C4242EC7311A00E44F05 /* Frameworks */,
 				30A6C4252EC7311A00E44F05 /* Resources */,
+				30EEC09130417E5700F19A47 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				30EEC08F30417E5700F19A47 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				30A6C4292EC7311A00E44F05 /* Matchly */,
@@ -175,6 +245,28 @@
 			productReference = 30A6C43E2EC7311D00E44F05 /* MatchlyUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		30EEC07D30417E5600F19A47 /* MatchlyWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 30EEC09530417E5700F19A47 /* Build configuration list for PBXNativeTarget "MatchlyWidgetExtension" */;
+			buildPhases = (
+				30EEC07A30417E5600F19A47 /* Sources */,
+				30EEC07B30417E5600F19A47 /* Frameworks */,
+				30EEC07C30417E5600F19A47 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				30EEC08430417E5600F19A47 /* MatchlyWidget */,
+			);
+			name = MatchlyWidgetExtension;
+			packageProductDependencies = (
+			);
+			productName = MatchlyWidgetExtension;
+			productReference = 30EEC07E30417E5600F19A47 /* MatchlyWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -182,7 +274,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 2610;
+				LastSwiftUpdateCheck = 2700;
 				LastUpgradeCheck = 2620;
 				TargetAttributes = {
 					30A6C4262EC7311A00E44F05 = {
@@ -195,6 +287,9 @@
 					30A6C43D2EC7311D00E44F05 = {
 						CreatedOnToolsVersion = 26.1.1;
 						TestTargetID = 30A6C4262EC7311A00E44F05;
+					};
+					30EEC07D30417E5600F19A47 = {
+						CreatedOnToolsVersion = 27.0;
 					};
 				};
 			};
@@ -219,6 +314,7 @@
 				30A6C4262EC7311A00E44F05 /* Matchly */,
 				30A6C4332EC7311D00E44F05 /* MatchlyTests */,
 				30A6C43D2EC7311D00E44F05 /* MatchlyUITests */,
+				30EEC07D30417E5600F19A47 /* MatchlyWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -239,6 +335,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		30A6C43C2EC7311D00E44F05 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		30EEC07C30417E5600F19A47 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -269,6 +372,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		30EEC07A30417E5600F19A47 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -281,6 +391,11 @@
 			isa = PBXTargetDependency;
 			target = 30A6C4262EC7311A00E44F05 /* Matchly */;
 			targetProxy = 30A6C43F2EC7311D00E44F05 /* PBXContainerItemProxy */;
+		};
+		30EEC08F30417E5700F19A47 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 30EEC07D30417E5600F19A47 /* MatchlyWidgetExtension */;
+			targetProxy = 30EEC08E30417E5700F19A47 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -596,6 +711,72 @@
 			};
 			name = Release;
 		};
+		30EEC09230417E5700F19A47 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = MatchlyWidgetExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = KYGM9X4TU5;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MatchlyWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Matchly;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lleonmd.Matchly.MatchlyWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		30EEC09330417E5700F19A47 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = MatchlyWidgetExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = KYGM9X4TU5;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MatchlyWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Matchly;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lleonmd.Matchly.MatchlyWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -631,6 +812,15 @@
 			buildConfigurations = (
 				30A6C44F2EC7311D00E44F05 /* Debug */,
 				30A6C4502EC7311D00E44F05 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		30EEC09530417E5700F19A47 /* Build configuration list for PBXNativeTarget "MatchlyWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				30EEC09230417E5700F19A47 /* Debug */,
+				30EEC09330417E5700F19A47 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
