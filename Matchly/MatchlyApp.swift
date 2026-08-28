@@ -38,7 +38,6 @@ struct MatchlyApp: App {
                     if GIDSignIn.sharedInstance.handle(url) {
                         return
                     }
-                    guard FeatureFlags.couplesMatchEnabled else { return }
                     deepLinkHandler.handle(url: url)
                 }
         }
@@ -47,15 +46,31 @@ struct MatchlyApp: App {
 
 final class CoupleDeepLinkHandler: ObservableObject {
     @Published var pendingCoupleCode: String?
+    @Published private(set) var shouldOpenInterviewsTab = false
 
     func handle(url: URL) {
-        if let code = Couple.parseLinkPayload(url.absoluteString) {
-            pendingCoupleCode = code
+        if Self.isInterviewsURL(url) {
+            shouldOpenInterviewsTab = true
+            return
         }
+        guard FeatureFlags.couplesMatchEnabled,
+              let code = Couple.parseLinkPayload(url.absoluteString) else { return }
+        pendingCoupleCode = code
+    }
+
+    func consumeInterviewsNavigation() {
+        shouldOpenInterviewsTab = false
     }
 
     func consumePendingCode() -> String? {
         defer { pendingCoupleCode = nil }
         return pendingCoupleCode
+    }
+
+    private static func isInterviewsURL(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "matchly" else { return false }
+        if url.host?.lowercased() == "interviews" { return true }
+        let path = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return path.lowercased() == "interviews"
     }
 }

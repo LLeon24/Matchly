@@ -14,6 +14,7 @@ private enum FeatureTourMode {
 }
 
 struct MainTabView: View {
+    @EnvironmentObject private var deepLinkHandler: CoupleDeepLinkHandler
     @ObservedObject private var dataManager = DataManager.shared
     @State private var selectedTab: Int = MainTabLayout.dashboardIndex
     @State private var dashboardRefreshKey: UUID = UUID()
@@ -104,6 +105,11 @@ struct MainTabView: View {
             } else {
                 promptFirstProgramAddIfNeeded()
             }
+            applyInterviewsDeepLinkIfNeeded()
+        }
+        .onChange(of: deepLinkHandler.shouldOpenInterviewsTab) { _, shouldOpen in
+            guard shouldOpen else { return }
+            applyInterviewsDeepLinkIfNeeded()
         }
         .onPreferenceChange(FeatureTourAnchorPreferenceKey.self) { tourAnchorRects = $0 }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ShowFeatureTour"))) { _ in
@@ -182,8 +188,16 @@ struct MainTabView: View {
         selectedTab = MainTabLayout.dashboardIndex
         NotificationCenter.default.post(name: .matchlyPromptFirstProgramAdd, object: nil)
     }
+
+    private func applyInterviewsDeepLinkIfNeeded() {
+        guard deepLinkHandler.shouldOpenInterviewsTab else { return }
+        showFeatureTour = false
+        selectedTab = MainTabLayout.interviewsIndex
+        deepLinkHandler.consumeInterviewsNavigation()
+    }
 }
 
 #Preview {
     MainTabView()
+        .environmentObject(CoupleDeepLinkHandler())
 }
