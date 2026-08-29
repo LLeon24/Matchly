@@ -18,12 +18,13 @@ struct AllSignaledProgramsView: View {
         }
     }
 
-    private var sortedBuckets: [String] {
-        groupedByBucket.keys.sorted()
-    }
-
     private var budgetSummaries: [DataManager.SignalBudgetSummary] {
         dataManager.signalBudgetSummaries()
+    }
+
+    private var orderedBucketNames: [String] {
+        let names = Set(budgetSummaries.map(\.displayName)).union(groupedByBucket.keys)
+        return names.sorted()
     }
 
     var body: some View {
@@ -31,13 +32,18 @@ struct AllSignaledProgramsView: View {
             if !budgetSummaries.isEmpty {
                 Section {
                     ForEach(budgetSummaries) { summary in
-                        SignalBudgetCard(summary: summary)
+                        DashboardSignalBudgetRow(summary: summary, style: .standard)
                     }
                 } header: {
                     Text("Signal Budget")
                 } footer: {
-                    Text("Limits follow ERAS / ResidencyCAS rules per specialty. Individual programs may opt out of accepting signals.")
-                        .font(.arial(size: 12))
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Limits follow ERAS / ResidencyCAS rules per specialty. Individual programs may opt out of accepting signals.")
+                        if !signaledPrograms.isEmpty {
+                            Text("Assigned programs are grouped by specialty and signal type below.")
+                        }
+                    }
+                    .font(.arial(size: 12))
                 }
             }
 
@@ -60,19 +66,8 @@ struct AllSignaledProgramsView: View {
                     .padding(.vertical, 24)
                 }
             } else {
-                ForEach(sortedBuckets, id: \.self) { bucket in
-                    let programs = groupedByBucket[bucket] ?? []
-                    let sampleAccreditationID = programs.first?.accreditationID
-                    let config = SignalLimits.configuration(for: bucket, accreditationID: sampleAccreditationID)
-                    let usage = dataManager.getSignalUsage(for: bucket, accreditationID: sampleAccreditationID)
-
-                    Section(header: bucketSectionHeader(bucket: bucket, usage: usage, config: config)) {
-                        ForEach(programs.sorted { $0.finalScore > $1.finalScore }) { program in
-                            NavigationLink(destination: ProgramEntryView(program: program)) {
-                                signaledProgramRow(program)
-                            }
-                        }
-                    }
+                ForEach(orderedBucketNames, id: \.self) { bucket in
+                    assignedProgramsSection(for: bucket)
                 }
             }
         }
@@ -85,27 +80,191 @@ struct AllSignaledProgramsView: View {
     }
 
     @ViewBuilder
-    private func bucketSectionHeader(
-        bucket: String,
-        usage: (goldUsed: Int, goldLimit: Int, silverUsed: Int, silverLimit: Int),
-        config: SignalConfiguration
-    ) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "star.fill")
-                .font(.arial(size: 12))
-                .foregroundColor(.purple)
-            Text(bucket)
-                .font(.arial(size: 13, weight: .semibold))
-            Spacer()
+    private func assignedProgramsSection(for bucket: String) -> some View {
+        let programs = groupedByBucket[bucket] ?? []
+        let sampleAccreditationID = programs.first?.accreditationID
+        let config = SignalLimits.configuration(for: bucket, accreditationID: sampleAccreditationID)
+        let usage = dataManager.getSignalUsage(for: bucket, accreditationID: sampleAccreditationID)
+        let summary = budgetSummaries.first { $0.displayName == bucket }
+        let goldPrograms = programs
+            .filter { $0.signalType == .gold }
+            .sorted { $0.finalScore > $1.finalScore }
+        let silverPrograms = programs
+            .filter { $0.signalType == .silver }
+            .sorted { $0.finalScore > $1.finalScore }
+
+        Section {
             if config.isTiered {
-                Text("\(usage.goldUsed)/\(usage.goldLimit)G · \(usage.silverUsed)/\(usage.silverLimit)S")
-                    .font(.arial(size: 10, weight: .medium))
-            } else if usage.goldLimit > 0 {
-                Text("\(usage.goldUsed)/\(usage.goldLimit)")
-                    .font(.arial(size: 10, weight: .medium))
+                signalTypeGroupHeader(
+                    title: "Gold Signals",
+                    used: summary?.goldUsed ?? usage.goldUsed,
+                    limit: summary?.goldLimit ?? usage.goldLimit,
+                    remaining: summary?.goldRemaining ?? max(0, usage.goldLimit - usage.goldUsed),
+                    color: .yellow,
+                    icon: "star.fill"
+                )
+
+                signalTypeProgramRows(
+                    title: "Gold Signals",
+                    remaining: summary?.goldRemaining ?? max(0, usage.goldLimit - usage.goldUsed),
+                    limit: summary?.goldLimit ?? usage.goldLimit,
+                    programs: goldPrograms
+                )
+
+                signalTypeGroupHeader(
+                    title: "Silver Signals",
+                    used: summary?.silverUsed ?? usage.silverUsed,
+                    limit: summary?.silverLimit ?? usage.silverLimit,
+                    remaining: summary?.silverRemaining ?? max(0, usage.silverLimit - usage.silverUsed),
+                    color: Color(white: 0.55),
+                    icon: "star"
+                )
+
+                signalTypeProgramRows(
+                    title: "Silver Signals",
+                    remaining: summary?.silverRemaining ?? max(0, usage.silverLimit - usage.silverUsed),
+                    limit: summary?.silverLimit ?? usage.silverLimit,
+                    programs: silverPrograms
+                )
+            } else if usage.goldLimit > 0 || !goldPrograms.isEmpty {
+                signalTypeGroupHeader(
+                    title: "Signals",
+                    used: summary?.goldUsed ?? usage.goldUsed,
+                    limit: summary?.goldLimit ?? usage.goldLimit,
+                    remaining: summary?.goldRemaining ?? max(0, usage.goldLimit - usage.goldUsed),
+                    color: AppColors.primaryBlue,
+                    icon: "star.fill"
+                )
+
+                signalTypeProgramRows(
+                    title: "Signals",
+                    remaining: summary?.goldRemaining ?? max(0, usage.goldLimit - usage.goldUsed),
+                    limit: summary?.goldLimit ?? usage.goldLimit,
+                    programs: goldPrograms
+                )
+            }
+        } header: {
+            specialtySectionHeader(bucket: bucket, config: config)
+        }
+    }
+
+    @ViewBuilder
+    private func specialtySectionHeader(bucket: String, config: SignalConfiguration) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "stethoscope")
+                .font(.arial(size: 12, weight: .semibold))
+                .foregroundColor(SpecialtyFormatter.color(for: bucket))
+
+            Text(SpecialtyFormatter.displayNameWithAbbreviation(bucket))
+                .font(.arial(size: 14, weight: .semibold))
+                .foregroundColor(.primary)
+
+            Spacer(minLength: 4)
+
+            if config.usesResidencyCAS {
+                Text("ResidencyCAS")
+                    .font(.arial(size: 9, weight: .semibold))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(Color.blue.opacity(0.12))
+                    .foregroundColor(.blue)
+                    .clipShape(Capsule())
             }
         }
-        .foregroundColor(.secondary)
+        .textCase(nil)
+    }
+
+    @ViewBuilder
+    private func signalTypeProgramRows(
+        title: String,
+        remaining: Int,
+        limit: Int,
+        programs: [Program]
+    ) -> some View {
+        if programs.isEmpty {
+            Text(emptyGroupMessage(title: title, remaining: remaining, limit: limit))
+                .font(.arial(size: 13))
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 4)
+        } else {
+            ForEach(programs) { program in
+                NavigationLink(destination: ProgramEntryView(program: program)) {
+                    signaledProgramRow(program)
+                }
+            }
+        }
+    }
+
+    private func signalTypeGroupHeader(
+        title: String,
+        used: Int,
+        limit: Int,
+        remaining: Int,
+        color: Color,
+        icon: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.arial(size: 13, weight: .semibold))
+                    .foregroundColor(color)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.arial(size: 14, weight: .semibold))
+                        .foregroundColor(.primary)
+
+                    Text(usageSummary(used: used, limit: limit, remaining: remaining))
+                        .font(.arial(size: 12))
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer(minLength: 0)
+
+                Text("\(used)/\(limit)")
+                    .font(.arial(size: 13, weight: .bold))
+                    .foregroundColor(used >= limit ? .red : color)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(color.opacity(0.12))
+                    .clipShape(Capsule())
+            }
+
+            if limit > 0 {
+                DashboardSignalUsageMeter(
+                    title: "",
+                    used: used,
+                    limit: limit,
+                    color: color,
+                    style: .compact
+                )
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func usageSummary(used: Int, limit: Int, remaining: Int) -> String {
+        if limit == 0 {
+            return "Not available for this specialty"
+        }
+        if used == 0 {
+            return remaining == 1 ? "None assigned · 1 available" : "None assigned · \(remaining) available"
+        }
+        if remaining == 0 {
+            return "All \(limit) used"
+        }
+        return "\(used) assigned · \(remaining) remaining"
+    }
+
+    private func emptyGroupMessage(title: String, remaining: Int, limit: Int) -> String {
+        if limit == 0 {
+            return "This specialty does not use \(title.lowercased())."
+        }
+        if remaining == 0 {
+            return "No slots remaining."
+        }
+        return "No programs assigned yet. \(remaining) \(remaining == 1 ? "slot" : "slots") available."
     }
 
     @ViewBuilder
@@ -132,7 +291,6 @@ struct AllSignaledProgramsView: View {
                     .lineLimit(2)
 
                 HStack(spacing: 8) {
-                    signalBadge(for: program)
                     ProgramVoiceMemoBadge(program: program)
                     if let note = program.signalNote, !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Label("Statement", systemImage: "text.quote")
@@ -148,93 +306,9 @@ struct AllSignaledProgramsView: View {
                 }
             }
 
-            Spacer()
+            Spacer(minLength: 0)
         }
         .padding(.vertical, 4)
-    }
-
-    @ViewBuilder
-    private func signalBadge(for program: Program) -> some View {
-        let isTiered = SignalLimits.isTiered(for: program.specialty, accreditationID: program.accreditationID)
-        let signalText = isTiered
-            ? (program.signalType == .gold ? "Gold" : "Silver")
-            : "Signal"
-        let signalColor: Color = isTiered
-            ? (program.signalType == .gold ? .yellow : Color(white: 0.55))
-            : .blue
-
-        HStack(spacing: 3) {
-            Image(systemName: program.signalType == .gold ? "star.fill" : "star")
-                .font(.arial(size: 8))
-            Text(signalText)
-                .font(.arial(size: 10, weight: .medium))
-        }
-        .foregroundColor(signalColor)
-    }
-}
-
-private struct SignalBudgetCard: View {
-    let summary: DataManager.SignalBudgetSummary
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(summary.displayName)
-                    .font(.arial(size: 15, weight: .semibold))
-                Spacer()
-                if summary.usesResidencyCAS {
-                    Text("ResidencyCAS")
-                        .font(.arial(size: 10, weight: .semibold))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.blue.opacity(0.12))
-                        .foregroundColor(.blue)
-                        .clipShape(Capsule())
-                }
-            }
-
-            if summary.isTiered {
-                HStack(spacing: 16) {
-                    budgetPill(
-                        title: "Gold left",
-                        remaining: summary.goldRemaining,
-                        total: summary.goldLimit,
-                        color: .yellow
-                    )
-                    budgetPill(
-                        title: "Silver left",
-                        remaining: summary.silverRemaining,
-                        total: summary.silverLimit,
-                        color: .gray
-                    )
-                }
-            } else if summary.goldLimit > 0 {
-                budgetPill(
-                    title: "Signals left",
-                    remaining: summary.goldRemaining,
-                    total: summary.goldLimit,
-                    color: .blue
-                )
-            }
-
-            if summary.requiresSignalStatement {
-                Label("Signal statement required in application", systemImage: "text.quote")
-                    .font(.arial(size: 11))
-                    .foregroundColor(.secondary)
-            }
-        }
-        .padding(.vertical, 6)
-    }
-
-    private func budgetPill(title: String, remaining: Int, total: Int, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.arial(size: 11))
-                .foregroundColor(.secondary)
-            Text("\(remaining) of \(total)")
-                .font(.arial(size: 16, weight: .bold))
-                .foregroundColor(remaining == 0 ? .red : color)
-        }
     }
 }
 

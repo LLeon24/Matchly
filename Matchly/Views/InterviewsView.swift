@@ -540,11 +540,10 @@ struct InterviewRow: View {
                 featuredScheduleLine(for: date)
             }
 
-            if !program.specialty.isEmpty {
-                MatchlyProgramSpecialtyBadge(
-                    specialty: program.specialty,
-                    useFullName: style == .featured
-                )
+            if style == .featured {
+                featuredMetadataRow
+            } else if !program.specialty.isEmpty {
+                MatchlyProgramSpecialtyBadge(specialty: program.specialty)
             }
 
             MatchlyProgramLocationAndIDRow(program: program)
@@ -574,6 +573,48 @@ struct InterviewRow: View {
 
             ProgramVoiceMemoBadge(program: program, iconSize: 9, textSize: 11)
         }
+    }
+
+    @ViewBuilder
+    private var featuredMetadataRow: some View {
+        HStack(spacing: 6) {
+            if !program.specialty.isEmpty {
+                MatchlyProgramSpecialtyBadge(
+                    specialty: program.specialty,
+                    useFullName: true
+                )
+            }
+
+            if program.signalType != .none {
+                featuredSignalBadge
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var featuredSignalBadge: some View {
+        let isTiered = SignalLimits.isTiered(
+            for: program.specialty,
+            accreditationID: program.accreditationID
+        )
+        let signalText = isTiered
+            ? (program.signalType == .gold ? "Gold Signal" : "Silver Signal")
+            : "Signal"
+        let signalColor: Color = isTiered
+            ? (program.signalType == .gold ? Color.yellow : Color(white: 0.6))
+            : AppColors.primaryBlue
+
+        HStack(spacing: 3) {
+            Image(systemName: program.signalType == .gold ? "star.fill" : "star")
+                .font(.arial(size: 8))
+            Text(signalText)
+                .font(.arial(size: 10, weight: .semibold))
+        }
+        .foregroundColor(signalColor)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(signalColor.opacity(0.15))
+        .cornerRadius(4)
     }
 
     private func featuredScheduleLine(for date: Date) -> some View {

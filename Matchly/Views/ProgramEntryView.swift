@@ -35,7 +35,6 @@ struct ProgramEntryView: View {
     @State private var interviewDate: Date = Date()
     @State private var hasInterviewDate: Bool = false
     @State private var showProgramSearch = false
-    @State private var showContactInfo = false
     @State private var showEnableCalendarSyncAlert = false
     @State private var pendingInterviewDate: Date? = nil
     @State private var previousInterviewDate: Date? = nil
@@ -681,14 +680,6 @@ struct ProgramEntryView: View {
     
     var body: some View {
         contentWithSheets
-            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("TabBarNavigationRequested"))) { notification in
-                // Check if we should block navigation due to unsaved changes
-                if hasUnsavedChanges, let userInfo = notification.userInfo, let _ = userInfo["targetTab"] as? Int {
-                    showUnsavedChangesAlert = true
-                    // Store the target tab to navigate after save/discard
-                    pendingDismissal = true
-                }
-            }
     }
     
     private var contentWithSheets: some View {
@@ -798,38 +789,6 @@ struct ProgramEntryView: View {
             }
             .presentationDetents([.medium])
         }
-        .sheet(isPresented: $showContactInfo) {
-            MatchlyNavigationView {
-                List {
-                    if let addressText = programInfoAddressText {
-                        Section("Address") {
-                            Text(addressText)
-                                .font(.arial(size: 15))
-                                .foregroundColor(.primary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-
-                    if let directorName = programDirectorDisplayName {
-                        Section("Program Director") {
-                            Text(directorName)
-                                .font(.arial(size: 15))
-                                .foregroundColor(.primary)
-                        }
-                    }
-                }
-                .navigationTitle("Program Information")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("Done") {
-                            showContactInfo = false
-                        }
-                    }
-                }
-            }
-            .presentationDetents([.medium])
-        }
     }
     
     private var contentWithAlerts: some View {
@@ -847,6 +806,7 @@ struct ProgramEntryView: View {
                 }
                 Button("Cancel", role: .cancel) {
                     pendingDismissal = false
+                    NotificationCenter.default.post(name: NSNotification.Name("TabNavigationCancelled"), object: nil)
                 }
                 Button("Save") {
                     saveProgram()
@@ -900,6 +860,18 @@ struct ProgramEntryView: View {
             } message: {
                 Text("Would you like to add this interview to your calendar?")
             }
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("TabBarNavigationRequested"))) { notification in
+                guard hasUnsavedChanges,
+                      let targetTab = notification.userInfo?["targetTab"] as? Int else { return }
+
+                showUnsavedChangesAlert = true
+                pendingDismissal = true
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("TabNavigationBlocked"),
+                    object: nil,
+                    userInfo: ["targetTab": targetTab]
+                )
+            }
     }
     
     private var contentWithChangeTracking: some View {
@@ -911,7 +883,9 @@ struct ProgramEntryView: View {
             .onChange(of: notes) { _, _ in debouncedCheckForUnsavedChanges() }
             .onChange(of: interviewDate) { _, _ in debouncedCheckForUnsavedChanges() }
             .onChange(of: hasInterviewDate) { _, _ in debouncedCheckForUnsavedChanges() }
-            .onChange(of: signalType) { _, _ in debouncedCheckForUnsavedChanges() }
+            .onChange(of: signalType) { _, _ in
+                hasUnsavedChanges = checkForUnsavedChanges()
+            }
             .onChange(of: signalNote) { _, _ in debouncedCheckForUnsavedChanges() }
             .onChange(of: specialty) { _, _ in
                 revalidateSignalAssignment()
@@ -962,38 +936,6 @@ struct ProgramEntryView: View {
             }
     }
 
-    private var hasProgramInfoDetails: Bool {
-        programInfoAddressText != nil || programDirectorDisplayName != nil
-    }
-
-    private var programInfoAddressText: String? {
-        let resolved = AddressFormatter.resolved(
-            hospital: hospital,
-            address: address.isEmpty ? nil : address,
-            city: city,
-            state: state,
-            accreditationID: accreditationID
-        )
-        let street = resolved.street
-        if !street.isEmpty, !resolved.city.isEmpty, !resolved.state.isEmpty {
-            return "\(street)\n\(resolved.city), \(resolved.state)"
-        }
-        if !street.isEmpty {
-            return street
-        }
-        if !resolved.city.isEmpty, !resolved.state.isEmpty {
-            return "\(resolved.city), \(resolved.state)"
-        }
-        return nil
-    }
-
-    private var programDirectorDisplayName: String? {
-        DirectorNameFormatter.displayDirector(
-            programDirector: programDirector.isEmpty ? nil : programDirector,
-            contactEmail: contactEmail.isEmpty ? nil : contactEmail
-        )
-    }
-
     @ViewBuilder
     private var programHeaderActionButtons: some View {
         HStack(spacing: 8) {
@@ -1013,17 +955,6 @@ struct ProgramEntryView: View {
                     openInMaps()
                 }) {
                     Image(systemName: "map.fill")
-                        .font(.arial(size: 16))
-                        .foregroundColor(.blue)
-                }
-                .buttonStyle(.plain)
-            }
-
-            if hasProgramInfoDetails {
-                Button(action: {
-                    showContactInfo = true
-                }) {
-                    Image(systemName: "info.circle")
                         .font(.arial(size: 16))
                         .foregroundColor(.blue)
                 }

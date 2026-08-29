@@ -159,18 +159,6 @@ struct RankListView: View {
         return scored.filter { !$0.hasRedFlags() } + scored.filter { $0.hasRedFlags() }
     }
 
-    private func shouldShowSpecialtyHeader(at index: Int) -> Bool {
-        let programs = orderedScoredPrograms
-        guard index < programs.count else { return false }
-        let program = programs[index]
-        guard !program.hasRedFlags() else { return false }
-        guard !program.specialty.isEmpty else { return false }
-        if index == 0 { return true }
-        let previous = programs[index - 1]
-        if previous.hasRedFlags() { return true }
-        return previous.specialty != program.specialty
-    }
-
     private func shouldShowRedFlaggedBanner(at index: Int) -> Bool {
         let programs = orderedScoredPrograms
         guard index < programs.count else { return false }
@@ -430,7 +418,6 @@ struct RankListView: View {
         let row = RankListProgramRow(
             rank: index + 1,
             program: program,
-            specialtyHeader: shouldShowSpecialtyHeader(at: index) ? program.specialty : nil,
             showsRedFlaggedSectionBanner: shouldShowRedFlaggedBanner(at: index),
             showsElevatedRedFlag: elevatedRedFlag(at: index)
         )
@@ -538,16 +525,11 @@ struct RankListView: View {
 struct RankListProgramRow: View {
     let rank: Int
     let program: Program
-    var specialtyHeader: String? = nil
     var showsRedFlaggedSectionBanner: Bool = false
     var showsElevatedRedFlag: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if let specialty = specialtyHeader {
-                MatchlySpecialtySectionHeader(specialty: specialty)
-            }
-
             if showsRedFlaggedSectionBanner {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
@@ -812,16 +794,6 @@ struct ExportView: View {
         orderedRankedPrograms
     }
 
-    private func shouldShowSpecialtyHeader(at index: Int) -> Bool {
-        let program = orderedRankedPrograms[index]
-        guard !program.hasRedFlags() else { return false }
-        guard !program.specialty.isEmpty else { return false }
-        if index == 0 { return true }
-        let previous = orderedRankedPrograms[index - 1]
-        if previous.hasRedFlags() { return true }
-        return previous.specialty != program.specialty
-    }
-
     private func shouldShowRedFlaggedBanner(at index: Int) -> Bool {
         guard orderedRankedPrograms[index].hasRedFlags() else { return false }
         guard index > 0 else { return false }
@@ -886,17 +858,6 @@ struct ExportView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         ForEach(Array(orderedRankedPrograms.enumerated()), id: \.element.id) { index, program in
-                            if shouldShowSpecialtyHeader(at: index) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "stethoscope")
-                                        .font(.arial(size: 12))
-                                        .foregroundColor(SpecialtyFormatter.color(for: program.specialty))
-                                    Text(SpecialtyFormatter.displayNameWithAbbreviation(program.specialty))
-                                        .font(.arial(size: 13, weight: .semibold))
-                                        .foregroundColor(SpecialtyFormatter.color(for: program.specialty))
-                                }
-                            }
-
                             if shouldShowRedFlaggedBanner(at: index) {
                                 HStack(spacing: 6) {
                                     Image(systemName: "exclamationmark.triangle.fill")

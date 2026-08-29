@@ -11,6 +11,7 @@ struct LiquidGlassTabBar: View {
     @Binding var selectedTab: Int
     var isCoupleLinked: Bool = false
     @State private var pendingTab: Int? = nil
+    @State private var blockAutoTabSwitch = false
     @Environment(\.matchlyLayout) private var layout
 
     var body: some View {
@@ -101,24 +102,47 @@ struct LiquidGlassTabBar: View {
         .padding(.horizontal, layout == .compactVertical ? 12 : 16)
         .padding(.bottom, layout == .compactVertical ? 2 : 4)
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ProceedWithTabNavigation"))) { _ in
-            if let tab = pendingTab {
+            guard let tab = pendingTab else { return }
+
+            if tab != selectedTab {
                 selectedTab = tab
-                pendingTab = nil
             }
+            pendingTab = nil
+            blockAutoTabSwitch = false
+
+            if tab == MainTabLayout.dashboardIndex {
+                NotificationCenter.default.post(name: NSNotification.Name("ScrollToTop"), object: nil)
+                NotificationCenter.default.post(name: NSNotification.Name("PopToRoot"), object: nil)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("TabNavigationBlocked"))) { notification in
+            guard let blockedTab = notification.userInfo?["targetTab"] as? Int,
+                  pendingTab == blockedTab else { return }
+            blockAutoTabSwitch = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("TabNavigationCancelled"))) { _ in
+            pendingTab = nil
+            blockAutoTabSwitch = false
         }
     }
 
     private func handleTabSelection(targetTab: Int) {
+        let isReselectingCurrentTab = targetTab == selectedTab
+
+        pendingTab = targetTab
+        blockAutoTabSwitch = false
+
         NotificationCenter.default.post(
             name: NSNotification.Name("TabBarNavigationRequested"),
             object: nil,
             userInfo: ["targetTab": targetTab]
         )
 
-        pendingTab = targetTab
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            if pendingTab == targetTab {
-                selectedTab = targetTab
+            if pendingTab == targetTab, !blockAutoTabSwitch {
+                if !isReselectingCurrentTab {
+                    selectedTab = targetTab
+                }
                 pendingTab = nil
 
                 if targetTab == MainTabLayout.dashboardIndex {

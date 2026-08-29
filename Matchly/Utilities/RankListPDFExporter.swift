@@ -76,14 +76,6 @@ private struct DrawState {
 
         let programs = configuration.orderedPrograms
         for (index, program) in programs.enumerated() {
-            if shouldShowSpecialtyHeader(at: index, in: programs) {
-                let specialty = program.specialty
-                let displayName = specialty.isEmpty
-                    ? "Programs"
-                    : SpecialtyFormatter.displayNameWithAbbreviation(specialty)
-                drawSectionHeader(title: displayName, accent: specialtyUIColor(for: specialty), icon: "stethoscope")
-            }
-
             if shouldShowRedFlaggedBanner(at: index, in: programs) {
                 y += 2
                 drawSectionHeader(title: "Red Flagged Programs", accent: Colors.red, icon: "exclamationmark.triangle.fill")
@@ -99,16 +91,6 @@ private struct DrawState {
         }
 
         drawFooter()
-    }
-
-    private func shouldShowSpecialtyHeader(at index: Int, in programs: [Program]) -> Bool {
-        let program = programs[index]
-        guard !program.hasRedFlags() else { return false }
-        guard !program.specialty.isEmpty else { return false }
-        if index == 0 { return true }
-        let previous = programs[index - 1]
-        if previous.hasRedFlags() { return true }
-        return previous.specialty != program.specialty
     }
 
     private func shouldShowRedFlaggedBanner(at index: Int, in programs: [Program]) -> Bool {
