@@ -26,6 +26,9 @@ struct MatchlyApp: App {
         if FeatureFlags.couplesMatchEnabled {
             DataManager.shared.startCoupleSyncIfNeeded()
         }
+        DispatchQueue.main.async {
+            MatchlyScreenshotSeed.applyIfRequested()
+        }
     }
 
     var body: some Scene {

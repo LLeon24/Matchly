@@ -1566,60 +1566,81 @@ struct ProgramEntryView: View {
     }
     
     // MARK: - Combined Interview & Signaling Section
-    
+
+    private var interviewSchedulingRow: some View {
+        HStack(alignment: .center, spacing: 8) {
+            Image(systemName: "calendar")
+                .font(.arial(size: 15))
+                .foregroundColor(.secondary)
+                .frame(width: 18, height: 18)
+                .accessibilityHidden(true)
+
+            Text("Interview")
+                .font(.arial(size: 16, weight: .semibold))
+                .foregroundColor(.primary)
+                .fixedSize(horizontal: true, vertical: false)
+                .layoutPriority(2)
+
+            Button {
+                showDatePickerSheet = true
+            } label: {
+                Group {
+                    if hasInterviewDate {
+                        Text(formatInterviewDate(interviewDate))
+                            .font(.arial(size: 15, weight: .medium))
+                            .foregroundColor(.primary)
+                            .multilineTextAlignment(.leading)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.85)
+                    } else {
+                        Text("Set Date")
+                            .font(.arial(size: 15, weight: .medium))
+                            .foregroundColor(.blue)
+                            .lineLimit(1)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .layoutPriority(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private var combinedInterviewAndSignalingSection: some View {
         let finalSpecialty = specialty.isEmpty ? (program?.specialty ?? dataManager.preferences.specialties.first ?? "Unknown") : specialty
         let signalAccreditationID = currentSignalAccreditationID
         let signalConfig = SignalLimits.configuration(for: finalSpecialty, accreditationID: signalAccreditationID)
 
         return VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center, spacing: 10) {
-            // Interview Date - flexible width that can shrink
-            HStack(alignment: .center, spacing: 8) {
-                Image(systemName: "calendar")
-                    .font(.arial(size: 15))
-                    .foregroundColor(.secondary)
-                    .frame(width: 18, height: 18)
-                
-                Text("Interview")
-                    .font(.arial(size: 16, weight: .semibold))
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-                
-                Button(action: {
-                    showDatePickerSheet = true
-                }) {
-                    if hasInterviewDate {
-                        Text(formatInterviewDate(interviewDate))
-                            .font(.arial(size: 15, weight: .medium))
-                            .foregroundColor(.primary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                    } else {
-                        Text("Set Date")
-                            .font(.arial(size: 15, weight: .medium))
-                            .foregroundColor(.blue)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 12) {
+                    interviewSchedulingRow
+
+                    if signalConfig.participates {
+                        Rectangle()
+                            .fill(Color(.separator))
+                            .frame(width: 1, height: 22)
+
+                        signalingControls(
+                            finalSpecialty: finalSpecialty,
+                            signalAccreditationID: signalAccreditationID,
+                            signalConfig: signalConfig
+                        )
                     }
                 }
-            }
-            .layoutPriority(1)
-            
-            // Divider
-            if signalConfig.participates {
-                Rectangle()
-                    .fill(Color(.separator))
-                    .frame(width: 1, height: 22)
-            }
-            
-            if signalConfig.participates {
-                signalingControls(
-                    finalSpecialty: finalSpecialty,
-                    signalAccreditationID: signalAccreditationID,
-                    signalConfig: signalConfig
-                )
-            }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    interviewSchedulingRow
+
+                    if signalConfig.participates {
+                        signalingControls(
+                            finalSpecialty: finalSpecialty,
+                            signalAccreditationID: signalAccreditationID,
+                            signalConfig: signalConfig
+                        )
+                    }
+                }
             }
 
             if signalConfig.usesResidencyCAS {
@@ -1757,7 +1778,7 @@ struct ProgramEntryView: View {
                     .padding(.leading, 3)
             }
         }
-        .layoutPriority(2)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var trimmedSignalNote: String? {

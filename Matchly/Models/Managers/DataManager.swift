@@ -126,6 +126,13 @@ class DataManager: ObservableObject {
                 self?.scheduleAccountCloudMerge(trigger: "foreground", delay: 1.0)
             }
             .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.publishWidgetSnapshot()
+            }
+            .store(in: &cancellables)
     }
 
     private func scheduleCloudMerge(trigger: String, delay: TimeInterval) {
@@ -167,78 +174,69 @@ class DataManager: ObservableObject {
     }
     
     func savePrograms() {
+        publishWidgetSnapshot()
+
         // Cancel previous save operation
         saveProgramsWorkItem?.cancel()
-        
+
         // Create new save operation with debounce (0.5 seconds)
         let workItem = DispatchWorkItem { [weak self] in
             guard let self = self else { return }
-            do {
-                let encoded = try JSONEncoder().encode(self.programs)
-                UserDefaults.standard.set(encoded, forKey: self.programsKey)
-                if !self.isApplyingRemoteCloudSnapshot {
-                    self.touchLocalProgramsTimestamp()
-                }
-
-                // Auto-sync to iCloud if available (async to avoid blocking)
-                if self.cloudSync.isCloudAvailable, !self.isApplyingRemoteCloudSnapshot {
-                    let snapshot = self.programs
-                    let prefs = self.preferences
-                    let updatedAt = self.localProgramsUpdatedAt ?? Date()
-                    DispatchQueue.global(qos: .utility).async {
-                        self.cloudSync.syncProgramsToCloud(
-                            programs: snapshot,
-                            preferences: prefs,
-                            programsUpdatedAt: updatedAt
-                        )
-                    }
-                }
-                if !self.isApplyingAccountCloudSnapshot {
-                    self.scheduleAccountCloudPush()
-                }
-                self.scheduleCoupleCloudPublish()
-            } catch {
-                Self.logger.error("Error saving programs: \(error.localizedDescription, privacy: .public)")
-            }
-        }
-        
-        saveProgramsWorkItem = workItem
-        saveQueue.asyncAfter(deadline: .now() + 0.5, execute: workItem)
-    }
-    
-    // Immediate save without debounce - use for critical updates like saving questionnaire
-    func saveProgramsImmediately() {
-        // Cancel any pending debounced save
-        saveProgramsWorkItem?.cancel()
-        
-        // Save immediately
-        do {
-            let encoded = try JSONEncoder().encode(programs)
-            UserDefaults.standard.set(encoded, forKey: programsKey)
-            if !isApplyingRemoteCloudSnapshot {
-                touchLocalProgramsTimestamp()
+            self.persistProgramsToDisk()
+            if !self.isApplyingRemoteCloudSnapshot {
+                self.touchLocalProgramsTimestamp()
             }
 
             // Auto-sync to iCloud if available (async to avoid blocking)
-            if cloudSync.isCloudAvailable, !isApplyingRemoteCloudSnapshot {
-                let snapshot = programs
-                let prefs = preferences
-                let updatedAt = localProgramsUpdatedAt ?? Date()
-                DispatchQueue.global(qos: .utility).async { [weak self] in
-                    self?.cloudSync.syncProgramsToCloud(
+            if self.cloudSync.isCloudAvailable, !self.isApplyingRemoteCloudSnapshot {
+                let snapshot = self.programs
+                let prefs = self.preferences
+                let updatedAt = self.localProgramsUpdatedAt ?? Date()
+                DispatchQueue.global(qos: .utility).async {
+                    self.cloudSync.syncProgramsToCloud(
                         programs: snapshot,
                         preferences: prefs,
                         programsUpdatedAt: updatedAt
                     )
                 }
             }
-            if !isApplyingAccountCloudSnapshot {
-                scheduleAccountCloudPush()
+            if !self.isApplyingAccountCloudSnapshot {
+                self.scheduleAccountCloudPush()
             }
-            scheduleCoupleCloudPublish()
-        } catch {
-            Self.logger.error("Error saving programs immediately: \(error.localizedDescription, privacy: .public)")
+            self.scheduleCoupleCloudPublish()
         }
+
+        saveProgramsWorkItem = workItem
+        saveQueue.asyncAfter(deadline: .now() + 0.5, execute: workItem)
+    }
+
+    // Immediate save without debounce - use for critical updates like saving questionnaire
+    func saveProgramsImmediately() {
+        // Cancel any pending debounced save
+        saveProgramsWorkItem?.cancel()
+
+        persistProgramsToDisk()
+        if !isApplyingRemoteCloudSnapshot {
+            touchLocalProgramsTimestamp()
+        }
+
+        // Auto-sync to iCloud if available (async to avoid blocking)
+        if cloudSync.isCloudAvailable, !isApplyingRemoteCloudSnapshot {
+            let snapshot = programs
+            let prefs = preferences
+            let updatedAt = localProgramsUpdatedAt ?? Date()
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                self?.cloudSync.syncProgramsToCloud(
+                    programs: snapshot,
+                    preferences: prefs,
+                    programsUpdatedAt: updatedAt
+                )
+            }
+        }
+        if !isApplyingAccountCloudSnapshot {
+            scheduleAccountCloudPush()
+        }
+        scheduleCoupleCloudPublish()
     }
     
     func loadPrograms() {
@@ -701,6 +699,7 @@ class DataManager: ObservableObject {
     /// Shared with MatchlyWidgetExtension via the App Group container.
     static let widgetAppGroupID = "group.com.lleonmd.Matchly"
     static let widgetInterviewsKey = "widget_upcoming_interviews"
+    static let widgetKind = "MatchlyWidget"
 
     /// Publishes upcoming interviews (today onward) as plain plist values so the
     /// widget can render without sharing any model code with the app.
@@ -733,8 +732,15 @@ class DataManager: ObservableObject {
             .prefix(10)
             .map(\.1)
 
-        shared.set(upcoming, forKey: Self.widgetInterviewsKey)
-        WidgetCenter.shared.reloadAllTimelines()
+        let reloadWidget = {
+            shared.set(upcoming, forKey: Self.widgetInterviewsKey)
+            WidgetCenter.shared.reloadTimelines(ofKind: Self.widgetKind)
+        }
+        if Thread.isMainThread {
+            reloadWidget()
+        } else {
+            DispatchQueue.main.async(execute: reloadWidget)
+        }
     }
 
     private func persistPreferencesToDisk() {

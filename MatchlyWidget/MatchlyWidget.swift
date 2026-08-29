@@ -75,7 +75,7 @@ struct InterviewsProvider: TimelineProvider {
         var entries: [InterviewsEntry] = [
             InterviewsEntry(date: now, interviews: WidgetData.upcomingInterviews(asOf: now))
         ]
-        for dayOffset in 1...7 {
+        for dayOffset in 1...30 {
             guard let midnight = calendar.date(
                 byAdding: .day,
                 value: dayOffset,

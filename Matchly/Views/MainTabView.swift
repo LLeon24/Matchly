@@ -199,5 +199,5 @@ struct MainTabView: View {
 
 #Preview {
     MainTabView()
-        .environmentObject(CoupleDeepLinkHandler())
+        .matchlyPreviewEnvironment()
 }

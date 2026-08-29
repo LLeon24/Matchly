@@ -71,4 +71,14 @@ struct MatchlyDevScreenPicker: View {
         .padding(.top, 8)
     }
 }
+
+extension View {
+    /// Supplies environment objects that `MainTabView` and related shells expect in Xcode Previews.
+    func matchlyPreviewEnvironment(deepLinkHandler: CoupleDeepLinkHandler = CoupleDeepLinkHandler()) -> some View {
+        environmentObject(DataManager.shared)
+            .environmentObject(AuthManager.shared)
+            .environmentObject(deepLinkHandler)
+            .environmentObject(CoupleSyncCoordinator.shared)
+    }
+}
 #endif

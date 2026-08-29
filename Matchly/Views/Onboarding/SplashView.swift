@@ -153,5 +153,7 @@ struct SplashView: View {
 
 #Preview {
     SplashView()
+        .environmentObject(CoupleDeepLinkHandler())
+        .environmentObject(CoupleSyncCoordinator.shared)
 }
 

@@ -10,6 +10,7 @@
 import SwiftUI
 
 struct ContentView: View {
+    @StateObject private var deepLinkHandler = CoupleDeepLinkHandler()
     @ObservedObject private var dataManager = DataManager.shared
     @ObservedObject private var authManager = AuthManager.shared
 
@@ -23,11 +24,15 @@ struct ContentView: View {
         .preferredColorScheme(dataManager.preferences.appearanceMode.preferredColorScheme)
         .environmentObject(dataManager)
         .environmentObject(authManager)
+        .environmentObject(deepLinkHandler)
+        .environmentObject(CoupleSyncCoordinator.shared)
         #else
         MainTabView()
             .preferredColorScheme(dataManager.preferences.appearanceMode.preferredColorScheme)
             .environmentObject(dataManager)
             .environmentObject(authManager)
+            .environmentObject(deepLinkHandler)
+            .environmentObject(CoupleSyncCoordinator.shared)
         #endif
     }
 
@@ -58,11 +63,10 @@ struct ContentView: View {
 
 #Preview("Full App") {
     MainTabView()
-        .environmentObject(DataManager.shared)
-        .environmentObject(AuthManager.shared)
+        .matchlyPreviewEnvironment()
 }
 
 #Preview("Onboarding") {
     OnboardingFlowView()
-        .environmentObject(DataManager.shared)
+        .matchlyPreviewEnvironment()
 }

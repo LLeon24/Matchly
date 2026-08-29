@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct WeightsSetupView: View {
+    @EnvironmentObject private var deepLinkHandler: CoupleDeepLinkHandler
     @ObservedObject private var dataManager = DataManager.shared
     @State private var showMainApp = false
     
@@ -53,6 +54,7 @@ struct WeightsSetupView: View {
             .appCanvasBackground()
             .fullScreenCover(isPresented: $showMainApp) {
                 MainTabView()
+                    .environmentObject(deepLinkHandler)
             }
         }
     }
@@ -61,5 +63,6 @@ struct WeightsSetupView: View {
 
 #Preview {
     WeightsSetupView()
+        .matchlyPreviewEnvironment()
 }
 

@@ -10,6 +10,7 @@ import PhotosUI
 import UIKit
 
 struct OnboardingFlowView: View {
+    @EnvironmentObject private var deepLinkHandler: CoupleDeepLinkHandler
     @ObservedObject private var dataManager = DataManager.shared
     @State private var currentStep: OnboardingStep = .welcome
     @State private var profile = UserProfile()
@@ -97,6 +98,7 @@ struct OnboardingFlowView: View {
         }
         .fullScreenCover(isPresented: $showMainApp) {
             MainTabView()
+                .environmentObject(deepLinkHandler)
         }
         .onChange(of: selectedPhoto) { _, newItem in
             guard let newItem else { return }
@@ -939,5 +941,6 @@ struct SpecialtySelectionContentView: View {
 
 #Preview {
     OnboardingFlowView()
+        .matchlyPreviewEnvironment()
 }
 

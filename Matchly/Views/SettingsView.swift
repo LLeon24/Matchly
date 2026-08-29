@@ -37,6 +37,9 @@ struct SettingsView: View {
                     }
                     dataManagementSection
                     accountSection
+                    #if DEBUG
+                    screenshotDemoSection
+                    #endif
                     versionSection
                 }
                 .scrollContentBackground(.hidden)
@@ -130,6 +133,21 @@ struct SettingsView: View {
             }
         }
     }
+
+    #if DEBUG
+    private var screenshotDemoSection: some View {
+        Section {
+            Button("Load App Store Demo Data") {
+                MatchlyScreenshotSeed.apply()
+            }
+        } header: {
+            MatchlyFormSectionHeader(title: "App Store Screenshots")
+        } footer: {
+            Text("Loads 12 Internal Medicine programs with scores, interview dates, and signals. Use Light mode, then capture on iPhone 16 Pro Max simulator (⌘S).")
+                .font(.arial(size: 12))
+        }
+    }
+    #endif
 
     private var profileSection: some View {
         Section {

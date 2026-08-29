@@ -7,24 +7,41 @@ import XCTest
 @testable import Matchly
 
 final class InterviewSeasonPipelineTests: XCTestCase {
-    func testCompletedQuestionnaireCountsAsScoredEvenWithoutInterviewDate() {
+    func testIncompleteWithoutInterviewDateCountsAsToReview() {
+        let program = Program(specialty: "Internal Medicine", hospital: "Test Hospital")
+
+        let stage = InterviewSeasonStage.stage(for: program, preferences: UserPreferences())
+
+        XCTAssertEqual(stage, .toReview)
+    }
+
+    func testCompletedQuestionnaireWithoutInterviewDateCountsAsNeedDate() {
         var program = Program(specialty: "Internal Medicine", hospital: "Test Hospital")
         fillQuestionnaire(&program.questionnaire)
         program.interviewDate = nil
 
         let stage = InterviewSeasonStage.stage(for: program, preferences: UserPreferences())
 
-        XCTAssertEqual(stage, .scored)
+        XCTAssertEqual(stage, .needDate)
     }
 
-    func testCompletedQuestionnaireCountsAsScoredWithUpcomingInterview() {
+    func testIncompleteWithUpcomingInterviewCountsAsUpcoming() {
+        var program = Program(specialty: "Internal Medicine", hospital: "Test Hospital")
+        program.interviewDate = Date().addingTimeInterval(86_400)
+
+        let stage = InterviewSeasonStage.stage(for: program, preferences: UserPreferences())
+
+        XCTAssertEqual(stage, .upcoming)
+    }
+
+    func testCompletedQuestionnaireWithUpcomingInterviewCountsAsUpcoming() {
         var program = Program(specialty: "Internal Medicine", hospital: "Test Hospital")
         fillQuestionnaire(&program.questionnaire)
         program.interviewDate = Date().addingTimeInterval(86_400)
 
         let stage = InterviewSeasonStage.stage(for: program, preferences: UserPreferences())
 
-        XCTAssertEqual(stage, .scored)
+        XCTAssertEqual(stage, .upcoming)
     }
 
     func testIncompletePastInterviewCountsAsToReview() {
@@ -36,29 +53,43 @@ final class InterviewSeasonPipelineTests: XCTestCase {
         XCTAssertEqual(stage, .toReview)
     }
 
-    func testIncompleteWithoutInterviewDateCountsAsNeedDate() {
-        let program = Program(specialty: "Internal Medicine", hospital: "Test Hospital")
+    func testCompletedPastInterviewCountsAsScored() {
+        var program = Program(specialty: "Internal Medicine", hospital: "Test Hospital")
+        fillQuestionnaire(&program.questionnaire)
+        program.interviewDate = Date().addingTimeInterval(-86_400)
 
         let stage = InterviewSeasonStage.stage(for: program, preferences: UserPreferences())
 
-        XCTAssertEqual(stage, .needDate)
+        XCTAssertEqual(stage, .scored)
     }
 
-    func testCountsIncludeScoredPrograms() {
-        var scored = Program(specialty: "Internal Medicine", hospital: "Scored Program")
-        fillQuestionnaire(&scored.questionnaire)
-        scored.finalScore = 82
+    func testCountsAlignWithProgramsNeedingReviewList() {
+        var scoredPast = Program(specialty: "Internal Medicine", hospital: "Scored Program")
+        fillQuestionnaire(&scoredPast.questionnaire)
+        scoredPast.finalScore = 82
+        scoredPast.interviewDate = Date().addingTimeInterval(-86_400)
 
-        var pending = Program(specialty: "Family Medicine", hospital: "Pending Program")
-        pending.interviewDate = Date().addingTimeInterval(-86_400)
+        var upcoming = Program(specialty: "Internal Medicine", hospital: "Upcoming Program")
+        fillQuestionnaire(&upcoming.questionnaire)
+        upcoming.interviewDate = Date().addingTimeInterval(86_400)
+
+        var pendingPast = Program(specialty: "Family Medicine", hospital: "Pending Program")
+        pendingPast.interviewDate = Date().addingTimeInterval(-86_400)
+
+        let needsReviewNoDate = Program(specialty: "Pediatrics", hospital: "Emory-like Program")
+
+        var scoredNoDate = Program(specialty: "Internal Medicine", hospital: "Scored No Date")
+        fillQuestionnaire(&scoredNoDate.questionnaire)
 
         let counts = InterviewSeasonStage.counts(
-            for: [scored, pending],
+            for: [scoredPast, upcoming, pendingPast, needsReviewNoDate, scoredNoDate],
             preferences: UserPreferences()
         )
 
         XCTAssertEqual(counts[.scored], 1)
-        XCTAssertEqual(counts[.toReview], 1)
+        XCTAssertEqual(counts[.upcoming], 1)
+        XCTAssertEqual(counts[.toReview], 2)
+        XCTAssertEqual(counts[.needDate], 1)
     }
 
     private func fillQuestionnaire(_ questionnaire: inout Questionnaire) {
