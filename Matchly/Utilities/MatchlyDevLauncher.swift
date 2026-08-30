@@ -2,7 +2,7 @@
 //  MatchlyDevLauncher.swift
 //  Matchly
 //
-//  DEBUG-only preview helpers — used from ContentView.swift in Xcode Previews only.
+//  DEBUG dev-screen picker for ContentView previews; preview environment helper is always available for #Preview blocks.
 //
 
 #if DEBUG
@@ -71,6 +71,9 @@ struct MatchlyDevScreenPicker: View {
         .padding(.top, 8)
     }
 }
+#endif
+
+import SwiftUI
 
 extension View {
     /// Supplies environment objects that `MainTabView` and related shells expect in Xcode Previews.
@@ -81,4 +84,3 @@ extension View {
             .environmentObject(CoupleSyncCoordinator.shared)
     }
 }
-#endif
