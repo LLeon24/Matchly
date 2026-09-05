@@ -530,7 +530,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Matchly/Matchly.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 23;
 				DEVELOPMENT_TEAM = KYGM9X4TU5;
 				ENABLE_PREVIEWS = YES;
 				EXCLUDED_SOURCE_FILE_NAMES = (
@@ -545,6 +545,8 @@
 				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Matchly-Info-Supplement.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Matchly;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.medical";
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Matchly needs access to your calendar to create interview events so you can see them in your calendar app and receive reminders.";
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "Matchly needs access to your calendar to create interview events so you can see them in your calendar app and receive reminders.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Matchly uses the camera to scan QR codes.";
@@ -582,7 +584,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Matchly/Matchly.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 23;
 				DEVELOPMENT_TEAM = KYGM9X4TU5;
 				ENABLE_PREVIEWS = YES;
 				EXCLUDED_SOURCE_FILE_NAMES = (
@@ -597,6 +599,8 @@
 				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Matchly-Info-Supplement.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Matchly;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.medical";
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Matchly needs access to your calendar to create interview events so you can see them in your calendar app and receive reminders.";
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "Matchly needs access to your calendar to create interview events so you can see them in your calendar app and receive reminders.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Matchly uses the camera to scan QR codes.";
@@ -718,7 +722,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = MatchlyWidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 23;
 				DEVELOPMENT_TEAM = KYGM9X4TU5;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = MatchlyWidget/Info.plist;
@@ -751,7 +755,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = MatchlyWidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 23;
 				DEVELOPMENT_TEAM = KYGM9X4TU5;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = MatchlyWidget/Info.plist;
