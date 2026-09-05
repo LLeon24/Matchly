@@ -23,9 +23,7 @@ struct EmailLoginView: View {
         MatchlyNavigationView {
             Form {
                 Section {
-                    ClearableTextField("Email", text: $email)
-                        .textContentType(.username)
-                        .autocapitalization(.none)
+                    ClearableTextField("Email", text: $email, textContentType: .username)
                         .keyboardType(.emailAddress)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()

@@ -24,8 +24,7 @@ struct UserSearchView: View {
                     HStack {
                         Image(systemName: "magnifyingglass")
                             .foregroundColor(.blue)
-                        ClearableTextField("Search by email or name", text: $searchText)
-                            .textContentType(.emailAddress)
+                        ClearableTextField("Search by email or name", text: $searchText, textContentType: .emailAddress)
                             .autocapitalization(.none)
                             .keyboardType(.emailAddress)
                             .onSubmit {

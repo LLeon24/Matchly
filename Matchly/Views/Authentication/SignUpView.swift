@@ -21,9 +21,8 @@ struct SignUpView: View {
         MatchlyNavigationView {
             Form {
                 Section {
-                    ClearableTextField("Display Name (Optional)", text: $displayName)
-                        .textContentType(.name)
-                        .autocapitalization(.words)
+                    ClearableTextField("Display Name (Optional)", text: $displayName, textContentType: .name)
+                        .textInputAutocapitalization(.words)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 12)
                         .glassEffect(.regular, in: .capsule)
@@ -34,9 +33,7 @@ struct SignUpView: View {
                 }
 
                 Section {
-                    ClearableTextField("Email", text: $email)
-                        .textContentType(.username)
-                        .autocapitalization(.none)
+                    ClearableTextField("Email", text: $email, textContentType: .emailAddress)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.emailAddress)

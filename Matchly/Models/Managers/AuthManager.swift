@@ -250,6 +250,8 @@ class AuthManager: ObservableObject {
             shouldOfferBiometricSetup = true
         }
 
+        DataManager.shared.applyAuthUserToProfileIfNeeded(updatedUser)
+
         Task {
             _ = await DataManager.shared.mergeWithAccountCloudIfNeeded(trigger: "signIn")
             let profileName = DataManager.shared.preferences.profile.name
@@ -261,6 +263,9 @@ class AuthManager: ObservableObject {
                 DataManager.shared.applyAuthDisplayNameToProfileIfNeeded(resolvedName, authEmail: updatedUser.email)
             }
             DataManager.shared.clearEmailDerivedProfileNameIfNeeded(email: updatedUser.email)
+            if let current = self.currentUser {
+                await DataManager.shared.applyAuthPhotoToProfileIfNeeded(from: current.photoURL)
+            }
         }
     }
 
@@ -656,7 +661,14 @@ class AuthManager: ObservableObject {
             let credential = GoogleAuthProvider.credential(withIDToken: idToken, accessToken: accessToken)
             let authResult = try await Auth.auth().signIn(with: credential)
             let googleName = gidResult.user.profile?.name
-            let user = makeUser(from: authResult.user, provider: .google, displayName: googleName, existing: currentUser)
+            let googlePhotoURL = gidResult.user.profile?.imageURL(withDimension: 256)?.absoluteString
+            let user = makeUser(
+                from: authResult.user,
+                provider: .google,
+                displayName: googleName,
+                photoURL: googlePhotoURL,
+                existing: currentUser
+            )
             await MainActor.run { signIn(user: user) }
             await refreshCloudKitIdentity()
         } catch let error as AuthError {
@@ -835,6 +847,7 @@ class AuthManager: ObservableObject {
         from firebaseUser: FirebaseAuth.User,
         provider: User.AuthProvider? = nil,
         displayName: String? = nil,
+        photoURL: String? = nil,
         existing: User?
     ) -> User {
         let resolvedProvider = provider ?? Self.provider(for: firebaseUser) ?? existing?.provider ?? .email
@@ -853,7 +866,7 @@ class AuthManager: ObservableObject {
             email: email,
             phoneNumber: firebaseUser.phoneNumber ?? existing?.phoneNumber,
             displayName: resolvedName,
-            photoURL: firebaseUser.photoURL?.absoluteString ?? existing?.photoURL,
+            photoURL: photoURL ?? firebaseUser.photoURL?.absoluteString ?? existing?.photoURL,
             provider: resolvedProvider,
             cloudKitUserRecordName: existing?.cloudKitUserRecordName,
             createdAt: existing?.createdAt ?? (firebaseUser.metadata.creationDate ?? Date()),
@@ -1129,6 +1142,10 @@ class AuthManager: ObservableObject {
 
         if let repaired, !repaired.isEmpty {
             DataManager.shared.applyAuthDisplayNameToProfileIfNeeded(repaired, authEmail: user.email)
+        }
+
+        Task {
+            await DataManager.shared.applyAuthPhotoToProfileIfNeeded(from: user.photoURL)
         }
     }
 

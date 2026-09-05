@@ -224,10 +224,11 @@ struct ProfileEditView: View {
                 "First Name",
                 text: $firstName,
                 focus: $focusedField,
-                equals: .firstName
+                equals: .firstName,
+                textContentType: .givenName
             )
-                .autocapitalization(.words)
-                .disableAutocorrection(true)
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled()
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 .glassEffect(.regular, in: .capsule)
@@ -239,10 +240,11 @@ struct ProfileEditView: View {
                 "Last Name",
                 text: $lastName,
                 focus: $focusedField,
-                equals: .lastName
+                equals: .lastName,
+                textContentType: .familyName
             )
-                .autocapitalization(.words)
-                .disableAutocorrection(true)
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled()
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 .glassEffect(.regular, in: .capsule)

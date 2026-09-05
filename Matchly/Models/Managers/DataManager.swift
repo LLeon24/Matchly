@@ -358,6 +358,41 @@ class DataManager: ObservableObject {
         Self.logger.info("Applied auth display name to profile")
     }
 
+    /// Applies auth provider name and photo to the local profile when fields are still empty.
+    @MainActor
+    func applyAuthUserToProfileIfNeeded(_ user: User) {
+        applyAuthDisplayNameToProfileIfNeeded(user.displayName, authEmail: user.email)
+        clearEmailDerivedProfileNameIfNeeded(email: user.email)
+        Task {
+            await applyAuthPhotoToProfileIfNeeded(from: user.photoURL)
+        }
+    }
+
+    @MainActor
+    func applyAuthPhotoToProfileIfNeeded(from urlString: String?) async {
+        guard preferences.profile.photoData == nil,
+              let urlString,
+              let url = URL(string: urlString) else { return }
+
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard let http = response as? HTTPURLResponse,
+                  (200...299).contains(http.statusCode),
+                  !data.isEmpty,
+                  UIImage(data: data) != nil else { return }
+
+            var profile = preferences.profile
+            profile.photoData = data
+            profile.avatarPresetID = nil
+            preferences.profile = profile
+            savePreferences()
+            objectWillChange.send()
+            Self.logger.info("Imported auth profile photo")
+        } catch {
+            Self.logger.debug("Auth photo import failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     /// Removes profile names that were incorrectly copied from an email prefix (e.g. "Lleon").
     @MainActor
     func clearEmailDerivedProfileNameIfNeeded(email: String?) {

@@ -12,6 +12,7 @@ import UIKit
 struct OnboardingFlowView: View {
     @EnvironmentObject private var deepLinkHandler: CoupleDeepLinkHandler
     @ObservedObject private var dataManager = DataManager.shared
+    @ObservedObject private var authManager = AuthManager.shared
     @State private var currentStep: OnboardingStep = .welcome
     @State private var profile = UserProfile()
     @State private var selectedSpecialties: Set<String> = []
@@ -27,6 +28,7 @@ struct OnboardingFlowView: View {
     @State private var includeRedFlaggedInRankList: Bool = true
     @State private var preferredEMR: String = ""
     @State private var preferredEMROtherDetail: String = ""
+    @State private var appearanceMode: AppearanceMode = DataManager.shared.preferences.appearanceMode
     @State private var showQuestionnaireCustomization = false
 
     private enum FellowshipSpecialtyPhase {
@@ -104,6 +106,17 @@ struct OnboardingFlowView: View {
                 .transition(.opacity.combined(with: .move(edge: .trailing)))
             }
         }
+        .preferredColorScheme(appearanceMode.preferredColorScheme)
+        .onAppear {
+            appearanceMode = dataManager.preferences.appearanceMode
+            loadProfileFromAuthAndPreferences()
+        }
+        .onChange(of: dataManager.preferences.profile) { _, updatedProfile in
+            mergeStoredProfileIntoLocalState(updatedProfile)
+        }
+        .onChange(of: authManager.currentUser?.displayName) { _, _ in
+            loadProfileFromAuthAndPreferences()
+        }
         .fullScreenCover(isPresented: $showMainApp) {
             MainTabView()
                 .environmentObject(deepLinkHandler)
@@ -166,7 +179,11 @@ struct OnboardingFlowView: View {
                     VStack(spacing: 12) {
                         FeatureRow(icon: "list.bullet.clipboard.fill", text: "Track & Score Programs")
                         FeatureRow(icon: "chart.bar.fill", text: "Build Your NRMP Rank List")
-                        FeatureRow(icon: "star.fill", text: "Manage ERAS Signals")
+                        FeatureRow(
+                            icon: "star.fill",
+                            text: "Manage ERAS Signals",
+                            detail: "For planning only — not linked to ERAS"
+                        )
                         FeatureRow(icon: "calendar", text: "Plan Interview Dates")
                         FeatureRow(icon: "calendar.badge.clock", text: "Prep Questions for Each Interview")
                         if FeatureFlags.couplesMatchEnabled {
@@ -206,19 +223,30 @@ struct OnboardingFlowView: View {
     private struct FeatureRow: View {
         let icon: String
         let text: String
+        var detail: String? = nil
         
         var body: some View {
-            HStack(spacing: 12) {
+            HStack(alignment: detail == nil ? .center : .top, spacing: 12) {
                 Image(systemName: icon)
                     .font(.arial(size: 18))
                     .foregroundColor(AppColors.primaryBlue)
                     .frame(width: 28)
+                    .padding(.top, detail == nil ? 0 : 1)
                 
-                Text(text)
-                    .font(.arial(size: 16, weight: .medium))
-                    .foregroundColor(.primary)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(text)
+                        .font(.arial(size: 16, weight: .medium))
+                        .foregroundColor(.primary)
+                    
+                    if let detail {
+                        Text(detail)
+                            .font(.arial(size: 12))
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
                 
-                Spacer()
+                Spacer(minLength: 0)
             }
             .padding(.horizontal, 20)
         }
@@ -231,19 +259,19 @@ struct OnboardingFlowView: View {
             subtitle: OnboardingStep.name.subtitle,
             content: {
                 VStack(spacing: 24) {
-                    ClearableTextField("First Name", text: $profile.firstName)
+                    ClearableTextField("First Name", text: $profile.firstName, textContentType: .givenName)
                         .font(.arial(size: 18))
                         .padding()
                         .glassEffect(.regular, in: .rect(cornerRadius: 12))
-                        .autocapitalization(.words)
-                        .disableAutocorrection(true)
+                        .textInputAutocapitalization(.words)
+                        .autocorrectionDisabled()
 
-                    ClearableTextField("Last Name", text: $profile.lastName)
+                    ClearableTextField("Last Name", text: $profile.lastName, textContentType: .familyName)
                         .font(.arial(size: 18))
                         .padding()
                         .glassEffect(.regular, in: .rect(cornerRadius: 12))
-                        .autocapitalization(.words)
-                        .disableAutocorrection(true)
+                        .textInputAutocapitalization(.words)
+                        .autocorrectionDisabled()
                     
                     Spacer()
                 }
@@ -260,6 +288,9 @@ struct OnboardingFlowView: View {
                 }
             }
         )
+        .onAppear {
+            loadProfileFromAuthAndPreferences()
+        }
     }
     
     // MARK: - AAMC ID Step
@@ -406,6 +437,9 @@ struct OnboardingFlowView: View {
                 }
             }
         )
+        .onAppear {
+            loadProfileFromAuthAndPreferences()
+        }
     }
 
     // MARK: - Match Preferences Step
@@ -508,6 +542,26 @@ struct OnboardingFlowView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .glassEffect(.regular, in: .rect(cornerRadius: 14))
 
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Appearance")
+                                .font(.arial(size: 15, weight: .medium))
+
+                            Picker("Appearance", selection: $appearanceMode) {
+                                ForEach(AppearanceMode.allCases) { mode in
+                                    Text(mode.displayName).tag(mode)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+
+                            Text("Auto follows your device. You can change this anytime in Settings.")
+                                .font(.arial(size: 13))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .glassEffect(.regular, in: .rect(cornerRadius: 14))
+
                         Toggle(isOn: $includeRedFlaggedInRankList) {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Include Red-Flagged Programs in Rank List")
@@ -575,6 +629,7 @@ struct OnboardingFlowView: View {
     }
 
     private func loadMatchPreferencesState() {
+        appearanceMode = dataManager.preferences.appearanceMode
         includeRedFlaggedInRankList = dataManager.preferences.includeRedFlaggedProgramsInRankList
         if let stored = dataManager.preferences.preferredEMR, !stored.isEmpty {
             if let system = EMRSystem(rawValue: stored) {
@@ -892,6 +947,7 @@ struct OnboardingFlowView: View {
         dataManager.preferences.applyingTrack = selectedApplyingTrack.rawValue
         dataManager.preferences.includeRedFlaggedProgramsInRankList = includeRedFlaggedInRankList
         dataManager.preferences.preferredEMR = resolvedPreferredEMRForSave()
+        dataManager.preferences.appearanceMode = appearanceMode
         
         // Mark onboarding as complete
         dataManager.preferences.hasCompletedOnboarding = true
@@ -919,6 +975,50 @@ struct OnboardingFlowView: View {
         }
         
         showMainApp = true
+    }
+
+    private func loadProfileFromAuthAndPreferences() {
+        mergeStoredProfileIntoLocalState(dataManager.preferences.profile)
+
+        if let user = authManager.currentUser {
+            if let displayName = user.displayName?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !displayName.isEmpty,
+               !AuthManager.isEmailDerivedDisplayName(displayName, email: user.email) {
+                let split = UserProfile.splitLegacyName(displayName)
+                if profile.firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                   !split.first.isEmpty {
+                    profile.firstName = split.first
+                }
+                if profile.lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                   !split.last.isEmpty {
+                    profile.lastName = split.last
+                }
+            }
+
+            if profile.photoData == nil, user.photoURL != nil {
+                Task {
+                    await dataManager.applyAuthPhotoToProfileIfNeeded(from: user.photoURL)
+                }
+            }
+        }
+    }
+
+    private func mergeStoredProfileIntoLocalState(_ stored: UserProfile) {
+        if profile.firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           !stored.firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            profile.firstName = stored.firstName
+        }
+        if profile.lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           !stored.lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            profile.lastName = stored.lastName
+        }
+        if profile.photoData == nil, stored.photoData != nil {
+            profile.photoData = stored.photoData
+            profile.avatarPresetID = stored.avatarPresetID
+        }
+        if profile.aamcID == nil, stored.aamcID != nil {
+            profile.aamcID = stored.aamcID
+        }
     }
 }
 

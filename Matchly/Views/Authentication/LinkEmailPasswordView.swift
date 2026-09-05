@@ -28,8 +28,7 @@ struct LinkEmailPasswordView: View {
                 }
 
                 Section {
-                    ClearableTextField("Email", text: $email)
-                        .textContentType(.emailAddress)
+                    ClearableTextField("Email", text: $email, textContentType: .emailAddress)
                         .keyboardType(.emailAddress)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
