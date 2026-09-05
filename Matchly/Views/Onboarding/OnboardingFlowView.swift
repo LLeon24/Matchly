@@ -16,6 +16,9 @@ struct OnboardingFlowView: View {
     @State private var profile = UserProfile()
     @State private var selectedSpecialties: Set<String> = []
     @State private var selectedApplyingTrack: ProgramTrainingLevelFilter = .residency
+    @State private var fellowshipSpecialtyPhase: FellowshipSpecialtyPhase = .primarySpecialty
+    @State private var selectedPrimarySpecialties: Set<String> = []
+    @State private var selectedFellowshipCodes: Set<String> = []
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var cropImageItem: CropImageItem?
     @State private var isLoadingPhoto = false
@@ -25,6 +28,11 @@ struct OnboardingFlowView: View {
     @State private var preferredEMR: String = ""
     @State private var preferredEMROtherDetail: String = ""
     @State private var showQuestionnaireCustomization = false
+
+    private enum FellowshipSpecialtyPhase {
+        case primarySpecialty
+        case fellowshipTypes
+    }
     
     enum OnboardingStep: Int, CaseIterable {
         case welcome = 0
@@ -717,6 +725,14 @@ struct OnboardingFlowView: View {
             onNext: {
                 dataManager.preferences.applyingTrack = selectedApplyingTrack.rawValue
                 dataManager.savePreferences()
+                if selectedApplyingTrack == .fellowship {
+                    fellowshipSpecialtyPhase = .primarySpecialty
+                    selectedPrimarySpecialties.removeAll()
+                    selectedFellowshipCodes.removeAll()
+                } else {
+                    selectedPrimarySpecialties.removeAll()
+                    selectedFellowshipCodes.removeAll()
+                }
                 withAnimation {
                     currentStep = .specialties
                 }
@@ -734,36 +750,126 @@ struct OnboardingFlowView: View {
     // MARK: - Specialties Step
     private var specialtiesStep: some View {
         OnboardingStepView(
-            title: OnboardingStep.specialties.title,
-            subtitle: selectedApplyingTrack == .fellowship
-                ? "Choose your specialty area. We'll show related fellowship programs in search."
-                : OnboardingStep.specialties.subtitle,
+            title: specialtiesStepTitle,
+            subtitle: specialtiesStepSubtitle,
             content: {
-                SpecialtySelectionContentView(
-                    selectedSpecialties: $selectedSpecialties
-                )
+                specialtiesStepContent
             },
-            onNext: {
-                // Save specialties immediately when user continues
-                if !selectedSpecialties.isEmpty {
-                    dataManager.preferences.specialties = Array(selectedSpecialties).sorted()
-                    if let first = selectedSpecialties.first {
-                        dataManager.preferences.specialty = first
-                    }
-                    dataManager.savePreferences()
+            onNext: specialtiesStepOnNext,
+            canContinue: specialtiesStepCanContinue,
+            buttonText: "Continue",
+            onBack: specialtiesStepOnBack
+        )
+    }
+
+    private var specialtiesStepTitle: String {
+        guard selectedApplyingTrack == .fellowship else {
+            return OnboardingStep.specialties.title
+        }
+        switch fellowshipSpecialtyPhase {
+        case .primarySpecialty:
+            return "What Are Your Primary Specialties?"
+        case .fellowshipTypes:
+            return "Select Fellowship Types"
+        }
+    }
+
+    private var specialtiesStepSubtitle: String {
+        guard selectedApplyingTrack == .fellowship else {
+            return OnboardingStep.specialties.subtitle
+        }
+        switch fellowshipSpecialtyPhase {
+        case .primarySpecialty:
+            return "Select the residency specialty or specialties you completed (e.g. IM/Peds, IM/EM). This determines which fellowships you can apply to."
+        case .fellowshipTypes:
+            return "Choose the fellowship subspecialties you're applying to. You can select multiple."
+        }
+    }
+
+    @ViewBuilder
+    private var specialtiesStepContent: some View {
+        if selectedApplyingTrack == .fellowship {
+            switch fellowshipSpecialtyPhase {
+            case .primarySpecialty:
+                PrimarySpecialtySelectionContentView(
+                    selectedPrimarySpecialties: $selectedPrimarySpecialties
+                )
+            case .fellowshipTypes:
+                if !selectedPrimarySpecialties.isEmpty {
+                    FellowshipSelectionContentView(
+                        primarySpecialties: Array(selectedPrimarySpecialties).sorted(),
+                        selectedFellowshipCodes: $selectedFellowshipCodes
+                    )
                 }
+            }
+        } else {
+            SpecialtySelectionContentView(
+                selectedSpecialties: $selectedSpecialties
+            )
+        }
+    }
+
+    private var specialtiesStepCanContinue: Bool {
+        if selectedApplyingTrack == .fellowship {
+            switch fellowshipSpecialtyPhase {
+            case .primarySpecialty:
+                return !selectedPrimarySpecialties.isEmpty
+            case .fellowshipTypes:
+                return !selectedFellowshipCodes.isEmpty
+            }
+        }
+        return !selectedSpecialties.isEmpty
+    }
+
+    private func specialtiesStepOnNext() {
+        if selectedApplyingTrack == .fellowship {
+            switch fellowshipSpecialtyPhase {
+            case .primarySpecialty:
+                selectedFellowshipCodes.removeAll()
+                withAnimation {
+                    fellowshipSpecialtyPhase = .fellowshipTypes
+                }
+            case .fellowshipTypes:
+                saveFellowshipSpecialtySelections()
                 withAnimation {
                     currentStep = .name
                 }
-            },
-            canContinue: !selectedSpecialties.isEmpty,
-            buttonText: "Continue",
-            onBack: {
-                withAnimation {
-                    currentStep = .applyingTrack
-                }
             }
-        )
+            return
+        }
+
+        if !selectedSpecialties.isEmpty {
+            dataManager.preferences.specialties = Array(selectedSpecialties).sorted()
+            dataManager.preferences.fellowshipSpecialtyCodes = []
+            if let first = selectedSpecialties.first {
+                dataManager.preferences.specialty = first
+            }
+            dataManager.savePreferences()
+        }
+        withAnimation {
+            currentStep = .name
+        }
+    }
+
+    private func specialtiesStepOnBack() {
+        if selectedApplyingTrack == .fellowship, fellowshipSpecialtyPhase == .fellowshipTypes {
+            withAnimation {
+                fellowshipSpecialtyPhase = .primarySpecialty
+            }
+            return
+        }
+        withAnimation {
+            currentStep = .applyingTrack
+        }
+    }
+
+    private func saveFellowshipSpecialtySelections() {
+        guard !selectedPrimarySpecialties.isEmpty else { return }
+        let sortedPrimaries = Array(selectedPrimarySpecialties).sorted()
+        dataManager.preferences.specialties = sortedPrimaries
+        dataManager.preferences.specialty = sortedPrimaries.first
+        dataManager.preferences.fellowshipSpecialtyCodes = Array(selectedFellowshipCodes).sorted()
+        dataManager.savePreferences()
     }
     
     private func completeOnboarding() {
@@ -771,8 +877,11 @@ struct OnboardingFlowView: View {
         dataManager.preferences.profile = profile
         
         // Save specialties (should already be saved, but ensure it's set)
-        if !selectedSpecialties.isEmpty {
+        if selectedApplyingTrack == .fellowship {
+            saveFellowshipSpecialtySelections()
+        } else if !selectedSpecialties.isEmpty {
             dataManager.preferences.specialties = Array(selectedSpecialties).sorted()
+            dataManager.preferences.fellowshipSpecialtyCodes = []
             if let first = selectedSpecialties.first {
                 dataManager.preferences.specialty = first
             }
@@ -936,6 +1045,138 @@ struct SpecialtySelectionContentView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Primary Specialty Selection (Fellowship Track)
+struct PrimarySpecialtySelectionContentView: View {
+    @Binding var selectedPrimarySpecialties: Set<String>
+    @State private var searchText = ""
+
+    private let specialties = SpecialtyFormatter.primarySpecialtiesForFellowship
+
+    private var filteredSpecialties: [String] {
+        if searchText.isEmpty {
+            return specialties
+        }
+        return specialties.filter { $0.localizedCaseInsensitiveContains(searchText) }
+    }
+
+    var body: some View {
+        VStack(spacing: 16) {
+            HStack {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(.secondary)
+                ClearableTextField("Search specialties...", text: $searchText)
+            }
+            .padding()
+            .glassEffect(.regular, in: .rect(cornerRadius: 10))
+
+            ScrollView {
+                LazyVStack(spacing: 12) {
+                    ForEach(filteredSpecialties, id: \.self) { specialty in
+                        SpecialtyRow(
+                            specialty: specialty,
+                            isSelected: selectedPrimarySpecialties.contains(specialty)
+                        ) {
+                            if selectedPrimarySpecialties.contains(specialty) {
+                                selectedPrimarySpecialties.remove(specialty)
+                            } else {
+                                selectedPrimarySpecialties.insert(specialty)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Fellowship Type Selection (Fellowship Track)
+struct FellowshipSelectionContentView: View {
+    let primarySpecialties: [String]
+    @Binding var selectedFellowshipCodes: Set<String>
+    @State private var searchText = ""
+
+    private var options: [FellowshipFilterOption] {
+        FellowshipFilterCatalog.options(forUserSpecialties: primarySpecialties)
+    }
+
+    private var filteredOptions: [FellowshipFilterOption] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return options }
+        return options.filter {
+            $0.displayName.localizedCaseInsensitiveContains(query)
+                || $0.parentLabel.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    private var primarySpecialtiesLabel: String {
+        primarySpecialties.joined(separator: ", ")
+    }
+
+    var body: some View {
+        VStack(spacing: 16) {
+            HStack {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(.secondary)
+                ClearableTextField("Search fellowship types...", text: $searchText)
+            }
+            .padding()
+            .glassEffect(.regular, in: .rect(cornerRadius: 10))
+
+            if options.isEmpty {
+                Text("No fellowship types found for \(primarySpecialtiesLabel).")
+                    .font(.arial(size: 14))
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 4)
+                Spacer()
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 12) {
+                        ForEach(filteredOptions) { option in
+                            fellowshipRow(option)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func fellowshipRow(_ option: FellowshipFilterOption) -> some View {
+        let isSelected = selectedFellowshipCodes.contains(option.code)
+        Button(action: {
+            if isSelected {
+                selectedFellowshipCodes.remove(option.code)
+            } else {
+                selectedFellowshipCodes.insert(option.code)
+            }
+        }) {
+            HStack(spacing: 12) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundColor(isSelected ? .purple : .gray)
+                    .font(.arial(size: 22))
+
+                Text(option.displayName)
+                    .font(.arial(size: 16))
+                    .foregroundColor(.primary)
+                    .multilineTextAlignment(.leading)
+
+                Spacer(minLength: 0)
+            }
+            .padding()
+            .glassEffect(
+                isSelected ? .regular.tint(Color.purple.opacity(0.18)).interactive() : .regular,
+                in: .rect(cornerRadius: 10)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(isSelected ? Color.purple : Color.clear, lineWidth: 2)
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 

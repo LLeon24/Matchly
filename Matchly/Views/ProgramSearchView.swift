@@ -94,8 +94,15 @@ struct ProgramSearchView: View {
     }
 
     private var hasSpecialtySelection: Bool {
-        !selectedSpecialties.isEmpty
-            || (!showAllSpecialties && !dataManager.preferences.specialties.isEmpty)
+        !selectedSpecialties.isEmpty || !dataManager.preferences.specialties.isEmpty
+    }
+
+    private var specialtyFilterDiffersFromDefaults: Bool {
+        let defaults = Set(dataManager.preferences.specialties)
+        if defaults.isEmpty {
+            return !selectedSpecialties.isEmpty || !showAllSpecialties
+        }
+        return selectedSpecialties != defaults || showAllSpecialties
     }
 
     private let allStates = [
@@ -120,13 +127,32 @@ struct ProgramSearchView: View {
     }
 
     private var specialtiesToUse: [String]? {
-        if showAllSpecialties || (selectedSpecialties.isEmpty && dataManager.preferences.specialties.isEmpty) {
-            return nil
-        }
+        let userSpecialties = dataManager.preferences.specialties
+
         if !selectedSpecialties.isEmpty {
             return Array(selectedSpecialties)
         }
-        return dataManager.preferences.specialties
+
+        if !userSpecialties.isEmpty {
+            return userSpecialties
+        }
+
+        if showAllSpecialties {
+            return nil
+        }
+
+        return nil
+    }
+
+    private func resetSpecialtyFilterToUserDefaults() {
+        let userSpecialties = dataManager.preferences.specialties
+        if !userSpecialties.isEmpty {
+            selectedSpecialties = Set(userSpecialties)
+            showAllSpecialties = false
+        } else {
+            selectedSpecialties.removeAll()
+            showAllSpecialties = true
+        }
     }
 
     private var stateFiltersToUse: Set<String>? {
@@ -207,8 +233,11 @@ struct ProgramSearchView: View {
             }
             .onAppear {
                 trainingLevelFilter = preferredTrainingLevel
-                if !dataManager.preferences.specialties.isEmpty {
-                    selectedSpecialties = Set(dataManager.preferences.specialties)
+                resetSpecialtyFilterToUserDefaults()
+                if preferredTrainingLevel == .fellowship,
+                   !dataManager.preferences.fellowshipSpecialtyCodes.isEmpty {
+                    selectedFellowshipCodes = Set(dataManager.preferences.fellowshipSpecialtyCodes)
+                    showAllFellowshipTypes = false
                 }
                 refreshSearch()
             }
@@ -388,8 +417,13 @@ struct ProgramSearchView: View {
                                         refreshSearch()
                                     },
                                     onClear: {
-                                        tempSelectedSpecialties.removeAll()
-                                        tempShowAllSpecialties = true
+                                        if dataManager.preferences.specialties.isEmpty {
+                                            tempSelectedSpecialties.removeAll()
+                                            tempShowAllSpecialties = true
+                                        } else {
+                                            tempSelectedSpecialties = Set(dataManager.preferences.specialties)
+                                            tempShowAllSpecialties = false
+                                        }
                                     }
                                 )
                                 .matchlyExpandedSheet()
@@ -561,14 +595,16 @@ struct ProgramSearchView: View {
                         Spacer()
                         
                         // Clear filters button
-                        if (!selectedStates.isEmpty && !showAllStates) || (!selectedSpecialties.isEmpty && !showAllSpecialties) || (!selectedFellowshipCodes.isEmpty && !showAllFellowshipTypes) || trainingLevelFilter != preferredTrainingLevel {
+                        if (!selectedStates.isEmpty && !showAllStates)
+                            || specialtyFilterDiffersFromDefaults
+                            || (!selectedFellowshipCodes.isEmpty && !showAllFellowshipTypes)
+                            || trainingLevelFilter != preferredTrainingLevel {
                             Button(action: {
                                 withAnimation {
                                     searchText = ""
                                     selectedStates.removeAll()
                                     showAllStates = true
-                                    selectedSpecialties.removeAll()
-                                    showAllSpecialties = true
+                                    resetSpecialtyFilterToUserDefaults()
                                     selectedFellowshipCodes.removeAll()
                                     showAllFellowshipTypes = true
                                     trainingLevelFilter = preferredTrainingLevel
@@ -814,7 +850,7 @@ struct ProgramSearchView: View {
                     switch dataManager.addProgram(CatalogProgramMapper.toSavedProgram(program)) {
                     case .added:
                         addedCount += 1
-                    case .duplicate:
+                    case .duplicate, .specialtyMismatch:
                         skippedCount += 1
                     }
                 }

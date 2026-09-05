@@ -10,6 +10,8 @@ import Foundation
 struct UserPreferences: Codable, Hashable {
     var specialty: String? // Deprecated - use specialties array instead
     var specialties: [String] = [] // Support multiple specialties (dual applying)
+    /// ERAS fellowship subspecialty codes selected during onboarding (fellowship track only).
+    var fellowshipSpecialtyCodes: [String] = []
     /// Residency or Fellowship — drives default program search track.
     var applyingTrack: String = ProgramTrainingLevelFilter.residency.rawValue
     var hasCompletedOnboarding: Bool = false
@@ -337,6 +339,7 @@ extension UserPreferences {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.specialty = try container.decodeIfPresent(String.self, forKey: .specialty)
         self.specialties = try container.decodeIfPresent([String].self, forKey: .specialties) ?? []
+        self.fellowshipSpecialtyCodes = try container.decodeIfPresent([String].self, forKey: .fellowshipSpecialtyCodes) ?? []
         self.applyingTrack = try container.decodeIfPresent(String.self, forKey: .applyingTrack)
             ?? ProgramTrainingLevelFilter.residency.rawValue
         self.hasCompletedOnboarding = try container.decodeIfPresent(Bool.self, forKey: .hasCompletedOnboarding) ?? false

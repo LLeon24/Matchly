@@ -20,6 +20,13 @@ struct SpecialtyFormatter {
         "Aerospace Medicine", "Occupational and Environmental Medicine",
         "Public Health and General Preventive Medicine", "Osteopathic Neuromusculoskeletal Medicine"
     ]
+
+    /// Residency specialties that have fellowship subspecialties in the ERAS catalog.
+    static var primarySpecialtiesForFellowship: [String] {
+        commonSpecialties.filter { specialty in
+            !FellowshipFilterCatalog.options(forUserSpecialties: [specialty]).isEmpty
+        }
+    }
     
     // Specialty abbreviations
     static let abbreviations: [String: String] = [
@@ -271,6 +278,43 @@ struct SpecialtyFormatter {
 
     static func matchesAny(userSpecialties: [String], program: ResidencyProgramInfo) -> Bool {
         userSpecialties.contains { matches(userSpecialty: $0, program: program) }
+    }
+
+    /// Whether a saved program's specialty matches any of the user's selected specialties.
+    static func matchesAny(userSpecialties: [String], savedProgram: Program) -> Bool {
+        guard !userSpecialties.isEmpty else { return true }
+
+        if let accreditationID = savedProgram.accreditationID?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !accreditationID.isEmpty,
+           let code = ERASTrainingLevel.specialtyCode(
+            fromAccreditationID: accreditationID,
+            specialty: savedProgram.specialty
+           ) {
+            for userSpecialty in userSpecialties {
+                let parentCodes = ACGMSpecialtyHierarchy.residencyCodes(forUserSpecialty: userSpecialty)
+                if parentCodes.contains(code) { return true }
+            }
+        }
+
+        return userSpecialties.contains {
+            matchesUserSpecialtyString($0, savedProgramSpecialty: savedProgram.specialty)
+        }
+    }
+
+    private static func matchesUserSpecialtyString(_ userSpecialty: String, savedProgramSpecialty: String) -> Bool {
+        let programBase = normalizedCatalogName(savedProgramSpecialty)
+        if namesMatchExact(programBase, userSpecialty) { return true }
+
+        let aliases = catalogAliases[userSpecialty] ?? [userSpecialty]
+        if aliases.contains(where: { namesMatchExact(programBase, $0) }) { return true }
+
+        for (userKey, aliasList) in catalogAliases {
+            guard userKey == userSpecialty || aliasList.contains(userSpecialty) else { continue }
+            if namesMatchExact(programBase, userKey) { return true }
+            if aliasList.contains(where: { namesMatchExact(programBase, $0) }) { return true }
+        }
+
+        return false
     }
 
     /// Exact specialty name comparison — avoids false positives like Neurology ⊂ Urology.

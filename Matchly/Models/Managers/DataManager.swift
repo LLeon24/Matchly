@@ -19,6 +19,7 @@ class DataManager: ObservableObject {
     enum AddProgramResult {
         case added
         case duplicate
+        case specialtyMismatch
     }
     
     @Published var programs: [Program] = []
@@ -754,6 +755,12 @@ class DataManager: ObservableObject {
         if ProgramIdentity.isDuplicate(program, in: programs) {
             lastAddProgramNotice = "This program is already in your list."
             return .duplicate
+        }
+
+        if !preferences.specialties.isEmpty,
+           !SpecialtyFormatter.matchesAny(userSpecialties: preferences.specialties, savedProgram: program) {
+            lastAddProgramNotice = "This program doesn't match your selected specialties."
+            return .specialtyMismatch
         }
 
         var newProgram = program
