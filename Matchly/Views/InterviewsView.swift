@@ -155,7 +155,7 @@ struct InterviewsView: View {
 
                             ForEach(pastInterviews) { program in
                                 NavigationLink(destination: ProgramEntryView(program: program)) {
-                                    InterviewRow(program: program, isUpcoming: false)
+                                    InterviewRow(program: program, isUpcoming: false, style: .pastList)
                                 }
                             }
                         }
@@ -641,6 +641,8 @@ struct InterviewRow: View {
         case standard
         /// List upcoming rows — calendar-style schedule chips, no date circle.
         case upcomingList
+        /// List past rows — schedule chips with elapsed badge, no date circle.
+        case pastList
         /// Dashboard hero / calendar day card — full-width program with inline schedule row.
         case featured
     }
@@ -653,8 +655,8 @@ struct InterviewRow: View {
         style == .standard
     }
 
-    private var showsFeaturedScheduleLine: Bool {
-        (style == .featured || style == .upcomingList) && program.interviewDate != nil
+    private var showsScheduleLine: Bool {
+        (style == .featured || style == .upcomingList || style == .pastList) && program.interviewDate != nil
     }
 
     private var badgeColor: Color {
@@ -705,8 +707,8 @@ struct InterviewRow: View {
             .lineLimit(style == .featured ? 2 : 3)
             .fixedSize(horizontal: false, vertical: true)
 
-            if showsFeaturedScheduleLine, let date = program.interviewDate {
-                featuredScheduleLine(for: date)
+            if showsScheduleLine {
+                ProgramInterviewScheduleLine(program: program, style: .chips)
             }
 
             if !program.specialty.isEmpty || program.signalType != .none {
@@ -715,35 +717,7 @@ struct InterviewRow: View {
 
             MatchlyProgramLocationAndIDRow(program: program)
 
-            if style == .standard, let date = program.interviewDate {
-                standardScheduleRow(for: date)
-            }
-
             ProgramVoiceMemoBadge(program: program, iconSize: 9, textSize: 11)
-        }
-    }
-
-    @ViewBuilder
-    private func standardScheduleRow(for date: Date) -> some View {
-        HStack(spacing: 8) {
-            HStack(spacing: 3) {
-                Image(systemName: "clock")
-                    .font(.arial(size: 9))
-                Text(Self.timeFormatter.string(from: date))
-                    .font(.arial(size: 11, weight: .medium))
-            }
-            .foregroundColor(.secondary)
-
-            if isUpcoming {
-                let daysUntil = max(Calendar.current.dateComponents([.day], from: Date(), to: date).day ?? 0, 0)
-                Text(daysUntil == 1 ? "1 day" : "\(daysUntil) days")
-                    .font(.arial(size: 10, weight: .semibold))
-                    .foregroundColor(AppColors.pipelineUpcoming)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(AppColors.pipelineUpcoming.opacity(0.12))
-                    .clipShape(Capsule())
-            }
         }
     }
 
@@ -789,46 +763,6 @@ struct InterviewRow: View {
         .cornerRadius(4)
     }
 
-    private func featuredScheduleLine(for date: Date) -> some View {
-        HStack(spacing: 6) {
-            featuredDateTimeChip(for: date)
-
-            if isUpcoming {
-                scheduleSeparator
-
-                let daysUntil = max(Calendar.current.dateComponents([.day], from: Date(), to: date).day ?? 0, 0)
-                Text(daysUntil == 1 ? "1 day" : "\(daysUntil) days")
-                    .font(.arial(size: 10, weight: .bold))
-                    .foregroundColor(AppColors.pipelineUpcoming)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(AppColors.pipelineUpcoming.opacity(0.12))
-                    .clipShape(Capsule())
-            }
-        }
-    }
-
-    private func featuredDateTimeChip(for date: Date) -> some View {
-        HStack(spacing: 4) {
-            Text(Self.featuredDateFormatter.string(from: date))
-            Text("·")
-                .foregroundColor(AppColors.accentTeal.opacity(0.55))
-            Text(Self.timeFormatter.string(from: date))
-        }
-        .font(.arial(size: 12, weight: .semibold))
-        .foregroundColor(AppColors.accentTeal)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(AppColors.accentTeal.opacity(0.12))
-        .clipShape(Capsule())
-    }
-
-    private var scheduleSeparator: some View {
-        Text("·")
-            .font(.arial(size: 12, weight: .medium))
-            .foregroundColor(.secondary)
-    }
-
     private static let dayFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "d"
@@ -841,17 +775,6 @@ struct InterviewRow: View {
         return formatter
     }()
 
-    private static let featuredDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d"
-        return formatter
-    }()
-
-    private static let timeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "h:mm a"
-        return formatter
-    }()
 }
 
 #Preview {

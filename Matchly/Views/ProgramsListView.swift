@@ -470,6 +470,8 @@ struct CompactProgramRowView: View {
                 }
 
                 MatchlyProgramLocationAndIDRow(program: program)
+
+                ProgramInterviewScheduleLine(program: program, style: .compact)
                 
                 SavedProgramIMGBadge(program: program)
                 
