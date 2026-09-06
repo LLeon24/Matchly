@@ -96,19 +96,12 @@ struct ImageCropView: View {
                 .frame(width: cropSize, height: cropSize)
                 .allowsHitTesting(false)
 
-            // Face positioning guide
-            Ellipse()
-                .stroke(Color.white.opacity(0.75), style: StrokeStyle(lineWidth: 1.5, dash: [8, 6]))
-                .frame(width: cropSize * 0.52, height: cropSize * 0.68)
-                .offset(y: -cropSize * 0.04)
-                .allowsHitTesting(false)
-
             VStack {
                 Spacer()
                 VStack(spacing: 6) {
                     Text("Pinch to zoom • Drag to reposition")
                         .font(.arial(size: 14))
-                    Text("Center your face in the oval guide")
+                    Text("Center your photo in the circle")
                         .font(.arial(size: 12))
                         .foregroundColor(.white.opacity(0.7))
                 }

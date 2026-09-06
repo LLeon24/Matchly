@@ -10,13 +10,14 @@ import UIKit
 struct ProfilePhotoCirclePicker: View {
     @Binding var photoData: Data?
     @Binding var avatarPresetID: String?
-    @Binding var selectedPhoto: PhotosPickerItem?
-    @Binding var cropImageItem: CropImageItem?
-    @Binding var showCamera: Bool
 
     var diameter: CGFloat = 140
-    var isLoadingPhoto: Bool = false
 
+    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var cropImageItem: CropImageItem?
+    @State private var showCamera = false
+    @State private var pendingCameraImage: UIImage?
+    @State private var isLoadingPhoto = false
     @State private var showPhotoSourceDialog = false
     @State private var showPhotoLibrary = false
 
@@ -98,9 +99,47 @@ struct ProfilePhotoCirclePicker: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Pinch and drag to center your face after choosing a photo.")
+            Text("After taking or choosing a photo, pinch and drag to center it.")
         }
         .photosPicker(isPresented: $showPhotoLibrary, selection: $selectedPhoto, matching: .images)
+        .onChange(of: selectedPhoto) { _, newItem in
+            guard let newItem else { return }
+            isLoadingPhoto = true
+            Task {
+                let preparedImage = await PhotoPickerImageLoader.loadPreparedImage(from: newItem)
+                await MainActor.run {
+                    isLoadingPhoto = false
+                    if let preparedImage {
+                        cropImageItem = CropImageItem(image: preparedImage)
+                    } else {
+                        selectedPhoto = nil
+                    }
+                }
+            }
+        }
+        .fullScreenCover(isPresented: $showCamera, onDismiss: presentPendingCameraCrop) {
+            CameraImagePicker { image in
+                pendingCameraImage = image
+            }
+            .ignoresSafeArea()
+        }
+        .fullScreenCover(item: $cropImageItem, onDismiss: {
+            selectedPhoto = nil
+        }) { item in
+            ImageCropView(image: item.image) { croppedImage in
+                if let data = croppedImage.jpegData(compressionQuality: 0.92) {
+                    photoData = data
+                    avatarPresetID = nil
+                }
+                selectedPhoto = nil
+            }
+        }
+    }
+
+    private func presentPendingCameraCrop() {
+        guard let pendingCameraImage else { return }
+        cropImageItem = CropImageItem(image: pendingCameraImage)
+        self.pendingCameraImage = nil
     }
 
     private func presentCropForCurrentPhoto() {

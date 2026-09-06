@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import PhotosUI
 import UIKit
 
 struct OnboardingFlowView: View {
@@ -20,10 +19,6 @@ struct OnboardingFlowView: View {
     @State private var fellowshipSpecialtyPhase: FellowshipSpecialtyPhase = .primarySpecialty
     @State private var selectedPrimarySpecialties: Set<String> = []
     @State private var selectedFellowshipCodes: Set<String> = []
-    @State private var selectedPhoto: PhotosPickerItem?
-    @State private var cropImageItem: CropImageItem?
-    @State private var showCamera = false
-    @State private var isLoadingPhoto = false
     @State private var showMainApp = false
     @State private var enableCalendarSync: Bool = false
     @State private var includeRedFlaggedInRankList: Bool = true
@@ -121,38 +116,6 @@ struct OnboardingFlowView: View {
         .fullScreenCover(isPresented: $showMainApp) {
             MainTabView()
                 .environmentObject(deepLinkHandler)
-        }
-        .onChange(of: selectedPhoto) { _, newItem in
-            guard let newItem else { return }
-            isLoadingPhoto = true
-            Task {
-                let preparedImage = await PhotoPickerImageLoader.loadPreparedImage(from: newItem)
-                await MainActor.run {
-                    isLoadingPhoto = false
-                    if let preparedImage {
-                        cropImageItem = CropImageItem(image: preparedImage)
-                    } else {
-                        selectedPhoto = nil
-                    }
-                }
-            }
-        }
-        .fullScreenCover(item: $cropImageItem, onDismiss: {
-            selectedPhoto = nil
-        }) { item in
-            ImageCropView(image: item.image) { croppedImage in
-                if let data = croppedImage.jpegData(compressionQuality: 0.92) {
-                    profile.photoData = data
-                    profile.avatarPresetID = nil
-                }
-                selectedPhoto = nil
-            }
-        }
-        .fullScreenCover(isPresented: $showCamera) {
-            CameraImagePicker { image in
-                cropImageItem = CropImageItem(image: image)
-            }
-            .ignoresSafeArea()
         }
     }
     
@@ -357,15 +320,10 @@ struct OnboardingFlowView: View {
 
                     ProfilePhotoCirclePicker(
                         photoData: $profile.photoData,
-                        avatarPresetID: $profile.avatarPresetID,
-                        selectedPhoto: $selectedPhoto,
-                        cropImageItem: $cropImageItem,
-                        showCamera: $showCamera,
-                        isLoadingPhoto: isLoadingPhoto
+                        avatarPresetID: $profile.avatarPresetID
                     )
 
                     ProfileAvatarPresetPicker(selectedPresetID: profile.avatarPresetID) { preset, data in
-                        selectedPhoto = nil
                         profile.photoData = data
                         profile.avatarPresetID = preset.id
                     }

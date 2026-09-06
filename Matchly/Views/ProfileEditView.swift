@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import PhotosUI
 import Combine
 import UIKit
 
@@ -24,12 +23,8 @@ struct ProfileEditView: View {
     @State private var firstName: String = ""
     @State private var lastName: String = ""
     @State private var aamcID: String = ""
-    @State private var selectedPhoto: PhotosPickerItem?
     @State private var photoData: Data?
     @State private var avatarPresetID: String?
-    @State private var cropImageItem: CropImageItem?
-    @State private var showCamera = false
-    @State private var isLoadingPhoto = false
     @State private var keyboardHeight: CGFloat = 0
     
     var body: some View {
@@ -89,38 +84,6 @@ struct ProfileEditView: View {
                 keyboardHeight = 0
             }
         }
-        .onChange(of: selectedPhoto) { _, newItem in
-            guard let newItem else { return }
-            isLoadingPhoto = true
-            Task {
-                let preparedImage = await PhotoPickerImageLoader.loadPreparedImage(from: newItem)
-                await MainActor.run {
-                    isLoadingPhoto = false
-                    if let preparedImage {
-                        cropImageItem = CropImageItem(image: preparedImage)
-                    } else {
-                        selectedPhoto = nil
-                    }
-                }
-            }
-        }
-        .fullScreenCover(item: $cropImageItem, onDismiss: {
-            selectedPhoto = nil
-        }) { item in
-            ImageCropView(image: item.image) { croppedImage in
-                if let data = croppedImage.jpegData(compressionQuality: 0.92) {
-                    photoData = data
-                    avatarPresetID = nil
-                }
-                selectedPhoto = nil
-            }
-        }
-        .fullScreenCover(isPresented: $showCamera) {
-            CameraImagePicker { image in
-                cropImageItem = CropImageItem(image: image)
-            }
-            .ignoresSafeArea()
-        }
     }
 
     private var profilePhotoSection: some View {
@@ -129,11 +92,7 @@ struct ProfileEditView: View {
                 ProfilePhotoCirclePicker(
                     photoData: $photoData,
                     avatarPresetID: $avatarPresetID,
-                    selectedPhoto: $selectedPhoto,
-                    cropImageItem: $cropImageItem,
-                    showCamera: $showCamera,
-                    diameter: 120,
-                    isLoadingPhoto: isLoadingPhoto
+                    diameter: 120
                 )
             }
             .frame(maxWidth: .infinity)
@@ -142,7 +101,6 @@ struct ProfileEditView: View {
             .listRowBackground(Color.clear)
 
             ProfileAvatarPresetPicker(selectedPresetID: avatarPresetID) { preset, data in
-                selectedPhoto = nil
                 photoData = data
                 avatarPresetID = preset.id
             }
@@ -233,15 +191,8 @@ struct ProfileEditView: View {
         dataManager.preferences.profile.firstName = firstName.trimmingCharacters(in: .whitespacesAndNewlines)
         dataManager.preferences.profile.lastName = lastName.trimmingCharacters(in: .whitespacesAndNewlines)
         dataManager.preferences.profile.aamcID = aamcID.trimmingCharacters(in: .whitespaces).isEmpty ? nil : aamcID.trimmingCharacters(in: .whitespaces)
-        // Always save the photoData if it exists, even if it's nil (to allow removal)
-        if photoData != nil {
-            dataManager.preferences.profile.photoData = photoData
-            dataManager.preferences.profile.avatarPresetID = avatarPresetID
-        } else if photoData == nil && dataManager.preferences.profile.photoData != nil && selectedPhoto == nil {
-            // Only clear if user explicitly removed it
-            dataManager.preferences.profile.photoData = nil
-            dataManager.preferences.profile.avatarPresetID = nil
-        }
+        dataManager.preferences.profile.photoData = photoData
+        dataManager.preferences.profile.avatarPresetID = avatarPresetID
         dataManager.savePreferences()
         dataManager.scheduleCoupleCloudPublish()
         authManager.updateDisplayName(dataManager.preferences.profile.name)
