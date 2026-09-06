@@ -10,6 +10,7 @@ import Combine
 
 struct ProgramsListView: View {
     @EnvironmentObject var dataManager: DataManager
+    @EnvironmentObject private var deepLinkHandler: CoupleDeepLinkHandler
     @State private var showAddProgram = false
     @State private var sortOption: SortOption = .name
     @State private var listFilter: ProgramListFilter = .all
@@ -172,12 +173,24 @@ struct ProgramsListView: View {
                 cachedSortedPrograms = []
                 lastSortOption = nil
                 lastProgramsCount = 0
+                applyProgramsListFocusIfNeeded()
+            }
+            .onChange(of: deepLinkHandler.pendingProgramsListFocus) { _, focus in
+                guard focus != nil else { return }
+                applyProgramsListFocusIfNeeded()
             }
             .appCanvasBackground()
         }
     }
 
     // MARK: - View Components
+
+    private func applyProgramsListFocusIfNeeded() {
+        guard deepLinkHandler.consumeProgramsListFocus() == .incomplete else { return }
+        listFilter = .incomplete
+        isEditMode = false
+        selectedPrograms.removeAll()
+    }
 
     private var programsSectionDivider: some View {
         MatchlyBrandHairline(fullWidth: true, color: AppColors.secondaryText.opacity(0.22))
@@ -614,5 +627,6 @@ struct EmptyProgramsView: View {
 #Preview {
     ProgramsListView()
         .environmentObject(DataManager.shared)
+        .environmentObject(CoupleDeepLinkHandler())
 }
 

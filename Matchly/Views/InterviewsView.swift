@@ -13,9 +13,12 @@ struct InterviewsView: View {
     @State private var viewMode: ViewMode = .list
     @State private var selectedMonth: Date = Date()
     @State private var selectedDate: Date?
+    @State private var pendingSectionScroll: CoupleDeepLinkHandler.InterviewsListFocus?
 
     private enum ScrollAnchor {
+        static let needsDateSection = "interviews-needs-date-section"
         static let upcomingSection = "interviews-upcoming-section"
+        static let pastSection = "interviews-past-section"
     }
 
     enum ViewMode {
@@ -54,7 +57,12 @@ struct InterviewsView: View {
                 selection: $viewMode
             )
             .padding(.bottom, 10)
-            
+
+            if viewMode == .list, showsSectionJumpRow {
+                interviewsSectionJumpRow
+                    .padding(.bottom, 8)
+            }
+
             if viewMode == .list {
                 listView
             } else {
@@ -85,13 +93,16 @@ struct InterviewsView: View {
 
                 if !programsNeedingDates.isEmpty {
                     Section {
+                        interviewsSectionTitleRow(
+                            "Needs a Date (\(programsNeedingDates.count))",
+                            anchorID: ScrollAnchor.needsDateSection
+                        )
+
                         ForEach(programsNeedingDates) { program in
                             NavigationLink(destination: ProgramEntryView(program: program)) {
                                 ProgramNeedingInterviewDateRow(program: program)
                             }
                         }
-                    } header: {
-                        interviewsSectionHeader("Needs a Date (\(programsNeedingDates.count))")
                     }
                 }
 
@@ -119,32 +130,32 @@ struct InterviewsView: View {
                     // Upcoming Interviews
                     if !upcomingInterviews.isEmpty {
                         Section {
-                            Color.clear
-                                .frame(height: 0)
-                                .listRowSeparator(.hidden)
-                                .listRowBackground(Color.clear)
-                                .id(ScrollAnchor.upcomingSection)
+                            interviewsSectionTitleRow(
+                                "Upcoming (\(upcomingInterviews.count))",
+                                anchorID: ScrollAnchor.upcomingSection
+                            )
 
                             ForEach(upcomingInterviews) { program in
                                 NavigationLink(destination: ProgramEntryView(program: program)) {
                                     InterviewRow(program: program, isUpcoming: true)
                                 }
                             }
-                        } header: {
-                            interviewsSectionHeader("Upcoming (\(upcomingInterviews.count))")
                         }
                     }
 
                     // Past Interviews
                     if !pastInterviews.isEmpty {
                         Section {
+                            interviewsSectionTitleRow(
+                                "Past (\(pastInterviews.count))",
+                                anchorID: ScrollAnchor.pastSection
+                            )
+
                             ForEach(pastInterviews) { program in
                                 NavigationLink(destination: ProgramEntryView(program: program)) {
                                     InterviewRow(program: program, isUpcoming: false)
                                 }
                             }
-                        } header: {
-                            interviewsSectionHeader("Past (\(pastInterviews.count))")
                         }
                     }
                 }
@@ -154,25 +165,130 @@ struct InterviewsView: View {
             .scrollContentBackground(.hidden)
             .matchlyScrollTabBarClearance()
             .onAppear {
-                scrollToPendingFocus(using: proxy)
+                if let focus = deepLinkHandler.consumeInterviewsListFocus() {
+                    scrollToSection(focus, using: proxy)
+                }
             }
             .onChange(of: deepLinkHandler.pendingInterviewsListFocus) { _, focus in
-                guard focus == .upcoming else { return }
-                scrollToPendingFocus(using: proxy)
+                guard focus != nil else { return }
+                if let focus = deepLinkHandler.consumeInterviewsListFocus() {
+                    scrollToSection(focus, using: proxy)
+                }
+            }
+            .onChange(of: pendingSectionScroll) { _, focus in
+                guard let focus else { return }
+                scrollToSection(focus, using: proxy)
+                pendingSectionScroll = nil
             }
         }
     }
 
-    private func scrollToPendingFocus(using proxy: ScrollViewProxy) {
-        guard deepLinkHandler.consumeInterviewsListFocus() == .upcoming else { return }
-        viewMode = .list
-        guard !upcomingInterviews.isEmpty else { return }
+    private var showsSectionJumpRow: Bool {
+        !programsNeedingDates.isEmpty || !upcomingInterviews.isEmpty || !pastInterviews.isEmpty
+    }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            withAnimation(.easeInOut(duration: 0.25)) {
-                proxy.scrollTo(ScrollAnchor.upcomingSection, anchor: .top)
+    private var interviewsSectionJumpRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                if !programsNeedingDates.isEmpty {
+                    sectionJumpButton(
+                        icon: "calendar.badge.plus",
+                        title: "Needs Date",
+                        count: programsNeedingDates.count,
+                        tint: AppColors.pipelineNeedDate,
+                        focus: .needDate
+                    )
+                }
+
+                if !upcomingInterviews.isEmpty {
+                    sectionJumpButton(
+                        icon: "calendar",
+                        title: "Upcoming",
+                        count: upcomingInterviews.count,
+                        tint: AppColors.pipelineUpcoming,
+                        focus: .upcoming
+                    )
+                }
+
+                if !pastInterviews.isEmpty {
+                    sectionJumpButton(
+                        icon: "clock.arrow.circlepath",
+                        title: "Past",
+                        count: pastInterviews.count,
+                        tint: AppColors.secondaryText,
+                        focus: .past
+                    )
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+    }
+
+    private func sectionJumpButton(
+        icon: String,
+        title: String,
+        count: Int,
+        tint: Color,
+        focus: CoupleDeepLinkHandler.InterviewsListFocus
+    ) -> some View {
+        Button {
+            pendingSectionScroll = focus
+        } label: {
+            MatchlyActionChipLabel(
+                icon: icon,
+                text: "\(title) (\(count))",
+                tint: tint,
+                isFilled: focus == .upcoming
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func scrollToSection(
+        _ focus: CoupleDeepLinkHandler.InterviewsListFocus,
+        using proxy: ScrollViewProxy
+    ) {
+        viewMode = .list
+
+        let anchor: String?
+        switch focus {
+        case .needDate:
+            anchor = programsNeedingDates.isEmpty ? nil : ScrollAnchor.needsDateSection
+        case .upcoming:
+            anchor = upcomingInterviews.isEmpty ? nil : ScrollAnchor.upcomingSection
+        case .past:
+            anchor = pastInterviews.isEmpty ? nil : ScrollAnchor.pastSection
+        }
+
+        guard let anchor else { return }
+
+        // Tab switches from the dashboard need an extra beat for List layout.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            performScroll(to: anchor, using: proxy, animated: true)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                performScroll(to: anchor, using: proxy, animated: false)
             }
         }
+    }
+
+    private func performScroll(to anchor: String, using proxy: ScrollViewProxy, animated: Bool) {
+        if animated {
+            withAnimation(.easeInOut(duration: 0.25)) {
+                proxy.scrollTo(anchor, anchor: .top)
+            }
+        } else {
+            proxy.scrollTo(anchor, anchor: .top)
+        }
+    }
+
+    private func interviewsSectionTitleRow(_ title: String, anchorID: String) -> some View {
+        interviewsSectionHeader(title)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 4)
+            .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+            .id(anchorID)
     }
     
     private func interviewsSectionHeader(_ title: String) -> some View {

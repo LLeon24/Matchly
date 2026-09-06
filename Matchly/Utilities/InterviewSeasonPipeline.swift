@@ -2,7 +2,7 @@
 //  InterviewSeasonPipeline.swift
 //  Matchly
 //
-//  Mutually exclusive per-program pipeline stage for the dashboard hero ring and stats.
+//  Dashboard hero stats and ring segments for interview season tracking.
 //
 
 import SwiftUI
@@ -20,7 +20,7 @@ enum InterviewSeasonStage: String, CaseIterable, Identifiable {
         case .needDate: return "Need Date"
         case .upcoming: return "Upcoming"
         case .scored: return "Scored"
-        case .toReview: return "To Review"
+        case .toReview: return "Incomplete"
         }
     }
 
@@ -33,13 +33,49 @@ enum InterviewSeasonStage: String, CaseIterable, Identifiable {
         }
     }
 
-    /// One stage per program — priority: to review → scored → upcoming → need date.
+    /// Independent stat count for the dashboard hero row. Categories may overlap —
+    /// e.g. a program can be both Upcoming and Scored.
     ///
-    /// - **To Review:** questionnaire still incomplete (matches Programs Needing Review).
-    /// - **Scored:** questionnaire complete with a rank-list score (matches Rank List).
-    /// - **Upcoming:** interview scheduled in the future but not scored yet.
-    /// - **Need Date:** tracked invite with no interview date and not scored yet.
-    static func stage(
+    /// - **Incomplete:** incomplete questionnaire (My Programs → Incomplete).
+    /// - **Upcoming:** interview scheduled in the future (`InterviewsView` upcoming section).
+    /// - **Need Date:** no interview date yet (Interviews list “Needs a Date” section).
+    /// - **Scored:** rank-list ready — questionnaire complete with a score (`RankListView`).
+    static func statCount(
+        _ stage: InterviewSeasonStage,
+        for programs: [Program],
+        preferences: UserPreferences,
+        now: Date = Date()
+    ) -> Int {
+        switch stage {
+        case .toReview:
+            return programs.filter { $0.needsScoring(preferences: preferences) }.count
+        case .upcoming:
+            return programs.filter { program in
+                guard let date = program.interviewDate else { return false }
+                return date >= now
+            }.count
+        case .needDate:
+            return programs.filter { $0.interviewDate == nil }.count
+        case .scored:
+            return programs.filter { isRankReady($0, preferences: preferences) }.count
+        }
+    }
+
+    static func statCounts(
+        for programs: [Program],
+        preferences: UserPreferences,
+        now: Date = Date()
+    ) -> [InterviewSeasonStage: Int] {
+        Dictionary(
+            uniqueKeysWithValues: InterviewSeasonStage.allCases.map { stage in
+                (stage, statCount(stage, for: programs, preferences: preferences, now: now))
+            }
+        )
+    }
+
+    /// One stage per program for the hero ring — mutually exclusive, priority:
+    /// to review → upcoming → need date → scored.
+    static func ringStage(
         for program: Program,
         preferences: UserPreferences,
         now: Date = Date()
@@ -47,17 +83,41 @@ enum InterviewSeasonStage: String, CaseIterable, Identifiable {
         if program.needsScoring(preferences: preferences) {
             return .toReview
         }
-        if isRankReady(program, preferences: preferences) {
-            return .scored
-        }
         if let date = program.interviewDate, date >= now {
             return .upcoming
         }
         if program.interviewDate == nil {
             return .needDate
         }
-        // Past interview with a complete questionnaire but no score yet.
+        if isRankReady(program, preferences: preferences) {
+            return .scored
+        }
         return .toReview
+    }
+
+    /// Backward-compatible alias used by tests and call sites.
+    static func stage(
+        for program: Program,
+        preferences: UserPreferences,
+        now: Date = Date()
+    ) -> InterviewSeasonStage {
+        ringStage(for: program, preferences: preferences, now: now)
+    }
+
+    static func ringStageCounts(
+        for programs: [Program],
+        preferences: UserPreferences,
+        now: Date = Date()
+    ) -> [InterviewSeasonStage: Int] {
+        var result: [InterviewSeasonStage: Int] = [:]
+        for stage in InterviewSeasonStage.allCases {
+            result[stage] = 0
+        }
+        for program in programs {
+            let stage = ringStage(for: program, preferences: preferences, now: now)
+            result[stage, default: 0] += 1
+        }
+        return result
     }
 
     /// Matches Rank List eligibility: questionnaire complete and has a computed score.
@@ -70,14 +130,6 @@ enum InterviewSeasonStage: String, CaseIterable, Identifiable {
         preferences: UserPreferences,
         now: Date = Date()
     ) -> [InterviewSeasonStage: Int] {
-        var result: [InterviewSeasonStage: Int] = [:]
-        for stage in InterviewSeasonStage.allCases {
-            result[stage] = 0
-        }
-        for program in programs {
-            let stage = stage(for: program, preferences: preferences, now: now)
-            result[stage, default: 0] += 1
-        }
-        return result
+        ringStageCounts(for: programs, preferences: preferences, now: now)
     }
 }

@@ -418,7 +418,10 @@ struct DashboardView: View {
         let programCount = dataManager.programs.count
         guard programCount > 0 else { return [] }
 
-        let counts = pipelineStageCounts
+        let counts = InterviewSeasonStage.statCounts(
+            for: dataManager.programs,
+            preferences: dataManager.preferences
+        )
         return InterviewSeasonStage.allCases.map { stage in
             let count = counts[stage] ?? 0
             return DashboardSnapshotStat(
@@ -431,20 +434,22 @@ struct DashboardView: View {
     }
 
     private var pipelineStageCounts: [InterviewSeasonStage: Int] {
-        InterviewSeasonStage.counts(for: dataManager.programs, preferences: dataManager.preferences)
+        InterviewSeasonStage.ringStageCounts(for: dataManager.programs, preferences: dataManager.preferences)
     }
 
     private func handleHeroStatTap(_ stage: InterviewSeasonStage) {
         switch stage {
         case .needDate:
-            heroStatDestination = .needDates
+            deepLinkHandler.requestInterviewsListFocus(.needDate)
+            selectedTab = MainTabLayout.interviewsIndex
         case .upcoming:
             deepLinkHandler.requestInterviewsListFocus(.upcoming)
             selectedTab = MainTabLayout.interviewsIndex
         case .scored:
             selectedTab = MainTabLayout.rankListIndex(isCoupleLinked: isCoupleLinked)
         case .toReview:
-            heroStatDestination = .needReview
+            deepLinkHandler.requestProgramsListFocus(.incomplete)
+            selectedTab = MainTabLayout.programsIndex
         }
     }
 

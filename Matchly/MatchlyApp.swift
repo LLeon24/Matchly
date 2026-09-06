@@ -54,9 +54,16 @@ final class CoupleDeepLinkHandler: ObservableObject {
     @Published var pendingCoupleCode: String?
     @Published private(set) var shouldOpenInterviewsTab = false
     @Published private(set) var pendingInterviewsListFocus: InterviewsListFocus?
+    @Published private(set) var pendingProgramsListFocus: ProgramsListFocus?
 
     enum InterviewsListFocus: Equatable {
+        case needDate
         case upcoming
+        case past
+    }
+
+    enum ProgramsListFocus: Equatable {
+        case incomplete
     }
 
     func handle(url: URL) {
@@ -76,6 +83,15 @@ final class CoupleDeepLinkHandler: ObservableObject {
     func consumeInterviewsListFocus() -> InterviewsListFocus? {
         defer { pendingInterviewsListFocus = nil }
         return pendingInterviewsListFocus
+    }
+
+    func requestProgramsListFocus(_ focus: ProgramsListFocus) {
+        pendingProgramsListFocus = focus
+    }
+
+    func consumeProgramsListFocus() -> ProgramsListFocus? {
+        defer { pendingProgramsListFocus = nil }
+        return pendingProgramsListFocus
     }
 
     func consumeInterviewsNavigation() {
