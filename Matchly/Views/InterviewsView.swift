@@ -56,9 +56,10 @@ struct InterviewsView: View {
                 ],
                 selection: $viewMode
             )
-            .padding(.bottom, 10)
+            .padding(.bottom, 8)
 
             if viewMode == .list, showsSectionJumpRow {
+                interviewsControlsDivider
                 interviewsSectionJumpRow
                     .padding(.bottom, 8)
             }
@@ -185,6 +186,12 @@ struct InterviewsView: View {
 
     private var showsSectionJumpRow: Bool {
         !programsNeedingDates.isEmpty || !upcomingInterviews.isEmpty || !pastInterviews.isEmpty
+    }
+
+    private var interviewsControlsDivider: some View {
+        MatchlyBrandHairline(fullWidth: true, color: AppColors.secondaryText.opacity(0.22))
+            .padding(.horizontal, 16)
+            .padding(.bottom, 10)
     }
 
     private var interviewsSectionJumpRow: some View {
