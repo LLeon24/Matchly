@@ -13,7 +13,7 @@ struct ProfilePhotoView: View {
     var body: some View {
         Group {
             if let photoData, let uiImage = UIImage(data: photoData) {
-                Image(uiImage: uiImage)
+                Image(uiImage: uiImage.fixedOrientation())
                     .resizable()
                     .scaledToFill()
             } else {

@@ -67,7 +67,7 @@ struct OnboardingFlowView: View {
             case .specialties: return "Choose the specialties you're applying to. You can select multiple if you're dual applying."
             case .name: return "We'll use this to personalize your experience"
             case .aamcID: return "Your AAMC ID helps us provide better program matching"
-            case .photo: return "Choose from your library, take a photo, or pick an avatar"
+            case .photo: return "Tap the circle to add a photo — you can move, zoom, and crop to center your face"
             case .matchPreferences: return "A few defaults to get your rank list and scoring right from the start."
             case .calendarSync: return "Would you like to sync your interviews to your device calendar? After you add programs, Interview Prep helps you build question lists for each visit."
             }
@@ -354,78 +354,15 @@ struct OnboardingFlowView: View {
             content: {
                 VStack(spacing: 32) {
                     Spacer()
-                    
-                    ZStack {
-                        Circle()
-                            .fill(.clear)
-                            .frame(width: 140, height: 140)
-                            .glassEffect(.regular, in: .circle)
-                        
-                        if let photoData = profile.photoData,
-                           let uiImage = UIImage(data: photoData) {
-                            Image(uiImage: uiImage)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: 140, height: 140)
-                                .clipShape(Circle())
-                        } else {
-                            VStack(spacing: 12) {
-                                Image(systemName: "person.crop.circle.fill")
-                                    .font(.arial(size: 40))
-                                    .foregroundColor(.blue)
-                                Text("No Photo")
-                                    .font(.arial(size: 16, weight: .medium))
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        
-                        if isLoadingPhoto {
-                            Circle()
-                                .fill(Color.black.opacity(0.35))
-                                .frame(width: 140, height: 140)
-                            ProgressView()
-                                .tint(.white)
-                        }
-                    }
-                    
-                    HStack(spacing: 12) {
-                        PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                            Label("Choose Photo", systemImage: "photo.on.rectangle")
-                                .font(.arial(size: 15, weight: .medium))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 12))
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(isLoadingPhoto)
-                        
-                        if CameraImagePicker.isAvailable {
-                            Button {
-                                showCamera = true
-                            } label: {
-                                Label("Take Photo", systemImage: "camera.fill")
-                                    .font(.arial(size: 15, weight: .medium))
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 12))
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(isLoadingPhoto)
-                        }
-                    }
-                    .padding(.horizontal, 4)
-                    
-                    if profile.hasPhoto {
-                        Button(action: {
-                            profile.photoData = nil
-                            profile.avatarPresetID = nil
-                            selectedPhoto = nil
-                        }) {
-                            Text("Remove Photo")
-                                .font(.arial(size: 15))
-                                .foregroundColor(.red)
-                        }
-                    }
+
+                    ProfilePhotoCirclePicker(
+                        photoData: $profile.photoData,
+                        avatarPresetID: $profile.avatarPresetID,
+                        selectedPhoto: $selectedPhoto,
+                        cropImageItem: $cropImageItem,
+                        showCamera: $showCamera,
+                        isLoadingPhoto: isLoadingPhoto
+                    )
 
                     ProfileAvatarPresetPicker(selectedPresetID: profile.avatarPresetID) { preset, data in
                         selectedPhoto = nil

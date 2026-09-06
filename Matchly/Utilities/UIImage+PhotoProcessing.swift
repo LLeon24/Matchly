@@ -67,10 +67,8 @@ extension UIImage {
             ]
             cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbOptions as CFDictionary)
         } else {
-            let fullOptions: [CFString: Any] = [
-                kCGImageSourceShouldCacheImmediately: true,
-            ]
-            cgImage = CGImageSourceCreateImageAtIndex(source, 0, fullOptions as CFDictionary)
+            guard let uiImage = UIImage(data: data) else { return nil }
+            return uiImage.fixedOrientation()
         }
 
         guard let cgImage else {

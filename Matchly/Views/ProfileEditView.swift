@@ -126,79 +126,15 @@ struct ProfileEditView: View {
     private var profilePhotoSection: some View {
         Section {
             VStack(spacing: 16) {
-                ZStack {
-                    if let photoData = photoData,
-                       let uiImage = UIImage(data: photoData) {
-                        Image(uiImage: uiImage)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 120, height: 120)
-                            .clipShape(Circle())
-                    } else if let existingPhotoData = dataManager.preferences.profile.photoData,
-                              let uiImage = UIImage(data: existingPhotoData) {
-                        Image(uiImage: uiImage)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 120, height: 120)
-                            .clipShape(Circle())
-                    } else {
-                        ZStack {
-                            Circle()
-                                .fill(
-                                    LinearGradient(
-                                        colors: [Color.blue.opacity(0.2), Color.purple.opacity(0.2)],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                                .frame(width: 120, height: 120)
-
-                            Image(systemName: "person.fill")
-                                .font(.arial(size: 50))
-                                .foregroundStyle(
-                                    LinearGradient(
-                                        colors: [.blue, .purple],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                        }
-                    }
-
-                    if isLoadingPhoto {
-                        Circle()
-                            .fill(Color.black.opacity(0.45))
-                            .frame(width: 120, height: 120)
-                        ProgressView()
-                            .tint(.white)
-                    }
-                }
-
-                HStack(spacing: 12) {
-                    PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                        Label("Choose Photo", systemImage: "photo.on.rectangle")
-                            .font(.arial(size: 15, weight: .medium))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 12))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(isLoadingPhoto)
-
-                    if CameraImagePicker.isAvailable {
-                        Button {
-                            showCamera = true
-                        } label: {
-                            Label("Take Photo", systemImage: "camera.fill")
-                                .font(.arial(size: 15, weight: .medium))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 12))
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(isLoadingPhoto)
-                    }
-                }
+                ProfilePhotoCirclePicker(
+                    photoData: $photoData,
+                    avatarPresetID: $avatarPresetID,
+                    selectedPhoto: $selectedPhoto,
+                    cropImageItem: $cropImageItem,
+                    showCamera: $showCamera,
+                    diameter: 120,
+                    isLoadingPhoto: isLoadingPhoto
+                )
             }
             .frame(maxWidth: .infinity)
             .padding(.top, 24)
@@ -211,22 +147,6 @@ struct ProfileEditView: View {
                 avatarPresetID = preset.id
             }
             .padding(.bottom, 12)
-            
-            if photoData != nil || dataManager.preferences.profile.photoData != nil {
-                Button(role: .destructive, action: {
-                    photoData = nil
-                    avatarPresetID = nil
-                    selectedPhoto = nil
-                    dataManager.preferences.profile.photoData = nil
-                    dataManager.preferences.profile.avatarPresetID = nil
-                }) {
-                    HStack {
-                        Spacer()
-                        Text("Remove Photo")
-                        Spacer()
-                    }
-                }
-            }
         } header: {
             Text("Profile Photo")
         }
