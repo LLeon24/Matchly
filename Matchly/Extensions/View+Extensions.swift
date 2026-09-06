@@ -230,9 +230,14 @@ extension View {
 
     /// Compact inset panel — search rows, form sections, list tiles.
     func glassPanelStyle(cornerRadius: CGFloat = 16) -> some View {
-        padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
+        modifier(GlassPanelStyleModifier(cornerRadius: cornerRadius, nestedInsideGlass: false))
+    }
+
+    /// Inset panel meant to sit inside an outer `.glassEffect` container.
+    /// iOS 26 renders nested Liquid Glass as a muddy gray box and can widen layout;
+    /// iOS 27+ keeps the glass inset look users expect.
+    func nestedGlassPanelStyle(cornerRadius: CGFloat = 16) -> some View {
+        modifier(GlassPanelStyleModifier(cornerRadius: cornerRadius, nestedInsideGlass: true))
     }
 
     /// Circular icon control floating over content.
@@ -278,6 +283,33 @@ extension View {
     /// Ensures scrollable tab content can scroll fully above the floating tab bar.
     func matchlyScrollTabBarClearance() -> some View {
         modifier(MatchlyScrollTabBarClearanceModifier())
+    }
+}
+
+private struct GlassPanelStyleModifier: ViewModifier {
+    let cornerRadius: CGFloat
+    let nestedInsideGlass: Bool
+
+    func body(content: Content) -> some View {
+        let padded = content
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+        if nestedInsideGlass {
+            if #available(iOS 27, *) {
+                padded.glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
+            } else {
+                padded
+                    .background(
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .fill(AppColors.dashboardCard)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            }
+        } else {
+            padded.glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
+        }
     }
 }
 

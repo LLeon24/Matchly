@@ -94,7 +94,7 @@ struct ProgramEntryView: View {
     
     // MARK: - Form Content (now using ScrollView for better scrolling)
     private var formContent: some View {
-        ScrollView {
+        ScrollView(.vertical) {
             VStack(spacing: 16) {
                 // Basic Information Section (only show if hospital not selected)
                 if hospital.isEmpty {
@@ -275,8 +275,10 @@ struct ProgramEntryView: View {
                 // Extra clearance when the keyboard is open
                 Color.clear.frame(height: keyboardHeight > 0 ? 20 : 0)
             }
+            .frame(maxWidth: .infinity)
             .padding(.bottom, 8)
         }
+        .scrollBounceBehavior(.basedOnSize, axes: .vertical)
         .matchlyScrollTabBarClearance()
         .scrollDismissesKeyboard(.interactively)
         .background(AppColors.dashboardCanvas)
@@ -1918,6 +1920,7 @@ extension ProgramEntryView {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .glassEffect(.regular, in: .rect(cornerRadius: 16))
     }
 }

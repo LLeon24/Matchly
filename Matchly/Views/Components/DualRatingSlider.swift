@@ -26,6 +26,7 @@ struct DualRatingSlider: View {
                     .font(.arial(size: 15, weight: .medium))
                     .foregroundColor(.primary)
                     .lineSpacing(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                 if isUnanswered {
                     Text("Needs answer")
@@ -358,9 +359,10 @@ struct DualRatingSlider: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 4)
         .padding(.horizontal, 0)
-        .glassPanelStyle(cornerRadius: 12)
+        .nestedGlassPanelStyle(cornerRadius: 12)
         .overlay {
             if isUnanswered {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
