@@ -14,6 +14,7 @@ struct InterviewsView: View {
     @State private var selectedMonth: Date = Date()
     @State private var selectedDate: Date?
     @State private var pendingSectionScroll: CoupleDeepLinkHandler.InterviewsListFocus?
+    @State private var highlightedSectionFocus: CoupleDeepLinkHandler.InterviewsListFocus?
 
     private enum ScrollAnchor {
         static let needsDateSection = "interviews-needs-date-section"
@@ -138,7 +139,7 @@ struct InterviewsView: View {
 
                             ForEach(upcomingInterviews) { program in
                                 NavigationLink(destination: ProgramEntryView(program: program)) {
-                                    InterviewRow(program: program, isUpcoming: true)
+                                    InterviewRow(program: program, isUpcoming: true, style: .upcomingList)
                                 }
                             }
                         }
@@ -245,8 +246,9 @@ struct InterviewsView: View {
                 icon: icon,
                 text: "\(title) (\(count))",
                 tint: tint,
-                isFilled: focus == .upcoming
+                isFilled: highlightedSectionFocus == focus
             )
+            .opacity(highlightedSectionFocus == focus ? 1 : 0.72)
         }
         .buttonStyle(.plain)
     }
@@ -268,6 +270,8 @@ struct InterviewsView: View {
         }
 
         guard let anchor else { return }
+
+        highlightedSectionFocus = focus
 
         // Tab switches from the dashboard need an extra beat for List layout.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
@@ -635,7 +639,9 @@ struct CompactInterviewCard: View {
 struct InterviewRow: View {
     enum Style {
         case standard
-        /// Dashboard hero — full-width program with inline schedule row.
+        /// List upcoming rows — calendar-style schedule chips, no date circle.
+        case upcomingList
+        /// Dashboard hero / calendar day card — full-width program with inline schedule row.
         case featured
     }
 
@@ -643,13 +649,21 @@ struct InterviewRow: View {
     let isUpcoming: Bool
     var style: Style = .standard
 
+    private var showsDateBadge: Bool {
+        style == .standard
+    }
+
+    private var showsFeaturedScheduleLine: Bool {
+        (style == .featured || style == .upcomingList) && program.interviewDate != nil
+    }
+
     private var badgeColor: Color {
         isUpcoming ? AppColors.accentTeal : Color.secondary
     }
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            if style == .standard {
+            if showsDateBadge {
                 dateBadge
             }
 
@@ -657,7 +671,7 @@ struct InterviewRow: View {
 
             Spacer(minLength: 0)
         }
-        .padding(.vertical, style == .featured ? 2 : 6)
+        .padding(.vertical, style == .featured ? 2 : 8)
     }
 
     private var dateBadge: some View {
@@ -681,7 +695,7 @@ struct InterviewRow: View {
 
     @ViewBuilder
     private var programDetailsColumn: some View {
-        VStack(alignment: .leading, spacing: style == .featured ? 4 : 3) {
+        VStack(alignment: .leading, spacing: style == .featured ? 4 : 4) {
             Text(HospitalNameFormatter.format(
                 program.hospital.isEmpty
                     ? (program.name.isEmpty ? "Unnamed Program" : program.name)
@@ -691,42 +705,45 @@ struct InterviewRow: View {
             .lineLimit(style == .featured ? 2 : 3)
             .fixedSize(horizontal: false, vertical: true)
 
-            if style == .featured, let date = program.interviewDate {
+            if showsFeaturedScheduleLine, let date = program.interviewDate {
                 featuredScheduleLine(for: date)
             }
 
-            if style == .featured {
+            if !program.specialty.isEmpty || program.signalType != .none {
                 featuredMetadataRow
-            } else if !program.specialty.isEmpty {
-                MatchlyProgramSpecialtyBadge(specialty: program.specialty)
             }
 
             MatchlyProgramLocationAndIDRow(program: program)
 
             if style == .standard, let date = program.interviewDate {
-                HStack(spacing: 8) {
-                    HStack(spacing: 3) {
-                        Image(systemName: "clock")
-                            .font(.arial(size: 9))
-                        Text(Self.timeFormatter.string(from: date))
-                            .font(.arial(size: 11, weight: .medium))
-                    }
-                    .foregroundColor(.secondary)
-
-                    if isUpcoming {
-                        let daysUntil = Calendar.current.dateComponents([.day], from: Date(), to: date).day ?? 0
-                        Text("\(daysUntil)d")
-                            .font(.arial(size: 10, weight: .semibold))
-                            .foregroundColor(AppColors.accentTeal)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(AppColors.accentTeal.opacity(0.12))
-                            .cornerRadius(4)
-                    }
-                }
+                standardScheduleRow(for: date)
             }
 
             ProgramVoiceMemoBadge(program: program, iconSize: 9, textSize: 11)
+        }
+    }
+
+    @ViewBuilder
+    private func standardScheduleRow(for date: Date) -> some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 3) {
+                Image(systemName: "clock")
+                    .font(.arial(size: 9))
+                Text(Self.timeFormatter.string(from: date))
+                    .font(.arial(size: 11, weight: .medium))
+            }
+            .foregroundColor(.secondary)
+
+            if isUpcoming {
+                let daysUntil = max(Calendar.current.dateComponents([.day], from: Date(), to: date).day ?? 0, 0)
+                Text(daysUntil == 1 ? "1 day" : "\(daysUntil) days")
+                    .font(.arial(size: 10, weight: .semibold))
+                    .foregroundColor(AppColors.pipelineUpcoming)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(AppColors.pipelineUpcoming.opacity(0.12))
+                    .clipShape(Capsule())
+            }
         }
     }
 
