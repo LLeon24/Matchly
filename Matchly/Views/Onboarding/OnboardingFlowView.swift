@@ -24,8 +24,8 @@ struct OnboardingFlowView: View {
     @State private var includeRedFlaggedInRankList: Bool = true
     @State private var preferredEMR: String = ""
     @State private var preferredEMROtherDetail: String = ""
-    @State private var appearanceMode: AppearanceMode = DataManager.shared.preferences.appearanceMode
     @State private var showQuestionnaireCustomization = false
+    @State private var showWidgetSetupGuide = false
 
     private enum FellowshipSpecialtyPhase {
         case primarySpecialty
@@ -102,9 +102,9 @@ struct OnboardingFlowView: View {
                 .transition(.opacity.combined(with: .move(edge: .trailing)))
             }
         }
-        .preferredColorScheme(appearanceMode.preferredColorScheme)
+        .preferredColorScheme(dataManager.preferences.appearanceMode.preferredColorScheme)
+        .id(dataManager.preferences.appearanceMode)
         .onAppear {
-            appearanceMode = dataManager.preferences.appearanceMode
             loadProfileFromAuthAndPreferences()
         }
         .onChange(of: dataManager.preferences.profile) { _, updatedProfile in
@@ -460,7 +460,10 @@ struct OnboardingFlowView: View {
                             Text("Appearance")
                                 .font(.arial(size: 15, weight: .medium))
 
-                            Picker("Appearance", selection: $appearanceMode) {
+                            Picker("Appearance", selection: Binding(
+                                get: { dataManager.preferences.appearanceMode },
+                                set: { dataManager.updateAppearanceMode($0) }
+                            )) {
                                 ForEach(AppearanceMode.allCases) { mode in
                                     Text(mode.displayName).tag(mode)
                                 }
@@ -468,7 +471,7 @@ struct OnboardingFlowView: View {
                             .pickerStyle(.segmented)
                             .labelsHidden()
 
-                            Text("Auto follows your device. You can change this anytime in Settings.")
+                            Text("Changes apply immediately. Auto follows your device.")
                                 .font(.arial(size: 13))
                                 .foregroundColor(.secondary)
                         }
@@ -489,11 +492,21 @@ struct OnboardingFlowView: View {
                                 .font(.arial(size: 13))
                                 .foregroundColor(.secondary)
 
-                            VStack(alignment: .leading, spacing: 8) {
-                                widgetSetupStep(number: 1, text: "Touch and hold your Home Screen")
-                                widgetSetupStep(number: 2, text: "Tap Edit, then Add Widget")
-                                widgetSetupStep(number: 3, text: "Search for Matchly and choose a size")
+                            Button {
+                                dataManager.publishWidgetSnapshot()
+                                showWidgetSetupGuide = true
+                            } label: {
+                                Label("Add Widget", systemImage: "plus.rectangle.on.rectangle")
+                                    .font(.arial(size: 15, weight: .medium))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
                             }
+                            .buttonStyle(.glassProminent)
+                            .tint(AppColors.primaryBlue)
+
+                            Text("Apple requires adding widgets from the Home Screen — we'll walk you through it.")
+                                .font(.arial(size: 12))
+                                .foregroundColor(.secondary)
                         }
                         .padding(16)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -529,6 +542,10 @@ struct OnboardingFlowView: View {
         )
         .onAppear {
             loadMatchPreferencesState()
+        }
+        .sheet(isPresented: $showWidgetSetupGuide) {
+            WidgetSetupGuideSheet()
+                .matchlyExpandedSheet()
         }
         .sheet(isPresented: $showQuestionnaireCustomization) {
             MatchlyNavigationView {
@@ -566,7 +583,6 @@ struct OnboardingFlowView: View {
     }
 
     private func loadMatchPreferencesState() {
-        appearanceMode = dataManager.preferences.appearanceMode
         includeRedFlaggedInRankList = dataManager.preferences.includeRedFlaggedProgramsInRankList
         if let stored = dataManager.preferences.preferredEMR, !stored.isEmpty {
             if let system = EMRSystem(rawValue: stored) {
@@ -884,7 +900,6 @@ struct OnboardingFlowView: View {
         dataManager.preferences.applyingTrack = selectedApplyingTrack.rawValue
         dataManager.preferences.includeRedFlaggedProgramsInRankList = includeRedFlaggedInRankList
         dataManager.preferences.preferredEMR = resolvedPreferredEMRForSave()
-        dataManager.preferences.appearanceMode = appearanceMode
         
         // Mark onboarding as complete
         dataManager.preferences.hasCompletedOnboarding = true
@@ -912,19 +927,6 @@ struct OnboardingFlowView: View {
         }
         
         showMainApp = true
-    }
-
-    private func widgetSetupStep(number: Int, text: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Text("\(number)")
-                .font(.arial(size: 12, weight: .semibold))
-                .foregroundColor(.white)
-                .frame(width: 22, height: 22)
-                .background(Circle().fill(AppColors.primaryBlue))
-            Text(text)
-                .font(.arial(size: 13))
-                .foregroundColor(.primary)
-        }
     }
 
     private func loadProfileFromAuthAndPreferences() {

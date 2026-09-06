@@ -259,6 +259,14 @@ class DataManager: ObservableObject {
         preferences = updated
         savePreferences()
     }
+
+    func updateAppearanceMode(_ mode: AppearanceMode) {
+        var updated = preferences
+        updated.appearanceMode = mode
+        preferences = updated
+        objectWillChange.send()
+        savePreferences()
+    }
     
     func savePreferences() {
         // Cancel previous save operation

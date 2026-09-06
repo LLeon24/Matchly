@@ -10,11 +10,11 @@ import Combine
 
 struct SplashView: View {
     @ObservedObject private var authManager = AuthManager.shared
+    @ObservedObject private var dataManager = DataManager.shared
     @Environment(\.scenePhase) private var scenePhase
     @State private var showSplash = true
     @State private var revealProgress: Double = 0
     @State private var showBiometricSetupAlert = false
-    @State private var appearanceMode: AppearanceMode = DataManager.shared.preferences.appearanceMode
     @State private var hasCompletedOnboarding = DataManager.shared.preferences.hasCompletedOnboarding
     
     var body: some View {
@@ -60,17 +60,13 @@ struct SplashView: View {
                 contentView
             }
         }
-        .preferredColorScheme(appearanceMode.preferredColorScheme)
-        .environmentObject(DataManager.shared)
-        .onReceive(DataManager.shared.$preferences.map(\.appearanceMode).removeDuplicates()) { mode in
-            appearanceMode = mode
-        }
-        .onReceive(DataManager.shared.$preferences.map(\.hasCompletedOnboarding).removeDuplicates()) { completed in
+        .preferredColorScheme(dataManager.preferences.appearanceMode.preferredColorScheme)
+        .environmentObject(dataManager)
+        .onReceive(dataManager.$preferences.map(\.hasCompletedOnboarding).removeDuplicates()) { completed in
             hasCompletedOnboarding = completed
         }
         .onAppear {
-            appearanceMode = DataManager.shared.preferences.appearanceMode
-            hasCompletedOnboarding = DataManager.shared.preferences.hasCompletedOnboarding
+            hasCompletedOnboarding = dataManager.preferences.hasCompletedOnboarding
         }
         .onChange(of: authManager.authState) { oldValue, newState in
             // React to auth state changes immediately

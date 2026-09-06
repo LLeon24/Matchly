@@ -245,10 +245,7 @@ struct SettingsView: View {
 
                 Picker("Appearance", selection: Binding(
                     get: { dataManager.preferences.appearanceMode },
-                    set: { newValue in
-                        dataManager.preferences.appearanceMode = newValue
-                        dataManager.savePreferences()
-                    }
+                    set: { dataManager.updateAppearanceMode($0) }
                 )) {
                     ForEach(AppearanceMode.allCases) { mode in
                         Text(mode.displayName).tag(mode)

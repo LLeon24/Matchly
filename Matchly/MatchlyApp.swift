@@ -15,6 +15,7 @@ struct MatchlyApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var deepLinkHandler = CoupleDeepLinkHandler()
     @ObservedObject private var coupleSync = CoupleSyncCoordinator.shared
+    @ObservedObject private var dataManager = DataManager.shared
 
     init() {
         if FirebaseApp.app() == nil {
@@ -34,9 +35,11 @@ struct MatchlyApp: App {
     var body: some Scene {
         WindowGroup {
             SplashView()
+                .preferredColorScheme(dataManager.preferences.appearanceMode.preferredColorScheme)
                 .arialFont()
                 .environmentObject(deepLinkHandler)
                 .environmentObject(coupleSync)
+                .environmentObject(dataManager)
                 .onOpenURL { url in
                     if GIDSignIn.sharedInstance.handle(url) {
                         return
