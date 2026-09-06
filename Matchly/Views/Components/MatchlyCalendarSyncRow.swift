@@ -35,7 +35,7 @@ struct MatchlyCalendarSyncRow: View {
                 }
                 Button("Cancel", role: .cancel) { }
             } message: {
-                Text("Matchly needs calendar access to create interview events. Please enable it in Settings.")
+                Text("Matchly needs Full Calendar Access to create the Matchly Interviews calendar. In Settings, choose Full Access (not Add Events Only).")
             }
             .alert("Calendar Events Created", isPresented: $showCalendarSuccessAlert) {
                 Button("OK") { }
@@ -111,25 +111,30 @@ struct MatchlyCalendarSyncRow: View {
             let granted = await calendarManager.requestAccess()
             if !granted {
                 await MainActor.run {
+                    dataManager.preferences.enableCalendarSync = false
+                    dataManager.savePreferences()
                     showCalendarPermissionAlert = true
                 }
                 return
             }
-        } else {
-            let hasAccess: Bool
-            if #available(iOS 17.0, *) {
-                hasAccess = (calendarManager.authorizationStatus == .fullAccess)
-                    || (calendarManager.authorizationStatus == .writeOnly)
-            } else {
-                hasAccess = calendarManager.authorizationStatus == .authorized
-            }
-
-            if !hasAccess {
+        } else if calendarManager.authorizationStatus == .writeOnly {
+            // Upgrade from write-only to full access so we can create the Matchly calendar.
+            let granted = await calendarManager.requestAccess()
+            if !granted {
                 await MainActor.run {
+                    dataManager.preferences.enableCalendarSync = false
+                    dataManager.savePreferences()
                     showCalendarPermissionAlert = true
                 }
                 return
             }
+        } else if calendarManager.authorizationStatus != .fullAccess {
+            await MainActor.run {
+                dataManager.preferences.enableCalendarSync = false
+                dataManager.savePreferences()
+                showCalendarPermissionAlert = true
+            }
+            return
         }
 
         await MainActor.run {
@@ -150,6 +155,8 @@ struct MatchlyCalendarSyncRow: View {
                 isCreatingEvents = false
                 calendarErrorMessage = error.localizedDescription
                 showCalendarErrorAlert = true
+                dataManager.preferences.enableCalendarSync = false
+                dataManager.savePreferences()
             }
         }
     }

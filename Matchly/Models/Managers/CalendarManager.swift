@@ -31,15 +31,15 @@ class CalendarManager: ObservableObject {
     
     func requestAccess() async -> Bool {
         do {
-            let granted = try await eventStore.requestFullAccessToEvents()
-            await MainActor.run {
+            _ = try await eventStore.requestFullAccessToEvents()
+            return await MainActor.run {
                 authorizationStatus = EKEventStore.authorizationStatus(for: .event)
-                calendarAccessGranted = granted
-                if granted {
+                calendarAccessGranted = authorizationStatus == .fullAccess
+                if calendarAccessGranted {
                     findOrCreateMatchlyCalendar()
                 }
+                return calendarAccessGranted
             }
-            return granted
         } catch {
             Self.logger.error("Calendar access request failed: \(error.localizedDescription, privacy: .public)")
             await MainActor.run {
@@ -50,49 +50,107 @@ class CalendarManager: ObservableObject {
         }
     }
     
+    @MainActor
     func checkAuthorizationStatus() {
         authorizationStatus = EKEventStore.authorizationStatus(for: .event)
-        calendarAccessGranted = (authorizationStatus == .fullAccess) || (authorizationStatus == .writeOnly)
+        // Creating a dedicated calendar requires full read/write access (not write-only).
+        calendarAccessGranted = authorizationStatus == .fullAccess
         
         if calendarAccessGranted {
             findOrCreateMatchlyCalendar()
-        }
-    }
-    
-    private func findOrCreateMatchlyCalendar() {
-        // Try to find existing Matchly calendar
-        let calendars = eventStore.calendars(for: .event)
-        matchlyCalendar = calendars.first { $0.title == calendarTitle }
-        
-        // If not found, create it
-        if matchlyCalendar == nil {
-            matchlyCalendar = createMatchlyCalendar()
-        }
-    }
-    
-    private func createMatchlyCalendar() -> EKCalendar? {
-        let calendar = EKCalendar(for: .event, eventStore: eventStore)
-        
-        calendar.title = calendarTitle
-        calendar.cgColor = UIColor.systemBlue.cgColor
-        
-        // Try to save to iCloud calendar first, then local
-        if let iCloudSource = eventStore.sources.first(where: { $0.sourceType == .calDAV && $0.title.contains("iCloud") }) {
-            calendar.source = iCloudSource
-        } else if let localSource = eventStore.sources.first(where: { $0.sourceType == .local }) {
-            calendar.source = localSource
         } else {
-            calendar.source = eventStore.defaultCalendarForNewEvents?.source
+            matchlyCalendar = nil
+        }
+    }
+    
+    @MainActor
+    func findOrCreateMatchlyCalendar() {
+        if let storedIdentifier = UserDefaults.standard.string(forKey: Self.calendarIdentifierKey),
+           let storedCalendar = eventStore.calendar(withIdentifier: storedIdentifier),
+           storedCalendar.allowsContentModifications {
+            matchlyCalendar = storedCalendar
+            return
         }
         
-        do {
-            try eventStore.saveCalendar(calendar, commit: true)
-            Self.logger.info("Created Matchly calendar: \(self.calendarTitle, privacy: .public)")
-            return calendar
-        } catch {
-            Self.logger.error("Failed to create Matchly calendar: \(error.localizedDescription, privacy: .public)")
+        let calendars = eventStore.calendars(for: .event)
+        if let existing = calendars.first(where: { $0.title == calendarTitle && $0.allowsContentModifications }) {
+            matchlyCalendar = existing
+            UserDefaults.standard.set(existing.calendarIdentifier, forKey: Self.calendarIdentifierKey)
+            return
+        }
+        
+        matchlyCalendar = createMatchlyCalendar()
+        if let matchlyCalendar {
+            UserDefaults.standard.set(matchlyCalendar.calendarIdentifier, forKey: Self.calendarIdentifierKey)
+        }
+    }
+    
+    private static let calendarIdentifierKey = "MatchlyCalendarIdentifier"
+    
+    /// Sources ordered by likelihood of supporting new calendar creation.
+    private func orderedSourcesForCalendarCreation() -> [EKSource] {
+        var ordered: [EKSource] = []
+        var seen = Set<String>()
+        
+        func append(_ source: EKSource?) {
+            guard let source, !seen.contains(source.sourceIdentifier) else { return }
+            seen.insert(source.sourceIdentifier)
+            ordered.append(source)
+        }
+        
+        // On-device source is the most reliable for creating calendars.
+        for source in eventStore.sources where source.sourceType == .local {
+            append(source)
+        }
+        
+        // iCloud (title may be localized, so match case-insensitively).
+        for source in eventStore.sources where source.sourceType == .calDAV
+            && source.title.localizedCaseInsensitiveContains("icloud") {
+            append(source)
+        }
+        
+        // Other CalDAV accounts (Exchange, etc.) — may reject creation; tried individually below.
+        for source in eventStore.sources where source.sourceType == .calDAV {
+            append(source)
+        }
+        
+        // Last resort: default calendar's source, if that calendar is writable.
+        if let defaultCalendar = eventStore.defaultCalendarForNewEvents,
+           defaultCalendar.allowsContentModifications {
+            append(defaultCalendar.source)
+        }
+        
+        return ordered
+    }
+    
+    @MainActor
+    private func createMatchlyCalendar() -> EKCalendar? {
+        let candidateSources = orderedSourcesForCalendarCreation()
+        
+        guard !candidateSources.isEmpty else {
+            Self.logger.error("No calendar sources available for Matchly calendar creation")
             return nil
         }
+        
+        for source in candidateSources {
+            let calendar = EKCalendar(for: .event, eventStore: eventStore)
+            calendar.title = calendarTitle
+            calendar.cgColor = UIColor.systemBlue.cgColor
+            calendar.source = source
+            
+            do {
+                try eventStore.saveCalendar(calendar, commit: true)
+                Self.logger.info("Created Matchly calendar on source: \(source.title, privacy: .public)")
+                return calendar
+            } catch {
+                Self.logger.error(
+                    "Failed to create Matchly calendar on source \(source.title, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                )
+            }
+        }
+        
+        Self.logger.error("Exhausted all calendar sources; could not create Matchly calendar")
+        return nil
     }
     
     func syncAllInterviewPrograms(_ programs: [Program]) async throws {
@@ -107,10 +165,13 @@ class CalendarManager: ObservableObject {
         }
 
         if matchlyCalendar == nil {
-            findOrCreateMatchlyCalendar()
+            await MainActor.run {
+                findOrCreateMatchlyCalendar()
+            }
         }
 
-        guard let calendar = matchlyCalendar else {
+        let calendar = await MainActor.run { matchlyCalendar }
+        guard let calendar else {
             throw CalendarError.calendarNotFound
         }
         
@@ -286,7 +347,7 @@ enum CalendarError: LocalizedError {
         case .notAuthorized:
             return "Calendar access is required to create interview events. Please enable calendar access in Settings."
         case .calendarNotFound:
-            return "Could not find or create the Matchly calendar."
+            return "Could not create the Matchly Interviews calendar. Make sure you grant Full Calendar Access (not Add Events Only) in Settings, then try again."
         case .eventCreationFailed:
             return "Failed to create calendar events. Please try again."
         }

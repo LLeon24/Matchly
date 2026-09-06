@@ -530,7 +530,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Matchly/Matchly.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = KYGM9X4TU5;
 				ENABLE_PREVIEWS = YES;
 				EXCLUDED_SOURCE_FILE_NAMES = (
@@ -549,7 +549,7 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.medical";
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Matchly needs access to your calendar to create interview events so you can see them in your calendar app and receive reminders.";
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "Matchly needs access to your calendar to create interview events so you can see them in your calendar app and receive reminders.";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Matchly uses the camera to scan QR codes.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Matchly uses the camera for profile photos and to scan QR codes.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Matchly uses Face ID to unlock the app and sign you in quickly on this device.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Matchly uses the microphone to record optional voice memos about residency programs after your interviews.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Matchly can transcribe your voice memos on this device so you can read what you recorded.";
@@ -584,7 +584,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Matchly/Matchly.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = KYGM9X4TU5;
 				ENABLE_PREVIEWS = YES;
 				EXCLUDED_SOURCE_FILE_NAMES = (
@@ -603,7 +603,7 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.medical";
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Matchly needs access to your calendar to create interview events so you can see them in your calendar app and receive reminders.";
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "Matchly needs access to your calendar to create interview events so you can see them in your calendar app and receive reminders.";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Matchly uses the camera to scan QR codes.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Matchly uses the camera for profile photos and to scan QR codes.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Matchly uses Face ID to unlock the app and sign you in quickly on this device.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Matchly uses the microphone to record optional voice memos about residency programs after your interviews.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Matchly can transcribe your voice memos on this device so you can read what you recorded.";

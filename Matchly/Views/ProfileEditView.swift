@@ -28,6 +28,7 @@ struct ProfileEditView: View {
     @State private var photoData: Data?
     @State private var avatarPresetID: String?
     @State private var cropImageItem: CropImageItem?
+    @State private var showCamera = false
     @State private var isLoadingPhoto = false
     @State private var keyboardHeight: CGFloat = 0
     
@@ -114,70 +115,56 @@ struct ProfileEditView: View {
                 selectedPhoto = nil
             }
         }
+        .fullScreenCover(isPresented: $showCamera) {
+            CameraImagePicker { image in
+                cropImageItem = CropImageItem(image: image)
+            }
+            .ignoresSafeArea()
+        }
     }
 
     private var profilePhotoSection: some View {
         Section {
-            // Profile Photo
             VStack(spacing: 16) {
                 ZStack {
-                    PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                    if let photoData = photoData,
+                       let uiImage = UIImage(data: photoData) {
+                        Image(uiImage: uiImage)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 120, height: 120)
+                            .clipShape(Circle())
+                    } else if let existingPhotoData = dataManager.preferences.profile.photoData,
+                              let uiImage = UIImage(data: existingPhotoData) {
+                        Image(uiImage: uiImage)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 120, height: 120)
+                            .clipShape(Circle())
+                    } else {
                         ZStack {
-                            if let photoData = photoData,
-                               let uiImage = UIImage(data: photoData) {
-                                Image(uiImage: uiImage)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 120, height: 120)
-                                    .clipShape(Circle())
-                            } else if let existingPhotoData = dataManager.preferences.profile.photoData,
-                                      let uiImage = UIImage(data: existingPhotoData) {
-                                Image(uiImage: uiImage)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 120, height: 120)
-                                    .clipShape(Circle())
-                            } else {
-                                ZStack {
-                                    Circle()
-                                        .fill(
-                                            LinearGradient(
-                                                colors: [Color.blue.opacity(0.2), Color.purple.opacity(0.2)],
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
-                                            )
-                                        )
-                                        .frame(width: 120, height: 120)
-                                    
-                                    Image(systemName: "person.fill")
-                                        .font(.arial(size: 50))
-                                        .foregroundStyle(
-                                            LinearGradient(
-                                                colors: [.blue, .purple],
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
-                                            )
-                                        )
-                                }
-                            }
-                            
                             Circle()
-                                .fill(Color.black.opacity(0.4))
+                                .fill(
+                                    LinearGradient(
+                                        colors: [Color.blue.opacity(0.2), Color.purple.opacity(0.2)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
                                 .frame(width: 120, height: 120)
-                            
-                            VStack(spacing: 4) {
-                                Image(systemName: "camera.fill")
-                                    .font(.arial(size: 24))
-                                    .foregroundColor(.white)
-                                Text(photoData != nil || dataManager.preferences.profile.photoData != nil ? "Change" : "Add Photo")
-                                    .font(.arial(size: 14, weight: .medium))
-                                    .foregroundColor(.white)
-                            }
+
+                            Image(systemName: "person.fill")
+                                .font(.arial(size: 50))
+                                .foregroundStyle(
+                                    LinearGradient(
+                                        colors: [.blue, .purple],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
                         }
                     }
-                    .buttonStyle(.plain)
-                    .disabled(isLoadingPhoto)
-                    
+
                     if isLoadingPhoto {
                         Circle()
                             .fill(Color.black.opacity(0.45))
@@ -186,10 +173,37 @@ struct ProfileEditView: View {
                             .tint(.white)
                     }
                 }
+
+                HStack(spacing: 12) {
+                    PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                        Label("Choose Photo", systemImage: "photo.on.rectangle")
+                            .font(.arial(size: 15, weight: .medium))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 12))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isLoadingPhoto)
+
+                    if CameraImagePicker.isAvailable {
+                        Button {
+                            showCamera = true
+                        } label: {
+                            Label("Take Photo", systemImage: "camera.fill")
+                                .font(.arial(size: 15, weight: .medium))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 12))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isLoadingPhoto)
+                    }
+                }
             }
             .frame(maxWidth: .infinity)
             .padding(.top, 24)
             .padding(.bottom, 8)
+            .listRowBackground(Color.clear)
 
             ProfileAvatarPresetPicker(selectedPresetID: avatarPresetID) { preset, data in
                 selectedPhoto = nil
