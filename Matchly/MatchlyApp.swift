@@ -53,6 +53,11 @@ struct MatchlyApp: App {
 final class CoupleDeepLinkHandler: ObservableObject {
     @Published var pendingCoupleCode: String?
     @Published private(set) var shouldOpenInterviewsTab = false
+    @Published private(set) var pendingInterviewsListFocus: InterviewsListFocus?
+
+    enum InterviewsListFocus: Equatable {
+        case upcoming
+    }
 
     func handle(url: URL) {
         if Self.isInterviewsURL(url) {
@@ -62,6 +67,15 @@ final class CoupleDeepLinkHandler: ObservableObject {
         guard FeatureFlags.couplesMatchEnabled,
               let code = Couple.parseLinkPayload(url.absoluteString) else { return }
         pendingCoupleCode = code
+    }
+
+    func requestInterviewsListFocus(_ focus: InterviewsListFocus) {
+        pendingInterviewsListFocus = focus
+    }
+
+    func consumeInterviewsListFocus() -> InterviewsListFocus? {
+        defer { pendingInterviewsListFocus = nil }
+        return pendingInterviewsListFocus
     }
 
     func consumeInterviewsNavigation() {

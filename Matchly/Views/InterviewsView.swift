@@ -9,9 +9,14 @@ import SwiftUI
 
 struct InterviewsView: View {
     @EnvironmentObject var dataManager: DataManager
+    @EnvironmentObject private var deepLinkHandler: CoupleDeepLinkHandler
     @State private var viewMode: ViewMode = .list
     @State private var selectedMonth: Date = Date()
     @State private var selectedDate: Date?
+
+    private enum ScrollAnchor {
+        static let upcomingSection = "interviews-upcoming-section"
+    }
 
     enum ViewMode {
         case list, calendar
@@ -67,80 +72,107 @@ struct InterviewsView: View {
     }
     
     private var listView: some View {
-        List {
-            Section {
-                MatchlyCalendarSyncRow(syncOnAppearIfEnabled: true)
-                    .listRowBackground(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(.clear)
-                            .glassEffect(.regular, in: .rect(cornerRadius: 16))
-                    )
-            }
-            
-            if !programsNeedingDates.isEmpty {
+        ScrollViewReader { proxy in
+            List {
                 Section {
-                    ForEach(programsNeedingDates) { program in
-                        NavigationLink(destination: ProgramEntryView(program: program)) {
-                            ProgramNeedingInterviewDateRow(program: program)
+                    MatchlyCalendarSyncRow(syncOnAppearIfEnabled: true)
+                        .listRowBackground(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(.clear)
+                                .glassEffect(.regular, in: .rect(cornerRadius: 16))
+                        )
+                }
+
+                if !programsNeedingDates.isEmpty {
+                    Section {
+                        ForEach(programsNeedingDates) { program in
+                            NavigationLink(destination: ProgramEntryView(program: program)) {
+                                ProgramNeedingInterviewDateRow(program: program)
+                            }
+                        }
+                    } header: {
+                        interviewsSectionHeader("Needs a Date (\(programsNeedingDates.count))")
+                    }
+                }
+
+                if upcomingInterviews.isEmpty && pastInterviews.isEmpty {
+                    if programsNeedingDates.isEmpty {
+                    VStack(spacing: 16) {
+                        Image(systemName: "calendar.badge.exclamationmark")
+                            .font(.arial(size: 60))
+                            .foregroundColor(.secondary)
+
+                        Text("No Interviews Scheduled")
+                            .font(.arial(size: 20, weight: .bold))
+
+                        Text("Add interview dates to your programs to track them here")
+                            .font(.arial(size: 15))
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 40)
+                    .listRowSeparator(.hidden)
+                    }
+                } else {
+
+                    // Upcoming Interviews
+                    if !upcomingInterviews.isEmpty {
+                        Section {
+                            Color.clear
+                                .frame(height: 0)
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
+                                .id(ScrollAnchor.upcomingSection)
+
+                            ForEach(upcomingInterviews) { program in
+                                NavigationLink(destination: ProgramEntryView(program: program)) {
+                                    InterviewRow(program: program, isUpcoming: true)
+                                }
+                            }
+                        } header: {
+                            interviewsSectionHeader("Upcoming (\(upcomingInterviews.count))")
                         }
                     }
-                } header: {
-                    interviewsSectionHeader("Needs a Date (\(programsNeedingDates.count))")
+
+                    // Past Interviews
+                    if !pastInterviews.isEmpty {
+                        Section {
+                            ForEach(pastInterviews) { program in
+                                NavigationLink(destination: ProgramEntryView(program: program)) {
+                                    InterviewRow(program: program, isUpcoming: false)
+                                }
+                            }
+                        } header: {
+                            interviewsSectionHeader("Past (\(pastInterviews.count))")
+                        }
+                    }
                 }
             }
-            
-            if upcomingInterviews.isEmpty && pastInterviews.isEmpty {
-                if programsNeedingDates.isEmpty {
-                VStack(spacing: 16) {
-                    Image(systemName: "calendar.badge.exclamationmark")
-                        .font(.arial(size: 60))
-                        .foregroundColor(.secondary)
-                    
-                    Text("No Interviews Scheduled")
-                        .font(.arial(size: 20, weight: .bold))
-                    
-                    Text("Add interview dates to your programs to track them here")
-                        .font(.arial(size: 15))
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 40)
-                .listRowSeparator(.hidden)
-                }
-            } else {
-                
-                // Upcoming Interviews
-                if !upcomingInterviews.isEmpty {
-                    Section {
-                        ForEach(upcomingInterviews) { program in
-                            NavigationLink(destination: ProgramEntryView(program: program)) {
-                                InterviewRow(program: program, isUpcoming: true)
-                            }
-                        }
-                    } header: {
-                        interviewsSectionHeader("Upcoming (\(upcomingInterviews.count))")
-                    }
-                }
-                
-                // Past Interviews
-                if !pastInterviews.isEmpty {
-                    Section {
-                        ForEach(pastInterviews) { program in
-                            NavigationLink(destination: ProgramEntryView(program: program)) {
-                                InterviewRow(program: program, isUpcoming: false)
-                            }
-                        }
-                    } header: {
-                        interviewsSectionHeader("Past (\(pastInterviews.count))")
-                    }
-                }
+            .listStyle(.insetGrouped)
+            .contentMargins(.top, 0, for: .scrollContent)
+            .scrollContentBackground(.hidden)
+            .matchlyScrollTabBarClearance()
+            .onAppear {
+                scrollToPendingFocus(using: proxy)
+            }
+            .onChange(of: deepLinkHandler.pendingInterviewsListFocus) { _, focus in
+                guard focus == .upcoming else { return }
+                scrollToPendingFocus(using: proxy)
             }
         }
-        .listStyle(.insetGrouped)
-        .contentMargins(.top, 0, for: .scrollContent)
-        .scrollContentBackground(.hidden)
-        .matchlyScrollTabBarClearance()
+    }
+
+    private func scrollToPendingFocus(using proxy: ScrollViewProxy) {
+        guard deepLinkHandler.consumeInterviewsListFocus() == .upcoming else { return }
+        viewMode = .list
+        guard !upcomingInterviews.isEmpty else { return }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            withAnimation(.easeInOut(duration: 0.25)) {
+                proxy.scrollTo(ScrollAnchor.upcomingSection, anchor: .top)
+            }
+        }
     }
     
     private func interviewsSectionHeader(_ title: String) -> some View {
@@ -686,6 +718,7 @@ struct InterviewRow: View {
     MatchlyNavigationView {
         InterviewsView()
             .environmentObject(DataManager.shared)
+            .environmentObject(CoupleDeepLinkHandler())
     }
 }
 

@@ -33,27 +33,36 @@ enum InterviewSeasonStage: String, CaseIterable, Identifiable {
         }
     }
 
-    /// One stage per program — priority: upcoming → to review → need date → scored.
+    /// One stage per program — priority: to review → scored → upcoming → need date.
     ///
-    /// - **Upcoming:** interview scheduled in the future.
     /// - **To Review:** questionnaire still incomplete (matches Programs Needing Review).
-    /// - **Need Date:** questionnaire complete but no interview date yet.
-    /// - **Scored:** past interview and questionnaire complete.
+    /// - **Scored:** questionnaire complete with a rank-list score (matches Rank List).
+    /// - **Upcoming:** interview scheduled in the future but not scored yet.
+    /// - **Need Date:** tracked invite with no interview date and not scored yet.
     static func stage(
         for program: Program,
         preferences: UserPreferences,
         now: Date = Date()
     ) -> InterviewSeasonStage {
-        if let date = program.interviewDate, date >= now {
-            return .upcoming
-        }
         if program.needsScoring(preferences: preferences) {
             return .toReview
+        }
+        if isRankReady(program, preferences: preferences) {
+            return .scored
+        }
+        if let date = program.interviewDate, date >= now {
+            return .upcoming
         }
         if program.interviewDate == nil {
             return .needDate
         }
-        return .scored
+        // Past interview with a complete questionnaire but no score yet.
+        return .toReview
+    }
+
+    /// Matches Rank List eligibility: questionnaire complete and has a computed score.
+    static func isRankReady(_ program: Program, preferences: UserPreferences) -> Bool {
+        !program.needsScoring(preferences: preferences) && program.finalScore > 0
     }
 
     static func counts(

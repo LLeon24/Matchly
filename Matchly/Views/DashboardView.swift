@@ -17,6 +17,7 @@ private enum HeroStatDestination: Hashable {
 
 struct DashboardView: View {
     @EnvironmentObject var dataManager: DataManager
+    @EnvironmentObject private var deepLinkHandler: CoupleDeepLinkHandler
     @Environment(\.matchlyLayout) private var screenLayout
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var showAddProgram = false
@@ -438,6 +439,7 @@ struct DashboardView: View {
         case .needDate:
             heroStatDestination = .needDates
         case .upcoming:
+            deepLinkHandler.requestInterviewsListFocus(.upcoming)
             selectedTab = MainTabLayout.interviewsIndex
         case .scored:
             selectedTab = MainTabLayout.rankListIndex(isCoupleLinked: isCoupleLinked)
@@ -1938,5 +1940,6 @@ struct QuickStatMini: View {
 #Preview {
     DashboardView()
         .environmentObject(DataManager.shared)
+        .environmentObject(CoupleDeepLinkHandler())
 }
 
