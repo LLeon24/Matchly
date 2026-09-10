@@ -420,6 +420,7 @@ class AuthManager: ObservableObject {
         guard let firebaseUser = Auth.auth().currentUser else { throw AuthError.userNotFound }
 
         let providerIDs = Set(firebaseUser.providerData.map(\.providerID))
+        var didReauthenticate = false
 
         do {
             if providerIDs.contains("apple.com") {
@@ -435,20 +436,33 @@ class AuthManager: ObservableObject {
                     fullName: nil
                 )
                 try await firebaseUser.reauthenticate(with: credential)
+                didReauthenticate = true
 
                 // Apple requires revoking the Sign in with Apple token on account deletion.
                 if let codeData = appleIDCredential.authorizationCode,
                    let authorizationCode = String(data: codeData, encoding: .utf8) {
-                    try await Auth.auth().revokeToken(withAuthorizationCode: authorizationCode)
+                    do {
+                        try await Auth.auth().revokeToken(withAuthorizationCode: authorizationCode)
+                    } catch {
+                        Self.logger.error(
+                            "Apple token revoke failed during account deletion (continuing): \(error.localizedDescription, privacy: .public)"
+                        )
+                    }
                 }
             } else if providerIDs.contains("google.com") {
                 try await performGoogleReauthentication(for: firebaseUser)
+                didReauthenticate = true
             } else if providerIDs.contains("password") {
                 guard let password, !password.isEmpty, let email = firebaseUser.email else {
                     throw AuthError.invalidCredentials
                 }
                 let credential = EmailAuthProvider.credential(withEmail: email, password: password)
                 try await firebaseUser.reauthenticate(with: credential)
+                didReauthenticate = true
+            }
+
+            guard didReauthenticate else {
+                throw AuthError.deletionRequiresRecentLogin
             }
 
             // Remove cloud data while still authenticated — security rules require it.
@@ -885,7 +899,25 @@ class AuthManager: ObservableObject {
 
     private func mapFirebaseAuthError(_ error: Error) -> AuthError {
         let nsError = error as NSError
-        // Firebase Auth error codes (FIRAuthErrorCode).
+        if nsError.domain == AuthErrorDomain {
+            switch AuthErrorCode(rawValue: nsError.code) {
+            case .userNotFound:
+                return .userNotFound
+            case .wrongPassword, .invalidCredential, .invalidEmail:
+                return .invalidCredentials
+            case .emailAlreadyInUse, .credentialAlreadyInUse:
+                return .emailAlreadyInUse
+            case .weakPassword:
+                return .weakPassword
+            case .requiresRecentLogin:
+                return .deletionRequiresRecentLogin
+            case .networkError:
+                return .networkError
+            default:
+                break
+            }
+        }
+        // Legacy numeric codes (FIRAuthErrorCode).
         switch nsError.code {
         case 17011: // userNotFound
             return .userNotFound
@@ -896,10 +928,14 @@ class AuthManager: ObservableObject {
         case 17026: // weakPassword
             return .weakPassword
         case 17014: // requiresRecentLogin
-            return .requiresRecentLogin
+            return .deletionRequiresRecentLogin
         case 17020: // networkError
             return .networkError
         default:
+            let message = nsError.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !message.isEmpty {
+                return .operationFailed(message)
+            }
             return .networkError
         }
     }
@@ -1243,6 +1279,8 @@ enum AuthError: LocalizedError {
     case notImplemented
     case canceled
     case requiresRecentLogin
+    case deletionRequiresRecentLogin
+    case operationFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -1262,6 +1300,10 @@ enum AuthError: LocalizedError {
             return nil
         case .requiresRecentLogin:
             return "For security, sign out and sign back in, then try adding email login again."
+        case .deletionRequiresRecentLogin:
+            return "For security, confirm your sign-in again to delete your account."
+        case .operationFailed(let message):
+            return message
         }
     }
 }

@@ -99,8 +99,18 @@ final class AccountCloudSyncManager: ObservableObject {
     /// Permanently removes this account's Firestore backup.
     /// Must run while the user is still authenticated — security rules require it.
     func deleteBackup() async throws {
-        guard let doc = backupDocument else { return }
-        try await doc.delete()
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        let backupDoc = db.collection("users").document(uid).collection("backup").document("primary")
+        do {
+            try await backupDoc.delete()
+        } catch {
+            let nsError = error as NSError
+            // Not found is fine — nothing to delete.
+            if nsError.domain == FirestoreErrorDomain, nsError.code == FirestoreErrorCode.notFound.rawValue {
+                return
+            }
+            throw error
+        }
         Self.logger.info("Deleted account cloud backup")
     }
 
