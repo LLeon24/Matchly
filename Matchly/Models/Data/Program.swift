@@ -70,12 +70,12 @@ struct Program: Identifiable, Codable {
 
     /// Share of enabled questionnaire items answered (0…1), respecting customization prefs.
     func questionnaireCompletionRatio(preferences: UserPreferences) -> Double {
-        questionnaire.questionnaireCompletionRatio(preferences: preferences)
+        questionnaire.questionnaireCompletionRatio(preferences: preferences, programEMR: emr)
     }
 
     /// True when enabled questionnaire items still need answers (matches Dashboard "To Score").
     func needsScoring(preferences: UserPreferences) -> Bool {
-        questionnaire.needsScoring(preferences: preferences)
+        questionnaire.needsScoring(preferences: preferences, programEMR: emr)
     }
     
     // Pre-calculated interview status for sorting optimization

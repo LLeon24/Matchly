@@ -277,13 +277,21 @@ struct ProgramComparisonView: View {
                 title: title,
                 shortTitle: shortTitle,
                 value: { program in
-                    guard let average = program.questionnaire.standardSectionAverage(sectionPrefix, preferences: prefs) else {
+                    guard let average = program.questionnaire.standardSectionAverage(
+                        sectionPrefix,
+                        preferences: prefs,
+                        programEMR: program.emr
+                    ) else {
                         return "—"
                     }
                     return String(format: "%.1f", average)
                 },
                 numericValue: { program in
-                    program.questionnaire.standardSectionAverage(sectionPrefix, preferences: prefs)
+                    program.questionnaire.standardSectionAverage(
+                        sectionPrefix,
+                        preferences: prefs,
+                        programEMR: program.emr
+                    )
                 },
                 color: { _ in color },
                 prefersLower: false

@@ -424,6 +424,10 @@ struct QuestionnaireCustomizationView: View {
         }
 
         dataManager.preferences.enabledQuestionIds = enabledQuestionIds
+        dataManager.preferences.sectionWeights = SectionWeighting.redistributedWeights(
+            stored: dataManager.preferences.sectionWeights,
+            preferences: dataManager.preferences
+        )
         dataManager.savePreferences()
     }
 }

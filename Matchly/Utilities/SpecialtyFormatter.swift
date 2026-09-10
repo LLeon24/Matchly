@@ -185,6 +185,33 @@ struct SpecialtyFormatter {
         catalogDisplayName(specialty)
     }
 
+    /// Canonical specialty label to store in preferences for a catalog or saved program.
+    static func resolvedPreferenceSpecialty(for program: ResidencyProgramInfo) -> String {
+        resolvedPreferenceSpecialty(fromProgramSpecialty: rowSpecialtyLabel(for: program))
+    }
+
+    static func resolvedPreferenceSpecialty(fromProgramSpecialty specialty: String) -> String {
+        let normalized = normalizedUserSpecialty(specialty)
+        if commonSpecialties.contains(where: { namesMatchExact($0, normalized) }) {
+            return commonSpecialties.first { namesMatchExact($0, normalized) } ?? normalized
+        }
+        if let match = commonSpecialties.first(where: { matchesUserSpecialtyString($0, savedProgramSpecialty: normalized) }) {
+            return match
+        }
+        return normalized
+    }
+
+    static func formattedSpecialtyList(_ specialties: [String]) -> String {
+        let labels = specialties.map { abbreviation(for: normalizedUserSpecialty($0)) }
+        switch labels.count {
+        case 0: return "none"
+        case 1: return labels[0]
+        case 2: return "\(labels[0]) and \(labels[1])"
+        default:
+            return labels.dropLast().joined(separator: ", ") + ", and \(labels.last ?? "")"
+        }
+    }
+
     /// Parent line under fellowship rows; hides non-actionable "Multidisciplinary" parent.
     static func rowParentResidencyLabel(for program: ResidencyProgramInfo) -> String? {
         guard program.trainingLevel == .fellowship,

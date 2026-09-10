@@ -344,6 +344,10 @@ struct SettingsView: View {
                         Text("Customize Questionnaire")
                     }
 
+                    NavigationLink(destination: SectionWeightsView()) {
+                        Text("Section Weights")
+                    }
+
                     NavigationLink(destination: DefaultPrepQuestionsView()) {
                         Text("Default Interview Prep Questions")
                     }

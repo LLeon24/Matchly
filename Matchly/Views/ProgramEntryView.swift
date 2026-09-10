@@ -180,9 +180,6 @@ struct ProgramEntryView: View {
                     }
                 }
                 
-                // EMR selection - white card design
-                emrSelectionCard
-
                 if canOpenInterviewPrep {
                     interviewPrepReferenceCard
                 }
@@ -296,95 +293,103 @@ struct ProgramEntryView: View {
         }
     }
     
-    // MARK: - EMR Selection
-    private var emrSelectionCard: some View {
+    // MARK: - EMR Selection (Section E)
+    private var sectionEEmrPicker: some View {
         let preferred = dataManager.preferences.preferredEMR
         let selectedIsSpecific = emr.flatMap { EMRSystem(rawValue: $0)?.isSpecific } ?? false
         let preferredIsSpecific = preferred.flatMap { EMRSystem(rawValue: $0)?.isSpecific } ?? false
         let isOtherSelected = EMRSystem.isOtherOrCustom(emr)
 
-        return whiteCardContainer {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
-                    Image(systemName: "waveform.path.ecg.rectangle")
-                        .font(.arial(size: 14))
-                        .foregroundColor(.blue)
-                    Text("Electronic Medical Record (EMR)")
-                        .font(.arial(size: 16, weight: .semibold))
-                        .foregroundColor(.primary)
-                    Spacer()
-                }
-
-                Text("Which EMR does this hospital use?")
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "waveform.path.ecg.rectangle")
                     .font(.arial(size: 13))
-                    .foregroundColor(.secondary)
-
-                Menu {
-                    Button(action: {
-                        emr = nil
-                        emrOtherDetail = ""
-                    }) {
-                        if emr == nil {
-                            Label("Not selected", systemImage: "checkmark")
-                        } else {
-                            Text("Not selected")
-                        }
-                    }
-                    ForEach(EMRSystem.allCases) { system in
-                        Button(action: { selectEMR(system) }) {
-                            if EMRSystem.matchesSelection(emr, system: system) {
-                                Label(system.displayName, systemImage: "checkmark")
-                            } else {
-                                Text(system.displayName)
-                            }
-                        }
-                    }
-                } label: {
-                    HStack {
-                        Text(emrMenuLabel)
-                            .font(.arial(size: 15, weight: .medium))
-                            .foregroundColor(emr == nil ? .secondary : .primary)
-                        Spacer()
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.arial(size: 12))
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 10))
-                }
-                .buttonStyle(.plain)
-
-                if isOtherSelected {
-                    ClearableTextField("Type EMR name", text: $emrOtherDetail)
-                        .font(.arial(size: 15))
-                        .textInputAutocapitalization(.words)
-                        .autocorrectionDisabled()
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 10))
-                        .onChange(of: emrOtherDetail) { _, newValue in
-                            let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                            emr = trimmed.isEmpty ? EMRSystem.other.rawValue : trimmed
-                        }
-                }
-
-                if preferredIsSpecific, selectedIsSpecific, let preferred = preferred {
-                    if emr == preferred {
-                        Label("Uses your preferred EMR", systemImage: "checkmark.circle.fill")
-                            .font(.arial(size: 12, weight: .medium))
-                            .foregroundColor(.green)
-                    } else {
-                        Label("Uses \(emrMenuLabel) — you prefer \(preferred)", systemImage: "info.circle")
-                            .font(.arial(size: 12, weight: .medium))
-                            .foregroundColor(.secondary)
-                    }
+                    .foregroundColor(.teal)
+                Text("Electronic Medical Record (EMR)")
+                    .font(.arial(size: 14, weight: .semibold))
+                if preferredIsSpecific, emr == nil {
+                    Text("Required")
+                        .font(.arial(size: 10, weight: .bold))
+                        .foregroundColor(AppColors.pipelineNeedDate)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(AppColors.pipelineNeedDate.opacity(0.12))
+                        .clipShape(Capsule())
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
+
+            Text("Which EMR does this hospital use?")
+                .font(.arial(size: 12))
+                .foregroundColor(.secondary)
+
+            Menu {
+                Button(action: {
+                    emr = nil
+                    emrOtherDetail = ""
+                }) {
+                    if emr == nil {
+                        Label("Not selected", systemImage: "checkmark")
+                    } else {
+                        Text("Not selected")
+                    }
+                }
+                ForEach(EMRSystem.allCases) { system in
+                    Button(action: { selectEMR(system) }) {
+                        if EMRSystem.matchesSelection(emr, system: system) {
+                            Label(system.displayName, systemImage: "checkmark")
+                        } else {
+                            Text(system.displayName)
+                        }
+                    }
+                }
+            } label: {
+                HStack {
+                    Text(emrMenuLabel)
+                        .font(.arial(size: 14, weight: .medium))
+                        .foregroundColor(emr == nil ? .secondary : .primary)
+                    Spacer()
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.arial(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 10))
+            }
+            .buttonStyle(.plain)
+
+            if isOtherSelected {
+                ClearableTextField("Type EMR name", text: $emrOtherDetail)
+                    .font(.arial(size: 14))
+                    .textInputAutocapitalization(.words)
+                    .autocorrectionDisabled()
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 10))
+                    .onChange(of: emrOtherDetail) { _, newValue in
+                        let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                        emr = trimmed.isEmpty ? EMRSystem.other.rawValue : trimmed
+                    }
+            }
+
+            if preferredIsSpecific, selectedIsSpecific, let preferred = preferred {
+                if emr == preferred {
+                    Label("Uses your preferred EMR", systemImage: "checkmark.circle.fill")
+                        .font(.arial(size: 11, weight: .medium))
+                        .foregroundColor(.green)
+                } else {
+                    Label("Uses \(emrMenuLabel) — you prefer \(preferred)", systemImage: "info.circle")
+                        .font(.arial(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
+                }
+            } else if preferred == nil {
+                Text("Set your preferred EMR in Settings to score EMR fit.")
+                    .font(.arial(size: 11))
+                    .foregroundColor(.secondary)
+            }
         }
-        .padding(.horizontal, 20)
+        .padding(.top, 4)
+        .id("matchly.section.e-emr")
     }
 
     private var emrMenuLabel: String {
@@ -413,11 +418,11 @@ struct ProgramEntryView: View {
     }
 
     private var isQuestionnaireComplete: Bool {
-        questionnaire.questionnaireCompletionRatio(preferences: dataManager.preferences) >= 1.0
+        questionnaire.questionnaireCompletionRatio(preferences: dataManager.preferences, programEMR: emr) >= 1.0
     }
 
     private var questionnaireCompletionPercent: Int {
-        Int((questionnaire.questionnaireCompletionRatio(preferences: dataManager.preferences) * 100).rounded())
+        Int((questionnaire.questionnaireCompletionRatio(preferences: dataManager.preferences, programEMR: emr) * 100).rounded())
     }
 
     private var questionnaireUnansweredCount: Int {
@@ -447,7 +452,7 @@ struct ProgramEntryView: View {
                 .tint(AppColors.primaryBlue)
             }
 
-            ProgressView(value: questionnaire.questionnaireCompletionRatio(preferences: dataManager.preferences))
+            ProgressView(value: questionnaire.questionnaireCompletionRatio(preferences: dataManager.preferences, programEMR: emr))
                 .tint(AppColors.primaryBlue)
         }
         .padding(16)
@@ -607,6 +612,10 @@ struct ProgramEntryView: View {
                                 )
                                 .id("\(section.id)-\(item.id)") // For scrolling
                             }
+                        }
+
+                        if section.id == SectionWeighting.sectionEId {
+                            sectionEEmrPicker
                         }
                     }
                     .padding(.bottom, 4)
@@ -916,6 +925,7 @@ struct ProgramEntryView: View {
                     loadProgram(program)
                 } else {
                     draftProgramId = UUID().uuidString
+                    questionnaire.mergeCustomization(from: dataManager.preferences)
                     isInitialLoad = false
                 }
                 if let sectionA = questionnaire.sections.first(where: { $0.title.contains("Section A") }) {
@@ -1210,6 +1220,7 @@ struct ProgramEntryView: View {
         
         // Load questionnaire
         questionnaire = program.questionnaire
+        questionnaire.mergeCustomization(from: dataManager.preferences)
 
         originalVoiceMemoReference = VoiceMemoStorage.normalizedReference(
             from: program.voiceMemoURL,
@@ -1381,9 +1392,19 @@ struct ProgramEntryView: View {
     }
 
     private func sectionUnansweredCount(_ section: QuestionnaireSection) -> Int {
-        questionnaire.enabledItems(for: section, preferences: dataManager.preferences)
-            .filter { $0.programRating == 0 }
+        let ratingByItemID = Dictionary(uniqueKeysWithValues: section.items.map { ($0.id, $0.programRating) })
+        var count = questionnaire.enabledItems(for: section, preferences: dataManager.preferences)
+            .filter { (ratingByItemID[$0.id] ?? $0.programRating) == 0 }
             .count
+
+        if section.id == SectionWeighting.sectionEId,
+           let preferred = dataManager.preferences.preferredEMR,
+           EMRSystem(rawValue: preferred)?.isSpecific == true,
+           emr == nil {
+            count += 1
+        }
+
+        return count
     }
 
     // Helper function to check if we should auto-expand next section

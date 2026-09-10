@@ -794,25 +794,51 @@ class DataManager: ObservableObject {
     }
     
     @discardableResult
-    func addProgram(_ program: Program) -> AddProgramResult {
+    func addProgram(
+        _ program: Program,
+        allowSpecialtyMismatch: Bool = false,
+        addSpecialtyToPreferences specialty: String? = nil
+    ) -> AddProgramResult {
         if ProgramIdentity.isDuplicate(program, in: programs) {
             lastAddProgramNotice = "This program is already in your list."
             return .duplicate
         }
 
-        if !preferences.specialties.isEmpty,
+        if !allowSpecialtyMismatch,
+           !preferences.specialties.isEmpty,
            !SpecialtyFormatter.matchesAny(userSpecialties: preferences.specialties, savedProgram: program) {
-            lastAddProgramNotice = "This program doesn't match your selected specialties."
             return .specialtyMismatch
+        }
+
+        if let specialty {
+            appendSpecialtyToPreferences(specialty)
         }
 
         var newProgram = program
         newProgram.finalScore = newProgram.questionnaire.totalWeightedScore(preferences: preferences, programEMR: newProgram.emr)
-        
+
         programs.append(newProgram)
         savePrograms()
         objectWillChange.send()
         return .added
+    }
+
+    func appendSpecialtyToPreferences(_ specialty: String) {
+        let normalized = SpecialtyFormatter.resolvedPreferenceSpecialty(fromProgramSpecialty: specialty)
+        guard !normalized.isEmpty else { return }
+
+        let alreadyIncluded = preferences.specialties.contains {
+            SpecialtyFormatter.namesMatchExact(
+                SpecialtyFormatter.normalizedUserSpecialty($0),
+                normalized
+            )
+        }
+        guard !alreadyIncluded else { return }
+
+        preferences.specialties.append(normalized)
+        preferences.specialties.sort()
+        preferences.specialty = preferences.specialties.first
+        savePreferences()
     }
 
     /// Updates mailing address and catalog metadata for saved programs when the bundled catalog improves.

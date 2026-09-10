@@ -44,8 +44,10 @@ struct UserPreferences: Codable, Hashable {
     var customSections: [CustomQuestionnaireSection] = [] // User-created custom sections
     var customQuestionsInSections: [String: [CustomQuestionnaireItem]] = [:] // Custom questions added to standard sections (key = section ID)
     
-    // Legacy section weights — no longer used; kept for backward-compatible decoding only.
+    /// Percentage weights keyed by section id (`matchly.section.a`, custom section ids). Empty = equal weights.
     var sectionWeights: [String: Double] = [:]
+    /// Question ids that use equal standard weighting instead of the section's custom slider weight.
+    var weightExcludedQuestionIds: Set<String> = []
     
     // Applicant's preferred / most familiar EMR (an EMRSystem.rawValue).
     // Optional for backward compatibility. When set, programs are scored on how
@@ -370,6 +372,7 @@ extension UserPreferences {
         self.customSections = try container.decodeIfPresent([CustomQuestionnaireSection].self, forKey: .customSections) ?? []
         self.customQuestionsInSections = try container.decodeIfPresent([String: [CustomQuestionnaireItem]].self, forKey: .customQuestionsInSections) ?? [:]
         self.sectionWeights = try container.decodeIfPresent([String: Double].self, forKey: .sectionWeights) ?? [:]
+        self.weightExcludedQuestionIds = try container.decodeIfPresent(Set<String>.self, forKey: .weightExcludedQuestionIds) ?? []
         self.preferredEMR = try container.decodeIfPresent(String.self, forKey: .preferredEMR)
         self.enableCalendarSync = try container.decodeIfPresent(Bool.self, forKey: .enableCalendarSync) ?? false
         self.includeRedFlaggedProgramsInRankList = try container.decodeIfPresent(Bool.self, forKey: .includeRedFlaggedProgramsInRankList) ?? true

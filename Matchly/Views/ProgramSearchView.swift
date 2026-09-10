@@ -40,7 +40,8 @@ struct ProgramSearchView: View {
     @State private var hasRunSearch = false
     @State private var searchRefreshTask: Task<Void, Never>?
     @State private var showManualEntry = false
-    
+    @State private var specialtyAddConfirmation: SpecialtyAddConfirmation?
+
     let onSelect: (ResidencyProgramInfo) -> Void
     var allowMultiSelect: Bool = false
     
@@ -278,6 +279,26 @@ struct ProgramSearchView: View {
                 }
             } message: {
                 Text(dataManager.lastAddProgramNotice ?? "")
+            }
+            .confirmationDialog(
+                specialtyConfirmationTitle,
+                isPresented: Binding(
+                    get: { specialtyAddConfirmation != nil },
+                    set: { if !$0 { specialtyAddConfirmation = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button(addProgramsOnlyButtonTitle) {
+                    finalizeSpecialtyAdd(updatePreferences: false)
+                }
+                Button("Add & Update Specialties") {
+                    finalizeSpecialtyAdd(updatePreferences: true)
+                }
+                Button("Cancel", role: .cancel) {
+                    specialtyAddConfirmation = nil
+                }
+            } message: {
+                Text(specialtyConfirmationMessage)
             }
             .sheet(isPresented: $showManualEntry) {
                 MatchlyNavigationView {
@@ -771,13 +792,122 @@ struct ProgramSearchView: View {
                         selectedProgramInfoById[program.id] = program
                     }
                 } else {
-                    let mapped = CatalogProgramMapper.toSavedProgram(program)
-                    guard dataManager.addProgram(mapped) == .added else { return }
-                    onSelect(program)
-                    dismiss()
+                    attemptAddPrograms([program]) {
+                        onSelect(program)
+                        dismiss()
+                    }
                 }
             }
         )
+    }
+
+    private var specialtyConfirmationTitle: String {
+        guard let prompt = specialtyAddConfirmation else { return "Different Specialty" }
+        return prompt.catalogPrograms.count == 1 ? "Different Specialty" : "Different Specialties"
+    }
+
+    private var addProgramsOnlyButtonTitle: String {
+        guard let prompt = specialtyAddConfirmation else { return "Add Program" }
+        return prompt.catalogPrograms.count == 1 ? "Add Program" : "Add Programs"
+    }
+
+    private var specialtyConfirmationMessage: String {
+        guard let prompt = specialtyAddConfirmation else { return "" }
+
+        let programSpecialties = SpecialtyFormatter.formattedSpecialtyList(prompt.resolvedSpecialtyNames)
+        let userSpecialties = SpecialtyFormatter.formattedSpecialtyList(dataManager.preferences.specialties)
+
+        if prompt.catalogPrograms.count == 1 {
+            return "This is a \(programSpecialties) program, but your Settings currently track \(userSpecialties). Add it anyway?"
+        }
+        return "These \(prompt.catalogPrograms.count) programs are for \(programSpecialties), but your Settings currently track \(userSpecialties). Add them anyway?"
+    }
+
+    private func attemptAddPrograms(_ catalogPrograms: [ResidencyProgramInfo], onComplete: @escaping () -> Void) {
+        var addedCount = 0
+        var duplicateCount = 0
+        var specialtyMismatchPrograms: [ResidencyProgramInfo] = []
+
+        for catalog in catalogPrograms {
+            let mapped = CatalogProgramMapper.toSavedProgram(catalog)
+            if ProgramIdentity.isDuplicate(mapped, in: dataManager.programs) {
+                duplicateCount += 1
+                continue
+            }
+
+            if !dataManager.preferences.specialties.isEmpty,
+               !SpecialtyFormatter.matchesAny(userSpecialties: dataManager.preferences.specialties, savedProgram: mapped) {
+                specialtyMismatchPrograms.append(catalog)
+                continue
+            }
+
+            if dataManager.addProgram(mapped) == .added {
+                addedCount += 1
+            }
+        }
+
+        if !specialtyMismatchPrograms.isEmpty {
+            specialtyAddConfirmation = SpecialtyAddConfirmation(
+                catalogPrograms: specialtyMismatchPrograms,
+                alreadyAddedCount: addedCount,
+                duplicateCount: duplicateCount,
+                onComplete: onComplete
+            )
+            return
+        }
+
+        if duplicateCount > 0 && addedCount == 0 {
+            dataManager.lastAddProgramNotice = duplicateCount == 1
+                ? "This program is already in your list."
+                : "Those programs are already in your list."
+        } else if duplicateCount > 0 {
+            dataManager.lastAddProgramNotice = "Added \(addedCount) program\(addedCount == 1 ? "" : "s"). Skipped \(duplicateCount) duplicate\(duplicateCount == 1 ? "" : "s")."
+        }
+
+        if addedCount > 0 {
+            onComplete()
+        }
+    }
+
+    private func finalizeSpecialtyAdd(updatePreferences: Bool) {
+        guard let prompt = specialtyAddConfirmation else { return }
+
+        var addedCount = prompt.alreadyAddedCount
+        var duplicateCount = prompt.duplicateCount
+
+        for catalog in prompt.catalogPrograms {
+            let mapped = CatalogProgramMapper.toSavedProgram(catalog)
+            let specialty = updatePreferences
+                ? SpecialtyFormatter.resolvedPreferenceSpecialty(for: catalog)
+                : nil
+
+            switch dataManager.addProgram(
+                mapped,
+                allowSpecialtyMismatch: true,
+                addSpecialtyToPreferences: specialty
+            ) {
+            case .added:
+                addedCount += 1
+            case .duplicate:
+                duplicateCount += 1
+            case .specialtyMismatch:
+                break
+            }
+        }
+
+        specialtyAddConfirmation = nil
+
+        if duplicateCount > 0 && addedCount == prompt.alreadyAddedCount {
+            dataManager.lastAddProgramNotice = duplicateCount == 1
+                ? "This program is already in your list."
+                : "Those programs are already in your list."
+        } else if duplicateCount > 0 {
+            dataManager.lastAddProgramNotice = "Added \(addedCount) program\(addedCount == 1 ? "" : "s"). Skipped \(duplicateCount) duplicate\(duplicateCount == 1 ? "" : "s")."
+        }
+
+        if addedCount > prompt.alreadyAddedCount || prompt.alreadyAddedCount > 0 {
+            prompt.onComplete()
+        }
     }
     
     private func alphabetScrollIndex(sortedKeys: [String], proxy: ScrollViewProxy) -> some View {
@@ -841,29 +971,10 @@ struct ProgramSearchView: View {
         VStack(spacing: 0) {
             Divider()
             Button(action: {
-                var addedCount = 0
-                var skippedCount = 0
-
-                for id in selectedPrograms {
-                    guard let program = selectedProgramInfoById[id]
-                        ?? searchResults.first(where: { $0.id == id }) else { continue }
-                    switch dataManager.addProgram(CatalogProgramMapper.toSavedProgram(program)) {
-                    case .added:
-                        addedCount += 1
-                    case .duplicate, .specialtyMismatch:
-                        skippedCount += 1
-                    }
+                let selectedCatalogPrograms = selectedPrograms.compactMap { id in
+                    selectedProgramInfoById[id] ?? searchResults.first(where: { $0.id == id })
                 }
-
-                if skippedCount > 0 {
-                    if addedCount == 0 {
-                        dataManager.lastAddProgramNotice = "Those programs are already in your list."
-                    } else {
-                        dataManager.lastAddProgramNotice = "Added \(addedCount) program\(addedCount == 1 ? "" : "s"). Skipped \(skippedCount) duplicate\(skippedCount == 1 ? "" : "s")."
-                    }
-                }
-
-                if addedCount > 0 {
+                attemptAddPrograms(selectedCatalogPrograms) {
                     dismiss()
                 }
             }) {
@@ -881,6 +992,19 @@ struct ProgramSearchView: View {
             .padding()
             .glassEffect(.regular, in: .rect(cornerRadius: 0))
         }
+    }
+}
+
+private struct SpecialtyAddConfirmation {
+    let catalogPrograms: [ResidencyProgramInfo]
+    let alreadyAddedCount: Int
+    let duplicateCount: Int
+    let onComplete: () -> Void
+
+    var resolvedSpecialtyNames: [String] {
+        Array(
+            Set(catalogPrograms.map { SpecialtyFormatter.resolvedPreferenceSpecialty(for: $0) })
+        ).sorted()
     }
 }
 

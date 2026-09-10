@@ -155,7 +155,7 @@ struct Questionnaire: Codable, Equatable {
         makeStandardSections().first { $0.title == title }?.id
     }
 
-    private static func stableItemId(forQuestion question: String, sectionTitle: String) -> String? {
+    static func stableItemId(forQuestion question: String, sectionTitle: String) -> String? {
         guard let section = makeStandardSections().first(where: { $0.title == sectionTitle }) else { return nil }
         return section.items.first { $0.question == question }?.id
     }
@@ -203,96 +203,133 @@ struct Questionnaire: Codable, Equatable {
         return !hasAnyMatch
     }
     
-    // Calculate total weighted score (0-100) - weighted average of all enabled sections
-    // `programEMR` is the program's selected EMR (an EMRSystem.rawValue). When the
-    // applicant has set a preferred EMR, the EMR match is folded in as one more
-    // weighted factor, exactly like a questionnaire section.
-    func totalWeightedScore(preferences: UserPreferences, programEMR: String? = nil) -> Double {
-        var sectionScores: [(sectionId: String, averageScore: Double, weight: Double)] = []
-        
-        // Get all enabled sections (standard + custom, excluding red flags)
-        let allSections = sections + customSections
-        let enabledSections = allSections.filter { section in
-            guard sectionIsEnabled(section, preferences: preferences, allSections: allSections) else {
-                return false
-            }
-            if section.title.contains("Red flags") {
-                return false
-            }
-            return true
-        }
-        
-        guard !enabledSections.isEmpty else { return 0 }
-        
-        // Calculate average score for each enabled section
-        for section in enabledSections {
-            var sectionRatings: [Double] = []
-            
-            let candidateItems = section.items + (preferences.customQuestionsInSections[section.id]?.map {
-                QuestionnaireItem(id: $0.id, question: $0.question)
-            } ?? [])
-            for item in section.items {
-                guard itemIsEnabled(item, section: section, preferences: preferences, candidateItems: candidateItems) else {
-                    continue
-                }
-                
-                // Only count ratings 1-5, exclude N/A (6) and unrated (0)
-                if item.programRating > 0 && item.programRating < 6 {
-                    sectionRatings.append(item.programRating)
-                }
-            }
-            
-            guard !sectionRatings.isEmpty else { continue }
-            
-            let averageScore = sectionRatings.reduce(0, +) / Double(sectionRatings.count)
-            
-            // Get stable identifier for weight lookup (title for standard sections, ID for custom)
-            let stableId: String
-            if section.title.contains("Section A") || section.title.contains("Section B") || 
-               section.title.contains("Section C") || section.title.contains("Section D") ||
-               section.title.contains("Section E") || section.title.contains("Section F") {
-                // Standard section - use title as stable ID
-                stableId = section.title
-            } else {
-                // Custom section - use ID
-                stableId = section.id
-            }
-            
-            // Each scored section contributes equally to the final score.
-            sectionScores.append((sectionId: stableId, averageScore: averageScore, weight: 1.0))
-        }
-        
-        // EMR factor — treated as one more weighted "section". Scored only when the
-        // match can be objectively determined (preferred EMR set + program EMR known
-        // + neither side is "Other"/"Not sure"); otherwise it drops out like an
-        // unrated section.
-        if let emrRating = EMRScoring.rating(programEMR: programEMR, preferredEMR: preferences.preferredEMR) {
-            sectionScores.append((sectionId: EMRScoring.weightKey, averageScore: emrRating, weight: 1.0))
-        }
-        
-        guard !sectionScores.isEmpty else { return 0 }
+    /// Enabled sections that contribute to the numeric score (excludes red flags).
+    func scoredSections(preferences: UserPreferences) -> [QuestionnaireSection] {
+        enabledSections(preferences: preferences).filter { !isRedFlagSection($0) }
+    }
 
-        let equalWeight = 1.0 / Double(sectionScores.count)
-        sectionScores = sectionScores.map { ($0.sectionId, $0.averageScore, equalWeight) }
-        
-        // Normalize weights to sum to 1.0
-        let totalWeight = sectionScores.reduce(0) { $0 + $1.weight }
-        guard totalWeight > 0 else { return 0 }
-        
-        // Calculate weighted average
-        let weightedSum = sectionScores.reduce(0) { sum, score in
-            let normalizedWeight = score.weight / totalWeight
-            return sum + (score.averageScore * normalizedWeight)
+    /// Ensures custom questions/sections from preferences exist on this program questionnaire.
+    mutating func mergeCustomization(from preferences: UserPreferences) {
+        let standardTemplates = Questionnaire.makeStandardSections()
+        let standardQuestionIdsBySection = Dictionary(
+            uniqueKeysWithValues: standardTemplates.map { ($0.id, Set($0.items.map(\.id))) }
+        )
+
+        for sectionIndex in sections.indices {
+            let sectionId = sections[sectionIndex].id
+            let standardIds = standardQuestionIdsBySection[sectionId] ?? []
+            let allowedCustomIds = Set(preferences.customQuestionsInSections[sectionId]?.map(\.id) ?? [])
+
+            sections[sectionIndex].items = sections[sectionIndex].items.filter { item in
+                if standardIds.contains(item.id) { return true }
+                return allowedCustomIds.contains(item.id)
+            }
+
+            if let customQuestions = preferences.customQuestionsInSections[sectionId] {
+                for customQuestion in customQuestions where !sections[sectionIndex].items.contains(where: { $0.id == customQuestion.id }) {
+                    sections[sectionIndex].items.append(
+                        QuestionnaireItem(id: customQuestion.id, question: customQuestion.question)
+                    )
+                }
+            }
         }
-        
-        // Scale from 0-5 to 0-100, then factor in how much of the questionnaire is answered
-        // so a partially rated program can't max out at 100.
-        let completion = questionnaireCompletionRatio(preferences: preferences)
-        return weightedSum * 20 * completion
+
+        customSections = preferences.customSections.map { customSection in
+            let existingSection = customSections.first { $0.id == customSection.id }
+            return QuestionnaireSection(
+                id: customSection.id,
+                title: customSection.title,
+                items: customSection.items.map { customItem in
+                    if let existingItem = existingSection?.items.first(where: { $0.id == customItem.id }) {
+                        return existingItem
+                    }
+                    return QuestionnaireItem(id: customItem.id, question: customItem.question)
+                }
+            )
+        }
+    }
+
+    // Calculate total weighted score (0-100) using user-defined section weights.
+    // Checked questions use the section slider weight; unchecked questions blend in at equal standard weight.
+    // Program EMR is folded into Section E's custom-weight average when both sides are objectively scorable.
+    func totalWeightedScore(preferences: UserPreferences, programEMR: String? = nil) -> Double {
+        let scored = scoredSections(preferences: preferences)
+        guard !scored.isEmpty else { return 0 }
+
+        let weights = SectionWeighting.effectiveWeights(for: preferences)
+        var customSectionRatings: [(id: String, ratings: [Double])] = []
+        var standardRatings: [Double] = []
+
+        for section in scored {
+            var customRatings: [Double] = []
+            let ratingByItemID = Dictionary(uniqueKeysWithValues: section.items.map { ($0.id, $0.programRating) })
+
+            for item in enabledItems(for: section, preferences: preferences) {
+                let rating = ratingByItemID[item.id] ?? item.programRating
+                guard rating > 0 && rating < 6 else { continue }
+
+                if SectionWeighting.itemUsesCustomSectionWeight(item, section: section, preferences: preferences) {
+                    customRatings.append(rating)
+                } else {
+                    standardRatings.append(rating)
+                }
+            }
+
+            if section.id == SectionWeighting.sectionEId,
+               let emrRating = EMRScoring.rating(programEMR: programEMR, preferredEMR: preferences.preferredEMR) {
+                customRatings.append(emrRating)
+            }
+
+            if !customRatings.isEmpty {
+                customSectionRatings.append((section.id, customRatings))
+            }
+        }
+
+        let prioritizedCount = customSectionRatings.reduce(0) { $0 + $1.ratings.count }
+        let standardCount = standardRatings.count
+        guard prioritizedCount + standardCount > 0 else { return 0 }
+
+        let blendedAverage: Double
+        if standardCount == 0 {
+            blendedAverage = customWeightedAverage(customSectionRatings, weights: weights)
+        } else if prioritizedCount == 0 {
+            blendedAverage = standardRatings.reduce(0, +) / Double(standardCount)
+        } else {
+            let customScore = customWeightedAverage(customSectionRatings, weights: weights)
+            let standardScore = standardRatings.reduce(0, +) / Double(standardCount)
+            let totalCount = Double(prioritizedCount + standardCount)
+            blendedAverage = (customScore * Double(prioritizedCount) + standardScore * Double(standardCount)) / totalCount
+        }
+
+        let completion = questionnaireCompletionRatio(preferences: preferences, programEMR: programEMR)
+        return blendedAverage * 20 * completion
+    }
+
+    private func customWeightedAverage(
+        _ sectionRatings: [(id: String, ratings: [Double])],
+        weights: [String: Double]
+    ) -> Double {
+        let sectionAverages = sectionRatings.map { entry -> (id: String, average: Double) in
+            (entry.id, entry.ratings.reduce(0, +) / Double(entry.ratings.count))
+        }
+
+        var applicableWeightTotal = 0.0
+        for entry in sectionAverages {
+            applicableWeightTotal += weights[entry.id] ?? 0
+        }
+        if applicableWeightTotal <= 0 {
+            applicableWeightTotal = Double(sectionAverages.count)
+        }
+
+        return sectionAverages.reduce(0.0) { partial, entry in
+            let rawWeight = weights[entry.id] ?? (100.0 / Double(sectionAverages.count))
+            let normalizedWeight = rawWeight / applicableWeightTotal
+            return partial + (entry.average * normalizedWeight)
+        }
     }
 
     /// Average 1–5 rating for a standard questionnaire section (e.g. "Section B"), or nil if none answered.
-    func standardSectionAverage(_ sectionPrefix: String, preferences: UserPreferences) -> Double? {
+    func standardSectionAverage(_ sectionPrefix: String, preferences: UserPreferences, programEMR: String? = nil) -> Double? {
         let allSections = sections + customSections
         guard let section = allSections.first(where: { $0.title.hasPrefix(sectionPrefix) }) else {
             return nil
@@ -300,32 +337,19 @@ struct Questionnaire: Codable, Equatable {
         guard sectionIsEnabled(section, preferences: preferences, allSections: allSections) else {
             return nil
         }
-        if section.title.localizedCaseInsensitiveContains("red flag") {
+        if isRedFlagSection(section) {
             return nil
         }
 
-        var sectionRatings: [Double] = []
-        let candidateItems = section.items + (preferences.customQuestionsInSections[section.id]?.map {
-            QuestionnaireItem(id: $0.id, question: $0.question)
-        } ?? [])
-
-        for item in section.items {
-            guard itemIsEnabled(item, section: section, preferences: preferences, candidateItems: candidateItems) else {
-                continue
-            }
-            if item.programRating > 0 && item.programRating < 6 {
-                sectionRatings.append(item.programRating)
-            }
-        }
-
-        guard !sectionRatings.isEmpty else { return nil }
-        return sectionRatings.reduce(0, +) / Double(sectionRatings.count)
+        let ratings = sectionRatings(for: section, preferences: preferences, programEMR: programEMR)
+        guard !ratings.isEmpty else { return nil }
+        return ratings.reduce(0, +) / Double(ratings.count)
     }
 
     /// Share of enabled, non–red-flag questions that have a deliberate answer.
     /// Counts 1–5 ratings and N/A (6) as complete; ignores disabled sections/questions.
     /// When nothing is enabled, returns 1.0 (nothing left to score).
-    func questionnaireCompletionRatio(preferences: UserPreferences) -> Double {
+    func questionnaireCompletionRatio(preferences: UserPreferences, programEMR: String? = nil) -> Double {
         var answered = 0
         var total = 0
         let allSections = sections + customSections
@@ -334,10 +358,18 @@ struct Questionnaire: Codable, Equatable {
             if isRedFlagSection(section) { continue }
             guard sectionIsEnabled(section, preferences: preferences, allSections: allSections) else { continue }
 
+            let ratingByItemID = Dictionary(uniqueKeysWithValues: section.items.map { ($0.id, $0.programRating) })
             for item in enabledItems(for: section, preferences: preferences) {
                 total += 1
-                // 0 = unanswered; 1–5 = rated; 6 = N/A (still a deliberate answer)
-                if item.programRating > 0 {
+                let rating = ratingByItemID[item.id] ?? item.programRating
+                if rating > 0 {
+                    answered += 1
+                }
+            }
+
+            if section.id == SectionWeighting.sectionEId, countsEMRForCompletion(preferredEMR: preferences.preferredEMR) {
+                total += 1
+                if programEMR != nil {
                     answered += 1
                 }
             }
@@ -347,9 +379,40 @@ struct Questionnaire: Codable, Equatable {
         return Double(answered) / Double(total)
     }
 
+    private func sectionRatings(
+        for section: QuestionnaireSection,
+        preferences: UserPreferences,
+        programEMR: String?
+    ) -> [Double] {
+        var sectionRatings: [Double] = []
+        let ratingByItemID = Dictionary(uniqueKeysWithValues: section.items.map { ($0.id, $0.programRating) })
+
+        for item in enabledItems(for: section, preferences: preferences) {
+            let rating = ratingByItemID[item.id] ?? item.programRating
+            if rating > 0 && rating < 6 {
+                sectionRatings.append(rating)
+            }
+        }
+
+        if section.id == SectionWeighting.sectionEId,
+           let emrRating = EMRScoring.rating(programEMR: programEMR, preferredEMR: preferences.preferredEMR) {
+            sectionRatings.append(emrRating)
+        }
+
+        return sectionRatings
+    }
+
+    private func countsEMRForCompletion(preferredEMR: String?) -> Bool {
+        guard let preferredRaw = preferredEMR,
+              let preferred = EMRSystem(rawValue: preferredRaw) else {
+            return false
+        }
+        return preferred.isSpecific
+    }
+
     /// True when any enabled questionnaire item still needs an answer.
-    func needsScoring(preferences: UserPreferences) -> Bool {
-        questionnaireCompletionRatio(preferences: preferences) < 1.0
+    func needsScoring(preferences: UserPreferences, programEMR: String? = nil) -> Bool {
+        questionnaireCompletionRatio(preferences: preferences, programEMR: programEMR) < 1.0
     }
 
     /// Enabled questions that still have no rating (programRating == 0).

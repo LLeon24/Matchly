@@ -372,7 +372,7 @@ struct OnboardingFlowView: View {
                                     Label("Program Scoring", systemImage: "slider.horizontal.3")
                                         .font(.arial(size: 16, weight: .semibold))
                                         .foregroundColor(.primary)
-                                    Text("Programs are scored using the questionnaire. Every enabled section counts equally toward your score.")
+                                    Text("Programs are scored using the questionnaire. Sections count equally by default — adjust weights anytime in Settings.")
                                         .font(.arial(size: 14))
                                         .foregroundColor(.secondary)
                                         .multilineTextAlignment(.leading)
