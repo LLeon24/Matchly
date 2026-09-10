@@ -31,7 +31,7 @@ struct ProgramsListView: View {
     }
 
     private var programFilterTabs: [MatchlyColoredTabOption<ProgramListFilter>] {
-        let visiblePrograms = programsMatchingSpecialties
+        let visiblePrograms = savedPrograms
         let incompleteCount = visiblePrograms.filter { $0.needsScoring(preferences: dataManager.preferences) }.count
         return [
             MatchlyColoredTabOption(value: .all, title: "All", tint: AppColors.primaryBlue, count: visiblePrograms.count),
@@ -39,13 +39,10 @@ struct ProgramsListView: View {
             MatchlyColoredTabOption(value: .incomplete, title: "Incomplete", tint: AppColors.pipelineToReview, count: incompleteCount)
         ]
     }
-    
-    private var programsMatchingSpecialties: [Program] {
-        let userSpecialties = dataManager.preferences.specialties
-        guard !userSpecialties.isEmpty else { return dataManager.programs }
-        return dataManager.programs.filter {
-            SpecialtyFormatter.matchesAny(userSpecialties: userSpecialties, savedProgram: $0)
-        }
+
+    /// Every saved program, including cross-specialty adds that aren't in Settings specialties yet.
+    private var savedPrograms: [Program] {
+        dataManager.programs
     }
 
     var body: some View {
@@ -54,18 +51,6 @@ struct ProgramsListView: View {
                 if dataManager.programs.isEmpty {
                     EmptyProgramsView(showAddProgram: $showAddProgram)
                         .matchlyRootContentFrame()
-                } else if programsMatchingSpecialties.isEmpty {
-                    VStack(spacing: 0) {
-                        MatchlyListPageTitleRow(title: "My Programs")
-                        ContentUnavailableView {
-                            Label("No Matching Programs", systemImage: "stethoscope")
-                        } description: {
-                            Text("Your saved programs don't match your selected specialties. Add programs or update your specialties in Settings.")
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .padding(.horizontal, 24)
-                    }
-                    .matchlyRootContentFrame()
                 } else {
                     // Group programs by specialty
                     let groupedPrograms = Dictionary(grouping: filteredPrograms) {
@@ -351,9 +336,9 @@ struct ProgramsListView: View {
     
     private var sortedPrograms: [Program] {
         // Only recalculate if sort option changed or programs changed
-        let currentCount = programsMatchingSpecialties.count
+        let currentCount = savedPrograms.count
         if sortOption != lastSortOption || currentCount != lastProgramsCount {
-            var programs = programsMatchingSpecialties
+            var programs = savedPrograms
             
             switch sortOption {
             case .name:
@@ -389,7 +374,7 @@ struct ProgramsListView: View {
         }
         
         // Fallback: calculate if cache is invalid
-        var programs = programsMatchingSpecialties
+        var programs = savedPrograms
         switch sortOption {
         case .name:
             programs = programs.sorted { 

@@ -280,13 +280,12 @@ struct ProgramSearchView: View {
             } message: {
                 Text(dataManager.lastAddProgramNotice ?? "")
             }
-            .confirmationDialog(
+            .alert(
                 specialtyConfirmationTitle,
                 isPresented: Binding(
                     get: { specialtyAddConfirmation != nil },
                     set: { if !$0 { specialtyAddConfirmation = nil } }
-                ),
-                titleVisibility: .visible
+                )
             ) {
                 Button(addProgramsOnlyButtonTitle) {
                     finalizeSpecialtyAdd(updatePreferences: false)
@@ -294,7 +293,7 @@ struct ProgramSearchView: View {
                 Button("Add & Update Specialties") {
                     finalizeSpecialtyAdd(updatePreferences: true)
                 }
-                Button("Cancel", role: .cancel) {
+                Button("Cancel") {
                     specialtyAddConfirmation = nil
                 }
             } message: {
@@ -895,9 +894,10 @@ struct ProgramSearchView: View {
             }
         }
 
+        let newlyAdded = addedCount - prompt.alreadyAddedCount
         specialtyAddConfirmation = nil
 
-        if duplicateCount > 0 && addedCount == prompt.alreadyAddedCount {
+        if duplicateCount > 0 && newlyAdded == 0 {
             dataManager.lastAddProgramNotice = duplicateCount == 1
                 ? "This program is already in your list."
                 : "Those programs are already in your list."
@@ -905,7 +905,7 @@ struct ProgramSearchView: View {
             dataManager.lastAddProgramNotice = "Added \(addedCount) program\(addedCount == 1 ? "" : "s"). Skipped \(duplicateCount) duplicate\(duplicateCount == 1 ? "" : "s")."
         }
 
-        if addedCount > prompt.alreadyAddedCount || prompt.alreadyAddedCount > 0 {
+        if newlyAdded > 0 {
             prompt.onComplete()
         }
     }
