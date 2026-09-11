@@ -174,6 +174,15 @@ enum AddressFormatter {
 
         let isLakeNona = raw.contains("lake nona") || raw.contains("6850")
 
+        if h.contains("aventura") && h.contains("hca") {
+            return ResolvedAddress(
+                street: "20900 Biscayne Blvd",
+                city: "Aventura",
+                state: "FL",
+                siteName: "HCA Florida Aventura Hospital"
+            )
+        }
+
         if (h.contains("central florida") && h.contains("hca")) || (h.contains("ucf") && h.contains("hca")) {
             if h.contains("osceola") && !h.contains("lake nona") {
                 return ResolvedAddress(

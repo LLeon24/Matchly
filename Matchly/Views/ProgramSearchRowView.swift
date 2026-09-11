@@ -34,38 +34,45 @@ struct ProgramSearchRowView: View {
                         .minimumScaleFactor(0.8)
                         .fixedSize(horizontal: false, vertical: true)
                     
-                    // Specialty + training level — compact inline badges
+                    // Specialty + training level — specialty wraps; level/parent on next line
                     if !program.specialty.isEmpty {
                         let specialtyColor = SpecialtyFormatter.color(for: program.specialty)
-                        let specialtyLabel = SpecialtyFormatter.compactRowSpecialtyLabel(for: program)
+                        let specialtyLabel = SpecialtyFormatter.rowSpecialtyLabel(for: program)
 
-                        HStack(alignment: .center, spacing: 6) {
-                            HStack(spacing: 3) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(alignment: .top, spacing: 3) {
                                 Image(systemName: "stethoscope")
                                     .font(.arial(size: 8))
+                                    .padding(.top, 2)
                                 Text(specialtyLabel)
                                     .font(.arial(size: 10, weight: .semibold))
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .multilineTextAlignment(.leading)
                             }
                             .foregroundColor(specialtyColor)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
+                            .padding(.vertical, 3)
                             .background(specialtyColor.opacity(0.15))
                             .cornerRadius(4)
-                            .accessibilityLabel(SpecialtyFormatter.rowSpecialtyLabel(for: program))
+                            .accessibilityLabel(specialtyLabel)
 
-                            Text(program.trainingLevel.rawValue)
-                                .font(.arial(size: 9, weight: .semibold))
-                                .foregroundColor(program.trainingLevel == .fellowship ? .purple : .blue)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 2)
-                                .background((program.trainingLevel == .fellowship ? Color.purple : Color.blue).opacity(0.12))
-                                .cornerRadius(4)
+                            HStack(alignment: .center, spacing: 6) {
+                                Text(program.trainingLevel.rawValue)
+                                    .font(.arial(size: 9, weight: .semibold))
+                                    .foregroundColor(program.trainingLevel == .fellowship ? .purple : .blue)
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 2)
+                                    .background((program.trainingLevel == .fellowship ? Color.purple : Color.blue).opacity(0.12))
+                                    .cornerRadius(4)
 
-                            if let parentName = SpecialtyFormatter.rowParentResidencyLabel(for: program) {
-                                Text("in \(DisplayNameFormatter.titleCaseWords(parentName))")
-                                    .font(.arial(size: 10, weight: .medium))
-                                    .foregroundColor(.secondary)
-                                    .lineLimit(1)
+                                if let parentName = SpecialtyFormatter.rowParentResidencyLabel(for: program) {
+                                    Text("in \(DisplayNameFormatter.titleCaseWords(parentName))")
+                                        .font(.arial(size: 10, weight: .medium))
+                                        .foregroundColor(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .multilineTextAlignment(.leading)
+                                }
                             }
                         }
                     }

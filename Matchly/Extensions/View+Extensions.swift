@@ -660,17 +660,21 @@ struct MatchlyProgramSpecialtyBadge: View {
         let specialtyColor = SpecialtyFormatter.color(for: specialty)
         let label = useFullName ? specialty : SpecialtyFormatter.abbreviation(for: specialty)
 
-        HStack(spacing: 3) {
+        HStack(alignment: .top, spacing: 3) {
             Image(systemName: "stethoscope")
                 .font(.arial(size: 8))
+                .padding(.top, useFullName ? 2 : 0)
             Text(label)
                 .font(.arial(size: 10, weight: .semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
+                .lineLimit(useFullName ? nil : 1)
+                .fixedSize(horizontal: false, vertical: useFullName)
+                .multilineTextAlignment(.leading)
+                .minimumScaleFactor(useFullName ? 1 : 0.85)
         }
         .foregroundColor(specialtyColor)
+        .frame(maxWidth: useFullName ? .infinity : nil, alignment: .leading)
         .padding(.horizontal, 6)
-        .padding(.vertical, 2)
+        .padding(.vertical, useFullName ? 3 : 2)
         .background(specialtyColor.opacity(0.15))
         .cornerRadius(4)
     }

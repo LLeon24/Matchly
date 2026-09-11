@@ -748,7 +748,7 @@ private struct AddCustomSectionSheet: View {
                     HStack {
                         Text("Section letter")
                         Spacer()
-                        Text("Section \(proposedLetter)")
+                        Text("Section \(String(proposedLetter))")
                             .font(.arial(size: 16, weight: .semibold))
                             .foregroundColor(AppColors.primaryBlue)
                     }
