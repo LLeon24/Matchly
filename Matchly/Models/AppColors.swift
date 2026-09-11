@@ -156,6 +156,43 @@ struct AppColors {
     static let primaryText = Color(.label)
     static let secondaryText = Color(.secondaryLabel)
     static let tertiaryText = Color(.tertiaryLabel)
+
+    /// Magenta-pink — distinct from red-flag section F.
+    static let sectionDMagenta = Color(
+        light: Color(red: 0.82, green: 0.22, blue: 0.62),
+        dark: Color(red: 0.92, green: 0.38, blue: 0.72)
+    )
+
+    /// Deep red reserved for red-flag section F.
+    static let sectionFRed = Color(
+        light: Color(red: 0.62, green: 0.08, blue: 0.10),
+        dark: Color(red: 0.92, green: 0.24, blue: 0.26)
+    )
+}
+
+enum QuestionnaireSectionAccent {
+    static func color(for sectionId: String, title: String) -> Color {
+        switch sectionId {
+        case "matchly.section.a": return .blue
+        case "matchly.section.b": return AppColors.accentPurple
+        case "matchly.section.c": return AppColors.accentOrange
+        case "matchly.section.d": return AppColors.sectionDMagenta
+        case "matchly.section.e": return AppColors.accentTeal
+        case "matchly.section.f": return AppColors.sectionFRed
+        default:
+            guard let letter = QuestionnaireSectionNaming.letter(from: title) else {
+                return AppColors.primaryBlue
+            }
+            switch letter {
+            case "G": return .indigo
+            case "H": return .mint
+            case "I": return .cyan
+            case "J": return .brown
+            case "K": return .green
+            default: return AppColors.primaryBlue
+            }
+        }
+    }
 }
 
 // Extension to create Color with light/dark variants

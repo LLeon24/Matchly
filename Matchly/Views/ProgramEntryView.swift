@@ -549,17 +549,33 @@ struct ProgramEntryView: View {
         )
     }
 
+    private var enabledStandardSections: [QuestionnaireSection] {
+        let enabledIDs = Set(questionnaire.enabledSections(preferences: dataManager.preferences).map(\.id))
+        return questionnaire.sections.filter { enabledIDs.contains($0.id) }
+    }
+
+    private var enabledCustomSections: [QuestionnaireSection] {
+        let enabledIDs = Set(questionnaire.enabledSections(preferences: dataManager.preferences).map(\.id))
+        var seen = Set<String>()
+        return questionnaire.customSections.filter { section in
+            guard enabledIDs.contains(section.id), !seen.contains(section.id) else { return false }
+            seen.insert(section.id)
+            return true
+        }
+    }
+
     // MARK: - Questionnaire Sections
     private var questionnaireSections: some View {
-        ForEach(questionnaire.enabledSections(preferences: dataManager.preferences)) { section in
+        ForEach(enabledStandardSections) { section in
             let enabledItems = questionnaire.enabledItems(for: section, preferences: dataManager.preferences)
             if !enabledItems.isEmpty {
                 let sectionId = section.id
-                let isExpanded = expandedSections.contains(sectionId) || (section.title.contains("Section A") && expandedSections.isEmpty)
-                
+                let isExpanded = expandedSections.contains(sectionId)
+
                 whiteCardQuestionnaireSection(
                     title: section.title,
                     unansweredCount: sectionUnansweredCount(section),
+                    accentColor: questionnaireSectionColor(title: section.title, sectionId: section.id),
                     isExpanded: Binding(
                         get: { isExpanded },
                         set: { newValue in
@@ -627,15 +643,16 @@ struct ProgramEntryView: View {
                     
     // MARK: - Custom Questionnaire Sections
     private var customQuestionnaireSections: some View {
-        ForEach(questionnaire.customSections) { customSection in
+        ForEach(enabledCustomSections) { customSection in
             let enabledItems = questionnaire.enabledItems(for: customSection, preferences: dataManager.preferences)
             if !enabledItems.isEmpty {
                 let sectionId = customSection.id
                 let isExpanded = expandedSections.contains(sectionId)
-                
+
                 whiteCardQuestionnaireSection(
                     title: customSection.title,
                     unansweredCount: sectionUnansweredCount(customSection),
+                    accentColor: questionnaireSectionColor(title: customSection.title, sectionId: customSection.id),
                     isExpanded: Binding(
                         get: { isExpanded },
                         set: { newValue in
@@ -1884,9 +1901,14 @@ extension ProgramEntryView {
     
     // Liquid glass questionnaire section - full width, beautiful design
     @ViewBuilder
+    func questionnaireSectionColor(title: String, sectionId: String) -> Color {
+        QuestionnaireSectionAccent.color(for: sectionId, title: title)
+    }
+
     func whiteCardQuestionnaireSection<Content: View>(
         title: String,
         unansweredCount: Int = 0,
+        accentColor: Color = AppColors.primaryBlue,
         isExpanded: Binding<Bool>,
         @ViewBuilder content: () -> Content
     ) -> some View {
@@ -1916,10 +1938,9 @@ extension ProgramEntryView {
                     
                     Spacer()
                     
-                    Image(systemName: isExpanded.wrappedValue ? "chevron.down" : "chevron.right")
-                        .font(.arial(size: 11, weight: .semibold))
-                        .foregroundColor(.secondary)
-                        .rotationEffect(.degrees(isExpanded.wrappedValue ? 0 : -90))
+                    Image(systemName: isExpanded.wrappedValue ? "chevron.up.circle.fill" : "chevron.down.circle.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(accentColor)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)

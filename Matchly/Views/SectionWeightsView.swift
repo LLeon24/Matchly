@@ -28,7 +28,7 @@ struct SectionWeightsView: View {
                             .foregroundColor(.secondary)
 
                         VStack(alignment: .leading, spacing: 6) {
-                            instructionRow("Drag a slider to rebalance the others equally.")
+                            instructionRow("Drag a slider to rebalance the other weighted sections. Sections at 0% stay excluded.")
                             instructionRow("Expand question weighting to choose which questions use that section's slider weight.")
                             instructionRow("Unchecked questions still affect your score using equal standard weighting.")
                             instructionRow("Section E includes program EMR fit when your preferred EMR is set.")
@@ -266,14 +266,10 @@ struct SectionWeightsView: View {
     }
 
     private func sectionColor(for sectionID: String) -> Color {
-        switch sectionID {
-        case "matchly.section.a": return .blue
-        case "matchly.section.b": return .purple
-        case "matchly.section.c": return .orange
-        case "matchly.section.d": return .pink
-        case "matchly.section.e": return .teal
-        default: return AppColors.primaryBlue
+        if let section = sections.first(where: { $0.id == sectionID }) {
+            return QuestionnaireSectionAccent.color(for: sectionID, title: section.title)
         }
+        return QuestionnaireSectionAccent.color(for: sectionID, title: "")
     }
 
     private func instructionRow(_ text: String) -> some View {

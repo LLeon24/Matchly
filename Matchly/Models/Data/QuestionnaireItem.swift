@@ -234,19 +234,27 @@ struct Questionnaire: Codable, Equatable {
             }
         }
 
-        customSections = preferences.customSections.map { customSection in
+        var mergedCustomSections: [QuestionnaireSection] = []
+        var seenCustomSectionIDs = Set<String>()
+        for customSection in preferences.customSections {
+            guard !seenCustomSectionIDs.contains(customSection.id) else { continue }
+            seenCustomSectionIDs.insert(customSection.id)
+
             let existingSection = customSections.first { $0.id == customSection.id }
-            return QuestionnaireSection(
-                id: customSection.id,
-                title: customSection.title,
-                items: customSection.items.map { customItem in
-                    if let existingItem = existingSection?.items.first(where: { $0.id == customItem.id }) {
-                        return existingItem
+            mergedCustomSections.append(
+                QuestionnaireSection(
+                    id: customSection.id,
+                    title: customSection.title,
+                    items: customSection.items.map { customItem in
+                        if let existingItem = existingSection?.items.first(where: { $0.id == customItem.id }) {
+                            return existingItem
+                        }
+                        return QuestionnaireItem(id: customItem.id, question: customItem.question)
                     }
-                    return QuestionnaireItem(id: customItem.id, question: customItem.question)
-                }
+                )
             )
         }
+        customSections = mergedCustomSections
     }
 
     // Calculate total weighted score (0-100) using user-defined section weights.
@@ -463,7 +471,7 @@ struct Questionnaire: Codable, Equatable {
         let title = section.title.lowercased()
         return title.contains("red flags") || title.contains("red flag")
     }
-    
+
     // Get enabled sections based on preferences (standard + custom)
     func enabledSections(preferences: UserPreferences) -> [QuestionnaireSection] {
         let allSections = sections + customSections
@@ -602,6 +610,42 @@ extension Questionnaire {
         // by `Questionnaire()`. Fall back to that if the key is missing.
         self.sections = try container.decodeIfPresent([QuestionnaireSection].self, forKey: .sections) ?? Questionnaire().sections
         self.customSections = try container.decodeIfPresent([QuestionnaireSection].self, forKey: .customSections) ?? []
+    }
+}
+
+enum QuestionnaireSectionNaming {
+    static func letter(from title: String) -> Character? {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.lowercased().hasPrefix("section ") else { return nil }
+        let remainder = trimmed.dropFirst("section ".count)
+        guard let letter = remainder.first, letter.isLetter else { return nil }
+        return Character(String(letter).uppercased())
+    }
+
+    static func nextAvailableLetter(existingTitles: [String]) -> Character {
+        let used = Set(existingTitles.compactMap { letter(from: $0) })
+        for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ" {
+            if !used.contains(letter) {
+                return letter
+            }
+        }
+        return "Z"
+    }
+
+    static func customSectionTitle(letter: Character, subtitle: String) -> String {
+        let trimmed = subtitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = trimmed.isEmpty ? "Custom priorities" : trimmed
+        return "Section \(letter) — \(body)"
+    }
+
+    static func makeCustomSectionTitle(
+        existingCustomSections: [CustomQuestionnaireSection],
+        subtitle: String = "Custom priorities"
+    ) -> String {
+        let standardTitles = Questionnaire.makeStandardSections().map(\.title)
+        let customTitles = existingCustomSections.map(\.title)
+        let letter = nextAvailableLetter(existingTitles: standardTitles + customTitles)
+        return customSectionTitle(letter: letter, subtitle: subtitle)
     }
 }
 

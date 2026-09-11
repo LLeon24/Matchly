@@ -21,6 +21,53 @@ final class SectionWeightingTests: XCTestCase {
         XCTAssertEqual(Int(rebalanced.values.reduce(0, +).rounded()), 100)
     }
 
+    func testCustomSectionNamingUsesNextLetter() {
+        let title = QuestionnaireSectionNaming.makeCustomSectionTitle(existingCustomSections: [])
+        XCTAssertTrue(title.hasPrefix("Section G —"))
+    }
+
+    func testWeightableSectionsIncludesCustomSections() {
+        var prefs = UserPreferences()
+        prefs.customSections = [
+            CustomQuestionnaireSection(title: "Section G — Testing", items: [
+                CustomQuestionnaireItem(question: "Sample question")
+            ])
+        ]
+        prefs.enabledSectionIds = []
+
+        let ids = SectionWeighting.weightableSections(preferences: prefs).map(\.id)
+        XCTAssertTrue(ids.contains(prefs.customSections[0].id))
+    }
+
+    func testRebalancePreservesZeroWeightSections() {
+        let sectionIDs = [
+            "matchly.section.a",
+            "matchly.section.b",
+            "matchly.section.c",
+            "matchly.section.d",
+            "matchly.section.e"
+        ]
+        var current = SectionWeighting.equalWeights(for: sectionIDs)
+        current = SectionWeighting.rebalance(
+            changedSectionID: "matchly.section.a",
+            newValue: 0,
+            current: current,
+            sectionIDs: sectionIDs
+        )
+        XCTAssertEqual(current["matchly.section.a"], 0)
+
+        let after = SectionWeighting.rebalance(
+            changedSectionID: "matchly.section.b",
+            newValue: 20,
+            current: current,
+            sectionIDs: sectionIDs
+        )
+
+        XCTAssertEqual(after["matchly.section.a"], 0)
+        XCTAssertEqual(after["matchly.section.b"], 20)
+        XCTAssertEqual(Int(after.values.reduce(0, +).rounded()), 100)
+    }
+
     func testRebalanceSplitsOthersEqually() {
         let sectionIDs = [
             "matchly.section.a",
@@ -79,6 +126,72 @@ final class SectionWeightingTests: XCTestCase {
             return
         }
         XCTAssertEqual(sectionAverage, 10.0 / 6.0, accuracy: 0.001)
+    }
+
+    func testNewCustomSectionGetsEqualWeightWhenDefaults() {
+        var prefs = UserPreferences()
+        prefs.sectionWeights = [:]
+        prefs.customSections = [
+            CustomQuestionnaireSection(title: "Section G — Testing", items: [
+                CustomQuestionnaireItem(question: "Sample question")
+            ])
+        ]
+
+        let weights = SectionWeighting.redistributedWeights(stored: prefs.sectionWeights, preferences: prefs)
+        let sectionIDs = SectionWeighting.weightableSections(preferences: prefs).map(\.id)
+        let expected = SectionWeighting.equalWeights(for: sectionIDs)
+
+        XCTAssertEqual(Int(weights.values.reduce(0, +).rounded()), 100)
+        XCTAssertEqual(weights[prefs.customSections[0].id], expected[prefs.customSections[0].id])
+    }
+
+    func testNewCustomSectionRebalancesCustomizedWeights() {
+        var prefs = UserPreferences()
+        prefs.sectionWeights = [
+            "matchly.section.a": 40,
+            "matchly.section.b": 15,
+            "matchly.section.c": 15,
+            "matchly.section.d": 15,
+            "matchly.section.e": 15
+        ]
+        prefs.customSections = [
+            CustomQuestionnaireSection(title: "Section G — Testing", items: [
+                CustomQuestionnaireItem(question: "Sample question")
+            ])
+        ]
+
+        let weights = SectionWeighting.redistributedWeights(stored: prefs.sectionWeights, preferences: prefs)
+        let newId = prefs.customSections[0].id
+
+        XCTAssertEqual(Int(weights.values.reduce(0, +).rounded()), 100)
+        XCTAssertGreaterThan(weights[newId] ?? 0, 0)
+        XCTAssertLessThan(weights["matchly.section.a"] ?? 0, 40)
+        XCTAssertLessThan(weights["matchly.section.e"] ?? 0, 15)
+    }
+
+    func testNewCustomSectionWithEqualStoredWeightsResplitsEvenly() {
+        var prefs = UserPreferences()
+        let standardIDs = [
+            "matchly.section.a",
+            "matchly.section.b",
+            "matchly.section.c"
+        ]
+        prefs.sectionWeights = SectionWeighting.equalWeights(for: standardIDs)
+        prefs.enabledSectionIds = Set(standardIDs)
+        prefs.customSections = [
+            CustomQuestionnaireSection(title: "Section G — Testing", items: [
+                CustomQuestionnaireItem(question: "Sample question")
+            ])
+        ]
+
+        let sectionIDs = SectionWeighting.weightableSections(preferences: prefs).map(\.id)
+        let weights = SectionWeighting.redistributedWeights(stored: prefs.sectionWeights, preferences: prefs)
+        let expected = SectionWeighting.equalWeights(for: sectionIDs)
+
+        XCTAssertEqual(Int(weights.values.reduce(0, +).rounded()), 100)
+        for id in sectionIDs {
+            XCTAssertEqual(weights[id], expected[id])
+        }
     }
 
     func testRedistributeAfterSectionDisabled() {

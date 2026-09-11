@@ -14,8 +14,8 @@ struct QuestionnaireCustomizationView: View {
     @State private var customSections: [CustomQuestionnaireSection] = []
     @State private var customQuestionsInSections: [String: [CustomQuestionnaireItem]] = [:]
     @State private var showAddCustomSection = false
-    @State private var newSectionTitle = ""
-    @State private var editingSection: CustomQuestionnaireSection?
+    @State private var newSectionSubtitle = "Custom priorities"
+    @State private var proposedSectionLetter: Character = "G"
     @State private var showAddQuestionToSection: String? = nil
     @State private var newQuestionText = ""
     
@@ -31,7 +31,10 @@ struct QuestionnaireCustomizationView: View {
     
     var body: some View {
         Form {
-            Section(header: Text("Standard Sections"), footer: Text("Toggle sections and questions to customize your questionnaire. All sections are enabled by default.")) {
+            Section(
+                header: Text("Standard Sections"),
+                footer: Text("Toggle sections and questions to customize your questionnaire. All sections are enabled by default. Custom questions you add can be removed with the trash icon or by swiping left.")
+            ) {
                 ForEach(standardSections.indices, id: \.self) { index in
                     let section = standardSections[index]
                     DisclosureGroup(isExpanded: Binding(
@@ -116,61 +119,31 @@ struct QuestionnaireCustomizationView: View {
                         // Custom questions added to this section
                         if let customQuestions = customQuestionsInSections[section.id], !customQuestions.isEmpty {
                             ForEach(customQuestions) { customItem in
-                                Toggle(isOn: Binding(
-                                    get: {
-                                        enabledQuestionIds.isEmpty || enabledQuestionIds.contains(customItem.id)
+                                deletableCustomQuestionRow(
+                                    question: customItem.question,
+                                    questionId: customItem.id,
+                                    isEnabled: enabledQuestionIds.isEmpty || enabledQuestionIds.contains(customItem.id),
+                                    onToggle: { isEnabled in
+                                        updateQuestionEnabled(customItem.id, isEnabled: isEnabled)
                                     },
-                                    set: { isEnabled in
-                                        var newSet = enabledQuestionIds
-                                        if isEnabled {
-                                            // Enabling: if set is empty (all enabled), no change needed
-                                            // If set is not empty, add this question to enabled set
-                                            if !newSet.isEmpty {
-                                                newSet.insert(customItem.id)
-                                            }
-                                        } else {
-                                            // Disabling: if set is empty (all enabled), populate with all questions except this one
-                                            if newSet.isEmpty {
-                                                // Get all question IDs from current sections (standard + custom)
-                                                var allQuestionIds = Set<String>()
-                                                
-                                                // Add all standard section question IDs
-                                                for standardSection in standardSections {
-                                                    allQuestionIds.formUnion(standardSection.items.map { $0.id })
-                                                }
-                                                
-                                                // Add all custom questions added to standard sections
-                                                for (_, customQuestions) in customQuestionsInSections {
-                                                    allQuestionIds.formUnion(customQuestions.map { $0.id })
-                                                }
-                                                
-                                                // Add all custom section question IDs
-                                                for customSection in customSections {
-                                                    allQuestionIds.formUnion(customSection.items.map { $0.id })
-                                                }
-                                                
-                                                newSet = allQuestionIds
-                                            }
-                                            // Remove this question from enabled set
-                                            newSet.remove(customItem.id)
-                                        }
-                                        enabledQuestionIds = newSet
+                                    onDelete: {
+                                        deleteCustomQuestionFromStandardSection(
+                                            sectionId: section.id,
+                                            questionId: customItem.id
+                                        )
                                     }
-                                )) {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(customItem.question)
-                                            .font(.arial(size: 13))
-                                            .italic()
-                                        Text("Custom question")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
-                                    }
-                                }
+                                )
                             }
                             .onDelete { offsets in
-                                var questions = customQuestionsInSections[section.id] ?? []
+                                guard var questions = customQuestionsInSections[section.id] else { return }
+                                let removedIds = offsets.map { questions[$0].id }
                                 questions.remove(atOffsets: offsets)
                                 customQuestionsInSections[section.id] = questions.isEmpty ? nil : questions
+                                for id in removedIds {
+                                    enabledQuestionIds.remove(id)
+                                    dataManager.preferences.weightExcludedQuestionIds.remove(id)
+                                }
+                                persistAndSyncCustomizations()
                             }
                         }
                         
@@ -239,31 +212,103 @@ struct QuestionnaireCustomizationView: View {
                 }
             }
             
-            Section(header: Text("Custom Sections")) {
-                ForEach(customSections) { section in
-                    NavigationLink(destination: EditCustomSectionView(section: section, onSave: { updatedSection in
-                        if let index = customSections.firstIndex(where: { $0.id == updatedSection.id }) {
-                            customSections[index] = updatedSection
+            Section(
+                header: Text("Custom Sections"),
+                footer: Text("Custom sections use the next available letter after Section F and appear in your program questionnaire and section weights. Remove custom sections or questions with the trash icon, or swipe left.")
+            ) {
+                ForEach(customSections.indices, id: \.self) { index in
+                    let section = customSections[index]
+                    DisclosureGroup(isExpanded: Binding(
+                        get: { true },
+                        set: { _ in }
+                    )) {
+                        ForEach(section.items) { item in
+                            deletableCustomQuestionRow(
+                                question: item.question,
+                                questionId: item.id,
+                                isEnabled: enabledQuestionIds.isEmpty || enabledQuestionIds.contains(item.id),
+                                onToggle: { isEnabled in
+                                    updateQuestionEnabled(item.id, isEnabled: isEnabled)
+                                },
+                                onDelete: {
+                                    deleteCustomQuestionFromCustomSection(
+                                        sectionIndex: index,
+                                        questionId: item.id
+                                    )
+                                }
+                            )
                         }
-                    })) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(section.title)
-                                .font(.arial(size: 15, weight: .medium))
-                            Text("\(section.items.count) question\(section.items.count == 1 ? "" : "s")")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                        .onDelete { offsets in
+                            let removedIds = offsets.map { customSections[index].items[$0].id }
+                            customSections[index].items.remove(atOffsets: offsets)
+                            for id in removedIds {
+                                enabledQuestionIds.remove(id)
+                                dataManager.preferences.weightExcludedQuestionIds.remove(id)
+                            }
+                            persistAndSyncCustomizations()
+                        }
+
+                        Button(action: {
+                            showAddQuestionToSection = section.id
+                            newQuestionText = ""
+                        }) {
+                            HStack {
+                                Image(systemName: "plus.circle.fill")
+                                    .foregroundColor(.blue)
+                                Text("Add Question to \(section.title)")
+                                    .foregroundColor(.blue)
+                                    .font(.arial(size: 13))
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 10) {
+                            Button {
+                                deleteCustomSection(at: index)
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.red.opacity(0.85))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Delete section")
+
+                            Toggle(isOn: Binding(
+                                get: {
+                                    if enabledSectionIds.isEmpty {
+                                        return true
+                                    }
+                                    return enabledSectionIds.contains(section.id)
+                                },
+                                set: { isEnabled in
+                                    updateSectionEnabled(section.id, isEnabled: isEnabled)
+                                }
+                            )) {
+                                Text(section.title)
+                                    .font(.arial(size: 15, weight: .medium))
+                            }
                         }
                     }
                 }
                 .onDelete { offsets in
-                    let removedIds = offsets.map { customSections[$0].id }
-                    customSections.remove(atOffsets: offsets)
-                    for removedId in removedIds {
-                        enabledSectionIds.remove(removedId)
+                    var removedSectionIds: [String] = []
+                    var removedQuestionIds = Set<String>()
+                    for index in offsets {
+                        removedSectionIds.append(customSections[index].id)
+                        removedQuestionIds.formUnion(customSections[index].items.map(\.id))
                     }
+                    customSections.remove(atOffsets: offsets)
+                    removeDeletedSectionReferences(
+                        removedSectionIds: removedSectionIds,
+                        removedQuestionIds: removedQuestionIds
+                    )
+                    persistAndSyncCustomizations()
                 }
-                
+
                 Button(action: {
+                    proposedSectionLetter = QuestionnaireSectionNaming.nextAvailableLetter(
+                        existingTitles: standardSections.map(\.title) + customSections.map(\.title)
+                    )
+                    newSectionSubtitle = "Custom priorities"
                     showAddCustomSection = true
                 }) {
                     HStack {
@@ -290,56 +335,228 @@ struct QuestionnaireCustomizationView: View {
             cachedStandardSections = Questionnaire.makeStandardSections()
         }
         .onDisappear {
-            dataManager.preferences.enabledSectionIds = enabledSectionIds
-            dataManager.preferences.enabledQuestionIds = enabledQuestionIds
-            dataManager.preferences.customSections = customSections
-            dataManager.preferences.customQuestionsInSections = customQuestionsInSections
-            dataManager.savePreferences()
-            syncQuestionnaireCustomizationsToPrograms()
+            persistAndSyncCustomizations()
         }
-        .alert("Add Custom Section", isPresented: $showAddCustomSection) {
-            ClearableTextField("Section Title", text: $newSectionTitle)
-            Button("Cancel", role: .cancel) {
-                newSectionTitle = ""
+        .sheet(isPresented: $showAddCustomSection) {
+            AddCustomSectionSheet(
+                subtitle: $newSectionSubtitle,
+                proposedLetter: proposedSectionLetter
+            ) { title in
+                let newSection = CustomQuestionnaireSection(title: title)
+                customSections.append(newSection)
+                if !enabledSectionIds.isEmpty {
+                    enabledSectionIds.insert(newSection.id)
+                }
+                newSectionSubtitle = "Custom priorities"
             }
-            Button("Add") {
-                if !newSectionTitle.isEmpty {
-                    let newSection = CustomQuestionnaireSection(title: newSectionTitle)
-                    customSections.append(newSection)
-                    newSectionTitle = ""
+        }
+        .sheet(isPresented: Binding(
+            get: { showAddQuestionToSection != nil },
+            set: { isPresented in
+                if !isPresented {
+                    showAddQuestionToSection = nil
+                    newQuestionText = ""
                 }
             }
-        } message: {
-            Text("Enter a title for your custom section")
-        }
-        .alert("Add Question", isPresented: Binding(
-            get: { showAddQuestionToSection != nil },
-            set: { if !$0 { showAddQuestionToSection = nil } }
         )) {
-            ClearableTextField("Question", text: $newQuestionText, axis: .vertical)
-            Button("Cancel", role: .cancel) {
+            AddCustomQuestionSheet(
+                questionText: $newQuestionText,
+                contextMessage: "Add a custom question to \(sectionTitle(for: showAddQuestionToSection))."
+            ) {
+                appendQuestion(newQuestionText, toSectionId: showAddQuestionToSection)
                 newQuestionText = ""
                 showAddQuestionToSection = nil
             }
-            Button("Add") {
-                if let sectionId = showAddQuestionToSection, !newQuestionText.isEmpty {
-                    let newItem = CustomQuestionnaireItem(question: newQuestionText)
-                    if customQuestionsInSections[sectionId] == nil {
-                        customQuestionsInSections[sectionId] = []
-                    }
-                    customQuestionsInSections[sectionId]?.append(newItem)
-                    newQuestionText = ""
-                    showAddQuestionToSection = nil
+        }
+    }
+
+    private func sectionTitle(for sectionId: String?) -> String {
+        guard let sectionId else { return "this section" }
+        if let standard = standardSections.first(where: { $0.id == sectionId }) {
+            return standard.title
+        }
+        if let custom = customSections.first(where: { $0.id == sectionId }) {
+            return custom.title
+        }
+        return "this section"
+    }
+
+    private func appendQuestion(_ questionText: String, toSectionId sectionId: String?) {
+        guard let sectionId else { return }
+        let trimmed = questionText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        let newItem = CustomQuestionnaireItem(question: trimmed)
+        if let customIndex = customSections.firstIndex(where: { $0.id == sectionId }) {
+            customSections[customIndex].items.append(newItem)
+            return
+        }
+
+        if customQuestionsInSections[sectionId] == nil {
+            customQuestionsInSections[sectionId] = []
+        }
+        customQuestionsInSections[sectionId]?.append(newItem)
+    }
+
+    private func updateSectionEnabled(_ sectionId: String, isEnabled: Bool) {
+        var newSet = enabledSectionIds
+        if isEnabled {
+            if !newSet.isEmpty {
+                newSet.insert(sectionId)
+            }
+        } else {
+            if newSet.isEmpty {
+                var allSectionIds = Set(standardSections.map(\.id))
+                allSectionIds.formUnion(customSections.map(\.id))
+                newSet = allSectionIds
+            }
+            newSet.remove(sectionId)
+        }
+        enabledSectionIds = newSet
+    }
+
+    private func updateQuestionEnabled(_ questionId: String, isEnabled: Bool) {
+        var newSet = enabledQuestionIds
+        if isEnabled {
+            if !newSet.isEmpty {
+                newSet.insert(questionId)
+            }
+        } else {
+            if newSet.isEmpty {
+                newSet = allQuestionIds()
+            }
+            newSet.remove(questionId)
+        }
+        enabledQuestionIds = newSet
+    }
+
+    private func deduplicatedCustomSections(_ sections: [CustomQuestionnaireSection]) -> [CustomQuestionnaireSection] {
+        var seen = Set<String>()
+        return sections.filter { section in
+            guard !seen.contains(section.id) else { return false }
+            seen.insert(section.id)
+            return true
+        }
+    }
+
+    private func allQuestionIds() -> Set<String> {
+        var allQuestionIds = Set<String>()
+        for standardSection in standardSections {
+            allQuestionIds.formUnion(standardSection.items.map(\.id))
+        }
+        for (_, customQuestions) in customQuestionsInSections {
+            allQuestionIds.formUnion(customQuestions.map(\.id))
+        }
+        for customSection in customSections {
+            allQuestionIds.formUnion(customSection.items.map(\.id))
+        }
+        return allQuestionIds
+    }
+
+    @ViewBuilder
+    private func deletableCustomQuestionRow(
+        question: String,
+        questionId: String,
+        isEnabled: Bool,
+        onToggle: @escaping (Bool) -> Void,
+        onDelete: @escaping () -> Void
+    ) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Button(action: onDelete) {
+                Image(systemName: "trash")
+                    .font(.system(size: 16))
+                    .foregroundColor(.red.opacity(0.85))
+                    .padding(.top, 2)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Delete question")
+
+            Toggle(isOn: Binding(
+                get: { isEnabled },
+                set: { onToggle($0) }
+            )) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(question)
+                        .font(.arial(size: 13))
+                        .italic()
+                    Text("Custom question")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
             }
-        } message: {
-            if let sectionId = showAddQuestionToSection,
-               let section = standardSections.first(where: { $0.id == sectionId }) {
-                Text("Add a custom question to \(section.title)")
-            } else {
-                Text("Enter your custom question")
-            }
         }
+    }
+
+    private func deleteCustomQuestionFromStandardSection(sectionId: String, questionId: String) {
+        guard var questions = customQuestionsInSections[sectionId] else { return }
+        questions.removeAll { $0.id == questionId }
+        customQuestionsInSections[sectionId] = questions.isEmpty ? nil : questions
+        enabledQuestionIds.remove(questionId)
+        dataManager.preferences.weightExcludedQuestionIds.remove(questionId)
+        persistAndSyncCustomizations()
+    }
+
+    private func deleteCustomQuestionFromCustomSection(sectionIndex: Int, questionId: String) {
+        guard customSections.indices.contains(sectionIndex) else { return }
+        customSections[sectionIndex].items.removeAll { $0.id == questionId }
+        enabledQuestionIds.remove(questionId)
+        dataManager.preferences.weightExcludedQuestionIds.remove(questionId)
+        persistAndSyncCustomizations()
+    }
+
+    private func deleteCustomSection(at index: Int) {
+        guard customSections.indices.contains(index) else { return }
+        let section = customSections[index]
+        removeDeletedSectionReferences(
+            removedSectionIds: [section.id],
+            removedQuestionIds: Set(section.items.map(\.id))
+        )
+        customSections.remove(at: index)
+        persistAndSyncCustomizations()
+    }
+
+    private func removeDeletedSectionReferences(
+        removedSectionIds: [String],
+        removedQuestionIds: Set<String>
+    ) {
+        for removedId in removedSectionIds {
+            enabledSectionIds.remove(removedId)
+            customQuestionsInSections.removeValue(forKey: removedId)
+            dataManager.preferences.sectionWeights.removeValue(forKey: removedId)
+        }
+        enabledQuestionIds.subtract(removedQuestionIds)
+        dataManager.preferences.weightExcludedQuestionIds.subtract(removedQuestionIds)
+    }
+
+    private func persistAndSyncCustomizations() {
+        customSections = deduplicatedCustomSections(customSections)
+        dataManager.preferences.enabledSectionIds = enabledSectionIds
+        dataManager.preferences.enabledQuestionIds = enabledQuestionIds
+        dataManager.preferences.customSections = customSections
+        dataManager.preferences.customQuestionsInSections = customQuestionsInSections
+        pruneOrphanedPreferenceKeys()
+        syncQuestionnaireCustomizationsToPrograms()
+    }
+
+    private func pruneOrphanedPreferenceKeys() {
+        let weightableIds = Set(
+            SectionWeighting.weightableSections(preferences: dataManager.preferences).map(\.id)
+        )
+        dataManager.preferences.sectionWeights = dataManager.preferences.sectionWeights.filter {
+            weightableIds.contains($0.key)
+        }
+        dataManager.preferences.sectionWeights = SectionWeighting.redistributedWeights(
+            stored: dataManager.preferences.sectionWeights,
+            preferences: dataManager.preferences
+        )
+
+        let activeQuestionIds = allQuestionIds()
+        if !enabledQuestionIds.isEmpty {
+            enabledQuestionIds = enabledQuestionIds.intersection(activeQuestionIds)
+        }
+        dataManager.preferences.enabledQuestionIds = enabledQuestionIds
+        dataManager.preferences.weightExcludedQuestionIds =
+            dataManager.preferences.weightExcludedQuestionIds.intersection(activeQuestionIds)
     }
 
     private func syncQuestionnaireCustomizationsToPrograms() {
@@ -403,32 +620,27 @@ struct QuestionnaireCustomizationView: View {
                 )
             }
 
+            var removedQuestionIds = Set<String>()
             for existingSection in program.questionnaire.customSections where !prefCustomSectionIds.contains(existingSection.id) {
-                let removedQuestionIds = Set(existingSection.items.map(\.id))
-                enabledQuestionIds.subtract(removedQuestionIds)
+                removedQuestionIds.formUnion(existingSection.items.map(\.id))
             }
 
             for (sectionId, allowedIds) in prefCustomQuestionIdsBySection {
                 guard let existingSection = program.questionnaire.customSections.first(where: { $0.id == sectionId }) else {
                     continue
                 }
-                let removedIds = Set(existingSection.items.map(\.id)).subtracting(allowedIds)
-                enabledQuestionIds.subtract(removedIds)
+                removedQuestionIds.formUnion(Set(existingSection.items.map(\.id)).subtracting(allowedIds))
             }
 
-            updatedProgram.finalScore = updatedProgram.questionnaire.totalWeightedScore(
-                preferences: dataManager.preferences,
-                programEMR: updatedProgram.emr
-            )
+            enabledQuestionIds.subtract(removedQuestionIds)
+            dataManager.preferences.weightExcludedQuestionIds.subtract(removedQuestionIds)
+
             dataManager.updateProgram(updatedProgram)
         }
 
         dataManager.preferences.enabledQuestionIds = enabledQuestionIds
-        dataManager.preferences.sectionWeights = SectionWeighting.redistributedWeights(
-            stored: dataManager.preferences.sectionWeights,
-            preferences: dataManager.preferences
-        )
         dataManager.savePreferences()
+        dataManager.recalculateAllScores()
     }
 }
 
@@ -504,21 +716,122 @@ struct EditCustomSectionView: View {
         }
         .scrollContentBackground(.hidden)
         .appCanvasBackground()
-        .alert("Add Question", isPresented: $showAddQuestion) {
-            ClearableTextField("Question", text: $newQuestion)
-            Button("Cancel", role: .cancel) {
+        .sheet(isPresented: $showAddQuestion) {
+            AddCustomQuestionSheet(
+                questionText: $newQuestion,
+                contextMessage: "Enter a question for \"\(sectionTitle)\"."
+            ) {
+                let trimmed = newQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { return }
+                items.append(CustomQuestionnaireItem(question: trimmed))
                 newQuestion = ""
+                showAddQuestion = false
             }
-            Button("Add") {
-                if !newQuestion.isEmpty {
-                    let newItem = CustomQuestionnaireItem(question: newQuestion)
-                    items.append(newItem)
-                    newQuestion = ""
+        }
+    }
+}
+
+private struct AddCustomSectionSheet: View {
+    @Binding var subtitle: String
+    let proposedLetter: Character
+    let onAdd: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    private var previewTitle: String {
+        QuestionnaireSectionNaming.customSectionTitle(letter: proposedLetter, subtitle: subtitle)
+    }
+
+    var body: some View {
+        MatchlyNavigationView {
+            Form {
+                Section {
+                    HStack {
+                        Text("Section letter")
+                        Spacer()
+                        Text("Section \(proposedLetter)")
+                            .font(.arial(size: 16, weight: .semibold))
+                            .foregroundColor(AppColors.primaryBlue)
+                    }
+
+                    ClearableTextField("Section focus", text: $subtitle)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .glassEffect(.regular, in: .capsule)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                        .listRowBackground(Color.clear)
+                } footer: {
+                    Text("Your section will appear as \"\(previewTitle)\" in the questionnaire and section weights.")
                 }
             }
-        } message: {
-            Text("Enter your custom question")
+            .scrollContentBackground(.hidden)
+            .appCanvasBackground()
+            .navigationTitle("Add Custom Section")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        subtitle = "Custom priorities"
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") {
+                        onAdd(previewTitle)
+                        dismiss()
+                    }
+                }
+            }
         }
+        .matchlyExpandedSheet()
+    }
+}
+
+private struct AddCustomQuestionSheet: View {
+    @Binding var questionText: String
+    let contextMessage: String
+    let onAdd: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    private var trimmedQuestion: String {
+        questionText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var body: some View {
+        MatchlyNavigationView {
+            Form {
+                Section {
+                    ClearableTextField("Question", text: $questionText, axis: .vertical)
+                        .lineLimit(3...8)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .glassEffect(.regular, in: .capsule)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                        .listRowBackground(Color.clear)
+                } footer: {
+                    Text(contextMessage)
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .appCanvasBackground()
+            .navigationTitle("Add Question")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        questionText = ""
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") {
+                        onAdd()
+                        dismiss()
+                    }
+                    .disabled(trimmedQuestion.isEmpty)
+                }
+            }
+        }
+        .matchlyExpandedSheet()
     }
 }
 
