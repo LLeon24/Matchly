@@ -88,4 +88,26 @@ final class ProgramIdentityTests: XCTestCase {
 
         XCTAssertFalse(ProgramIdentity.isSameProgram(saved, catalog: catalog))
     }
+
+    func testCatalogIdentityKeyMatchesDuplicateLookup() {
+        let saved = Program(
+            specialty: "Anesthesiology",
+            hospital: "AdventHealth Florida",
+            city: "Orlando",
+            state: "FL",
+            accreditationID: "0401100003"
+        )
+        let catalog = ResidencyProgramInfo(
+            id: "0401100003",
+            name: "Anesthesiology",
+            hospital: "AdventHealth Florida",
+            city: "Orlando",
+            state: "FL",
+            specialty: "Anesthesiology",
+            accreditationID: "0401100003"
+        )
+
+        let keys = ProgramIdentity.addedCatalogIdentityKeys(from: [saved])
+        XCTAssertTrue(ProgramIdentity.isCatalogProgramAlreadyAdded(catalog, existingKeys: keys))
+    }
 }

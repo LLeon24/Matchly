@@ -34,6 +34,8 @@ struct ProgramSearchView: View {
     @State private var showTrainingLevelFilter = false
     @State private var tempTrainingLevelFilter: ProgramTrainingLevelFilter = .residency
     @State private var searchResults: [ResidencyProgramInfo] = []
+    @State private var sortedSearchResults: [ResidencyProgramInfo] = []
+    @State private var addedCatalogIdentityKeys: Set<String> = []
     @State private var totalMatchCount = 0
     @State private var isResultSetTruncated = false
     @State private var resultLimit = ResidencyProgramDatabase.defaultResultLimit
@@ -170,6 +172,7 @@ struct ProgramSearchView: View {
         }
         guard hasActiveFilters else {
             searchResults = []
+            sortedSearchResults = []
             totalMatchCount = 0
             isResultSetTruncated = false
             hasRunSearch = false
@@ -191,9 +194,16 @@ struct ProgramSearchView: View {
         )
 
         searchResults = results.programs
+        sortedSearchResults = results.programs.sorted {
+            $0.formattedHospital.localizedCaseInsensitiveCompare($1.formattedHospital) == .orderedAscending
+        }
         totalMatchCount = results.totalCount
         isResultSetTruncated = results.isTruncated
         hasRunSearch = true
+    }
+
+    private func rebuildAddedCatalogIdentityKeys() {
+        addedCatalogIdentityKeys = ProgramIdentity.addedCatalogIdentityKeys(from: dataManager.programs)
     }
 
     private func loadMoreResults() {
@@ -266,6 +276,12 @@ struct ProgramSearchView: View {
             }
             .onChange(of: database.isReady) { _, isReady in
                 if isReady { refreshSearch() }
+            }
+            .onAppear {
+                rebuildAddedCatalogIdentityKeys()
+            }
+            .onChange(of: dataManager.programs.count) { _, _ in
+                rebuildAddedCatalogIdentityKeys()
             }
             .alert(
                 "Already in List",
@@ -714,9 +730,7 @@ struct ProgramSearchView: View {
     
     private func programsListView(displayResults: [ResidencyProgramInfo]) -> some View {
         VStack(spacing: 0) {
-            let sortedResults = displayResults.sorted {
-                $0.formattedHospital.localizedCaseInsensitiveCompare($1.formattedHospital) == .orderedAscending
-            }
+            let sortedResults = sortedSearchResults.isEmpty ? displayResults : sortedSearchResults
             let useGroupedList = sortedResults.count <= 120
 
             if useGroupedList {
@@ -767,9 +781,10 @@ struct ProgramSearchView: View {
 
     @ViewBuilder
     private func programRow(for program: ResidencyProgramInfo) -> some View {
-        let isAlreadyInList = dataManager.programs.contains {
-            ProgramIdentity.isSameProgram($0, catalog: program)
-        }
+        let isAlreadyInList = ProgramIdentity.isCatalogProgramAlreadyAdded(
+            program,
+            existingKeys: addedCatalogIdentityKeys
+        )
 
         ProgramSearchRowView(
             program: program,
@@ -826,13 +841,16 @@ struct ProgramSearchView: View {
         var addedCount = 0
         var duplicateCount = 0
         var specialtyMismatchPrograms: [ResidencyProgramInfo] = []
+        var pendingAdds: [Program] = []
+        var identityKeys = addedCatalogIdentityKeys
 
         for catalog in catalogPrograms {
-            let mapped = CatalogProgramMapper.toSavedProgram(catalog)
-            if ProgramIdentity.isDuplicate(mapped, in: dataManager.programs) {
+            if ProgramIdentity.isCatalogProgramAlreadyAdded(catalog, existingKeys: identityKeys) {
                 duplicateCount += 1
                 continue
             }
+
+            let mapped = CatalogProgramMapper.toSavedProgram(catalog)
 
             if !dataManager.preferences.specialties.isEmpty,
                !SpecialtyFormatter.matchesAny(userSpecialties: dataManager.preferences.specialties, savedProgram: mapped) {
@@ -840,9 +858,13 @@ struct ProgramSearchView: View {
                 continue
             }
 
-            if dataManager.addProgram(mapped) == .added {
-                addedCount += 1
-            }
+            pendingAdds.append(mapped)
+            identityKeys.insert(ProgramIdentity.catalogIdentityKey(for: catalog))
+        }
+
+        if !pendingAdds.isEmpty {
+            addedCount += dataManager.addPrograms(pendingAdds)
+            rebuildAddedCatalogIdentityKeys()
         }
 
         if !specialtyMismatchPrograms.isEmpty {

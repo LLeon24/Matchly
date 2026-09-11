@@ -815,12 +815,42 @@ class DataManager: ObservableObject {
         }
 
         var newProgram = program
-        newProgram.finalScore = newProgram.questionnaire.totalWeightedScore(preferences: preferences, programEMR: newProgram.emr)
+        newProgram.finalScore = initialScore(for: newProgram)
 
         programs.append(newProgram)
         savePrograms()
         objectWillChange.send()
         return .added
+    }
+
+    @discardableResult
+    func addPrograms(_ programsToAdd: [Program]) -> Int {
+        guard !programsToAdd.isEmpty else { return 0 }
+
+        var addedCount = 0
+        for program in programsToAdd {
+            if ProgramIdentity.isDuplicate(program, in: programs) {
+                continue
+            }
+            var newProgram = program
+            newProgram.finalScore = initialScore(for: newProgram)
+            programs.append(newProgram)
+            addedCount += 1
+        }
+
+        guard addedCount > 0 else { return 0 }
+
+        savePrograms()
+        objectWillChange.send()
+        return addedCount
+    }
+
+    private func initialScore(for program: Program) -> Double {
+        guard program.isReviewed else { return 0 }
+        return program.questionnaire.totalWeightedScore(
+            preferences: preferences,
+            programEMR: program.emr
+        )
     }
 
     func appendSpecialtyToPreferences(_ specialty: String) {

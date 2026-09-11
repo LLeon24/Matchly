@@ -21,8 +21,7 @@ enum ProgramIdentity {
     }
 
     static func isSameProgram(_ saved: Program, catalog: ResidencyProgramInfo) -> Bool {
-        let mapped = CatalogProgramMapper.toSavedProgram(catalog)
-        guard specialtiesMatch(saved, mapped) else { return false }
+        guard specialtiesMatch(saved.specialty, catalog.specialty) else { return false }
 
         let catalogAccreditationID = catalog.accreditationID ?? catalog.id
         switch resolvedAccreditationMatch(saved.accreditationID, catalogAccreditationID) {
@@ -31,12 +30,40 @@ enum ProgramIdentity {
         case .mismatch:
             return false
         case .unknown:
-            return hospitalsAndLocationsMatch(saved, mapped)
+            return hospitalsAndLocationsMatch(
+                saved,
+                hospital: HospitalNameFormatter.format(catalog.hospital),
+                city: catalog.city,
+                state: catalog.state
+            )
         }
     }
 
     static func isDuplicate(_ candidate: Program, in programs: [Program]) -> Bool {
         programs.contains { isSameProgram($0, candidate) }
+    }
+
+    /// Fast lookup keys for catalog rows (specialty + ACGME id, or specialty + hospital/location).
+    static func catalogIdentityKey(for catalog: ResidencyProgramInfo) -> String {
+        identityKey(
+            specialty: catalog.specialty,
+            accreditationID: catalog.accreditationID,
+            fallbackCatalogID: catalog.id,
+            hospital: HospitalNameFormatter.format(catalog.hospital),
+            city: catalog.city,
+            state: catalog.state
+        )
+    }
+
+    static func addedCatalogIdentityKeys(from programs: [Program]) -> Set<String> {
+        Set(programs.map { identityKey(for: $0) })
+    }
+
+    static func isCatalogProgramAlreadyAdded(
+        _ catalog: ResidencyProgramInfo,
+        existingKeys: Set<String>
+    ) -> Bool {
+        existingKeys.contains(catalogIdentityKey(for: catalog))
     }
 
     // MARK: - Private
@@ -56,16 +83,63 @@ enum ProgramIdentity {
 
     /// Same hospital in a different specialty is a different program.
     private static func specialtiesMatch(_ lhs: Program, _ rhs: Program) -> Bool {
-        let left = normalizedSpecialty(lhs.specialty)
-        let right = normalizedSpecialty(rhs.specialty)
+        specialtiesMatch(lhs.specialty, rhs.specialty)
+    }
+
+    private static func specialtiesMatch(_ lhsSpecialty: String, _ rhsSpecialty: String) -> Bool {
+        let left = normalizedSpecialty(lhsSpecialty)
+        let right = normalizedSpecialty(rhsSpecialty)
         guard !left.isEmpty, !right.isEmpty else { return false }
         return left == right
     }
 
     private static func hospitalsAndLocationsMatch(_ lhs: Program, _ rhs: Program) -> Bool {
-        normalizedHospital(lhs.hospital) == normalizedHospital(rhs.hospital)
-            && normalizedLocation(lhs.city) == normalizedLocation(rhs.city)
-            && normalizedLocation(lhs.state) == normalizedLocation(rhs.state)
+        hospitalsAndLocationsMatch(lhs, hospital: rhs.hospital, city: rhs.city, state: rhs.state)
+    }
+
+    private static func hospitalsAndLocationsMatch(
+        _ lhs: Program,
+        hospital: String,
+        city: String,
+        state: String
+    ) -> Bool {
+        normalizedHospital(lhs.hospital) == normalizedHospital(hospital)
+            && normalizedLocation(lhs.city) == normalizedLocation(city)
+            && normalizedLocation(lhs.state) == normalizedLocation(USState.abbreviation(for: state))
+    }
+
+    private static func identityKey(for program: Program) -> String {
+        identityKey(
+            specialty: program.specialty,
+            accreditationID: program.accreditationID,
+            hospital: program.hospital,
+            city: program.city,
+            state: program.state
+        )
+    }
+
+    private static func identityKey(
+        specialty: String,
+        accreditationID: String?,
+        fallbackCatalogID: String? = nil,
+        hospital: String,
+        city: String,
+        state: String
+    ) -> String {
+        let normalizedSpecialty = normalizedSpecialty(specialty)
+        let resolvedAccreditationID = normalizedAccreditationID(accreditationID)
+            ?? normalizedAccreditationID(fallbackCatalogID)
+        if let resolvedAccreditationID {
+            return "id|\(normalizedSpecialty)|\(resolvedAccreditationID)"
+        }
+
+        return [
+            "loc",
+            normalizedSpecialty,
+            normalizedHospital(hospital),
+            normalizedLocation(city),
+            normalizedLocation(USState.abbreviation(for: state))
+        ].joined(separator: "|")
     }
 
     private static func normalizedAccreditationID(_ value: String?) -> String? {
