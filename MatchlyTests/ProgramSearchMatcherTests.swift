@@ -64,8 +64,56 @@ struct ProgramSearchMatcherTests {
         #expect(ProgramSearchMatcher.matches(query: "ucla", program: ucla, stateToAbbrev: emptyStateMap))
     }
 
+    @Test func ucfMatchesUniversityOfCentralFloridaProgram() {
+        let ucfProgram = ResidencyProgramInfo(
+            id: "test_ucf",
+            name: "Internal Medicine",
+            hospital: "University of Central Florida/HCA Florida Healthcare (Greater Orlando/Lake Monroe)",
+            city: "Orlando",
+            state: "FL",
+            specialty: "Internal Medicine",
+            accreditationID: "1401100009"
+        )
+        #expect(ProgramSearchMatcher.matches(query: "ucf", program: ucfProgram, stateToAbbrev: emptyStateMap))
+        #expect(ProgramSearchMatcher.matches(query: "lake monroe", program: ucfProgram, stateToAbbrev: emptyStateMap))
+        #expect(ProgramSearchMatcher.matches(query: "central florida", program: ucfProgram, stateToAbbrev: emptyStateMap))
+    }
+
+    @Test func derivedAcronymMatchesWithoutHardcodedAliasEntry() {
+        let program = ResidencyProgramInfo(
+            id: "test_ohio_state",
+            name: "Internal Medicine",
+            hospital: "Ohio State University Medical Center",
+            city: "Columbus",
+            state: "OH",
+            specialty: "Internal Medicine"
+        )
+        #expect(ProgramSearchMatcher.matches(query: "osu", program: program, stateToAbbrev: emptyStateMap))
+    }
+
+    @Test func aliasKeyAddedToHaystackForBidirectionalSearch() {
+        let program = ResidencyProgramInfo(
+            id: "test_fsu_haystack",
+            name: "Internal Medicine",
+            hospital: "Florida State University College of Medicine",
+            city: "Tallahassee",
+            state: "FL",
+            specialty: "Internal Medicine"
+        )
+        let index = ProgramSearchMatcher.index(for: program)
+        #expect(index.haystack.contains("fsu"))
+    }
+
     @Test func shortAcronymQueryDoesNotMatchUnrelatedPrograms() {
-        #expect(!ProgramSearchMatcher.matches(query: "st", program: floridaState, stateToAbbrev: emptyStateMap))
+        let universityOfFlorida = ResidencyProgramInfo(
+            id: "test_uf",
+            name: "Internal Medicine",
+            hospital: "University of Florida College of Medicine",
+            city: "Gainesville",
+            state: "FL",
+            specialty: "Internal Medicine"
+        )
+        #expect(!ProgramSearchMatcher.matches(query: "st", program: universityOfFlorida, stateToAbbrev: emptyStateMap))
     }
 
     @Test func acronymGenerationSkipsStopWords() {

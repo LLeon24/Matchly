@@ -23,7 +23,7 @@ enum ProgramSearchMatcher {
     private static let queryAliases: [String: [String]] = [
         "fsu": ["florida state"],
         "uf": ["university of florida"],
-        "ucf": ["central florida"],
+        "ucf": ["university of central florida", "central florida"],
         "usf": ["south florida"],
         "fiu": ["florida international"],
         "um": ["university of miami"],
@@ -183,22 +183,70 @@ enum ProgramSearchMatcher {
     }
 
     private static func buildIndex(for program: ResidencyProgramInfo) -> ProgramSearchIndex {
-        let haystack = [
+        let coreHospital = coreInstitutionName(from: program.hospital)
+        let acronymSource = nameForAcronym(from: program.hospital)
+        let derivedHospitalAcronym = acronym(from: acronymSource)
+
+        var haystackParts = [
             program.hospital,
             program.name,
             program.city,
             program.state,
-            program.accreditationID ?? ""
+            program.accreditationID ?? "",
+            coreHospital
         ]
-        .joined(separator: " ")
-        .lowercased()
 
-        let combined = "\(program.hospital) \(program.name)"
+        if derivedHospitalAcronym.count >= minAcronymQueryLength {
+            haystackParts.append(derivedHospitalAcronym)
+        }
+
+        let preliminaryHaystack = haystackParts
+            .joined(separator: " ")
+            .lowercased()
+        haystackParts.append(contentsOf: aliasKeysMatchingHaystack(preliminaryHaystack))
+
+        let haystack = haystackParts
+            .joined(separator: " ")
+            .lowercased()
+
+        let combined = "\(acronymSource) \(program.name)"
         return ProgramSearchIndex(
             haystack: haystack,
             acronym: acronym(from: combined),
-            hospitalAcronym: acronym(from: program.hospital)
+            hospitalAcronym: derivedHospitalAcronym
         )
+    }
+
+    /// Primary sponsoring institution before slash-separated site names.
+    private static func coreInstitutionName(from hospital: String) -> String {
+        var name = hospital
+        if let slash = name.firstIndex(of: "/") {
+            name = String(name[..<slash])
+        }
+        while name.range(of: "University of University of", options: .caseInsensitive) != nil {
+            name = name.replacingOccurrences(
+                of: "University of University of",
+                with: "University of",
+                options: .caseInsensitive
+            )
+        }
+        return name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Institution text used for acronym derivation (no campus parenthetical or site suffix).
+    private static func nameForAcronym(from hospital: String) -> String {
+        var core = coreInstitutionName(from: hospital)
+        if let open = core.lastIndex(of: "("), core.hasSuffix(")") {
+            core = String(core[..<open]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return core
+    }
+
+    /// Alias keys whose expansion phrases appear in this haystack (e.g. ucf for University of Central Florida).
+    private static func aliasKeysMatchingHaystack(_ haystack: String) -> [String] {
+        queryAliases.compactMap { key, phrases in
+            phrases.contains(where: { haystack.contains($0) }) ? key : nil
+        }
     }
 
     private static func tokens(from text: String) -> [String] {
@@ -229,7 +277,37 @@ enum ProgramSearchMatcher {
     }
 
     private static func matchesAlias(_ query: String, haystack: String) -> Bool {
-        guard let phrases = queryAliases[query] else { return false }
-        return phrases.contains { haystack.contains($0) }
+        if let phrases = queryAliases[query] {
+            if phrases.contains(where: { haystack.contains($0) }) {
+                return true
+            }
+        }
+
+        for (key, phrases) in queryAliases {
+            guard phrases.contains(where: { haystack.contains($0) }) else { continue }
+            if key == query {
+                return true
+            }
+            if query.count >= minAcronymQueryLength, key.hasPrefix(query) {
+                return true
+            }
+        }
+
+        for phrases in queryAliases.values {
+            if phrases.contains(where: { phraseContainsQuery($0, query) && haystack.contains($0) }) {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private static func phraseContainsQuery(_ phrase: String, _ query: String) -> Bool {
+        guard query.count >= minAcronymQueryLength else { return false }
+        if phrase == query { return true }
+        if phrase.hasPrefix("\(query) ") { return true }
+        if phrase.contains(" \(query) ") { return true }
+        if phrase.hasSuffix(" \(query)") { return true }
+        return false
     }
 }

@@ -34,7 +34,7 @@ enum SectionWeighting {
             return equalWeights(for: sectionIDs)
         }
 
-        var filtered = sectionIDs.reduce(into: [String: Double]()) { partial, id in
+        let filtered = sectionIDs.reduce(into: [String: Double]()) { partial, id in
             partial[id] = max(0, stored[id] ?? 0)
         }
         let total = filtered.values.reduce(0, +)
@@ -88,7 +88,7 @@ enum SectionWeighting {
             return equalWeights(for: sectionIDs)
         }
 
-        var filtered = sectionIDs.reduce(into: [String: Double]()) { partial, id in
+        let filtered = sectionIDs.reduce(into: [String: Double]()) { partial, id in
             partial[id] = max(0, normalized[id] ?? 0)
         }
         let total = filtered.values.reduce(0, +)

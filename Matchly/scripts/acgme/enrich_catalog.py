@@ -156,6 +156,41 @@ def has_city_then_person_name(name: str) -> bool:
     return True
 
 
+def strip_trailing_campus_parenthetical(name: str) -> str:
+    """Remove trailing campus labels like (Greater Orlando/Lake Monroe) before corruption heuristics."""
+    trimmed = (name or "").strip()
+    if not trimmed.endswith(")"):
+        return trimmed
+    open_index = trimmed.rfind("(")
+    if open_index <= 0:
+        return trimmed
+    inner = trimmed[open_index + 1 : -1].strip()
+    if not inner:
+        return trimmed
+    inner_lower = inner.lower()
+    campus_markers = (
+        "/",
+        " campus",
+        "orlando",
+        "osceola",
+        "lake",
+        "monroe",
+        "north",
+        "south",
+        "east",
+        "west",
+        "tampa",
+        "miami",
+        "jacksonville",
+        "ocala",
+        "pensacola",
+        "gainesville",
+    )
+    if any(marker in inner_lower for marker in campus_markers):
+        return trimmed[:open_index].strip()
+    return trimmed
+
+
 def is_corrupted_hospital(name: str) -> bool:
     if not name or not name.strip():
         return True
@@ -168,18 +203,43 @@ def is_corrupted_hospital(name: str) -> bool:
     lower = name.lower()
     if "adventhealth adventhealth" in lower:
         return True
+
+    # Campus suffixes like "(Greater Orlando/Lake Monroe)" are valid ERAS names, not director tails.
+    corruption_probe = strip_trailing_campus_parenthetical(name)
+
     if re.search(
         r"\b(?:tampa|orlando|miami|boston|chicago)\s+[A-Z][a-z]+\s+[A-Z]\S+\s*$",
-        name,
+        corruption_probe,
         re.I,
     ):
         return True
-    if re.search(
+    person_tail = re.search(
         r"\b(?:Hospital|Health|Healthcare|Medical|University|Clinic|Center|Florida|AdventHealth)\b.*"
-        r"\b[A-Z][a-z]+\s+[A-Z]\S+\s*$",
-        name,
-    ):
-        if not re.search(r"\b(?:Saint|St\.|Mount|Fort|Los|San|New|North|South|East|West)\s+[A-Z]", name):
+        r"\b([A-Z][a-z]+)\s+([A-Z]\S+)\s*$",
+        corruption_probe,
+    )
+    if person_tail:
+        tail_word = person_tail.group(2).lower().rstrip(".,)")
+        institutional_tails = {
+            "healthcare",
+            "health",
+            "medical",
+            "hospital",
+            "medicine",
+            "sciences",
+            "center",
+            "centre",
+            "clinic",
+            "program",
+            "university",
+            "college",
+            "florida",
+            "consortium",
+            "system",
+        }
+        if tail_word in institutional_tails:
+            return False
+        if not re.search(r"\b(?:Saint|St\.|Mount|Fort|Los|San|New|North|South|East|West)\s+[A-Z]", corruption_probe):
             return True
     return False
 
@@ -486,6 +546,10 @@ def enrich_program(program: dict, eras: Optional[dict], par: dict) -> dict:
         eras_hospital = eras_display_hospital(eras)
         if eras_hospital:
             out["hospital"] = eras_hospital
+            # Protect complete ERAS names from propagation overwrite; vague/corrupted names
+            # still flow through institution repair below.
+            if not is_vague_hospital(eras_hospital) and not is_corrupted_hospital(eras_hospital):
+                out["_erasAuthoritativeHospital"] = True
         if eras.get("websiteURL") and not out.get("websiteURL"):
             out["websiteURL"] = eras["websiteURL"]
         eras_name = (eras.get("name") or "").strip()
@@ -501,9 +565,14 @@ def enrich_program(program: dict, eras: Optional[dict], par: dict) -> dict:
             if not (out.get("state") or "").strip():
                 out["state"] = parsed_state
 
-    # Improve hospital name using campus patterns only when ERAS did not supply a clean name
-    if not eras or is_corrupted_hospital(out.get("hospital", "")):
-        out["hospital"] = improve_hospital_from_address(out.get("hospital", ""), address)
+    # Improve hospital name when ERAS is missing or still vague/corrupted after merge.
+    current_hospital = out.get("hospital", "")
+    if (
+        not eras
+        or is_corrupted_hospital(current_hospital)
+        or is_vague_hospital(current_hospital)
+    ):
+        out["hospital"] = improve_hospital_from_address(current_hospital, address)
         out["hospital"] = reconstruct_hospital_from_address(out.get("hospital", ""), address)
     out["hospital"] = sanitize_acgme_hospital(out.get("hospital", ""))
 
@@ -622,6 +691,11 @@ def propagate_institution_data(programs: list[dict]) -> list[dict]:
                     program["state"] = program.get("state") or default_state
 
             hospital = program.get("hospital", "")
+            # Skip propagation only when ERAS supplied a complete, specific hospital name.
+            if program.get("_erasAuthoritativeHospital") and not is_vague_hospital(
+                hospital
+            ) and not is_corrupted_hospital(hospital):
+                continue
             if is_corrupted_hospital(hospital):
                 brand = extract_hospital_brand(hospital)
                 city = (program.get("city") or "").strip().lower()
@@ -704,6 +778,8 @@ def enrich_catalog(
         )
 
     enriched = propagate_institution_data(enriched)
+    for program in enriched:
+        program.pop("_erasAuthoritativeHospital", None)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(enriched, indent=2, ensure_ascii=False), encoding="utf-8")

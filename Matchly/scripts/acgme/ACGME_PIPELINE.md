@@ -132,3 +132,75 @@ This is **public accreditation information**, not private applicant data. Still:
 - Request the **official ACGME API** for production-scale updates when available
 
 This is not legal advice — review ACGME's terms before large automated runs.
+
+---
+
+## Annual catalog refresh (recommended workflow)
+
+Run this once per ERAS cycle (typically July) **before** shipping a new app build.
+The bundled `ACGME_2026.json` is what the app searches at runtime — never hand-edit it.
+
+```bash
+cd Matchly/scripts/acgme
+python3 sync_catalog.py
+```
+
+What this does:
+
+1. Refreshes `ERAS_PAR_specialties.json` (residency vs fellowship classification)
+2. Re-fetches `ERAS2026.json` from ERAS PAR (authoritative hospital names)
+3. Re-runs `enrich_catalog.py` (merge ERAS → ACGME, campus enrichment, institution propagation)
+4. Runs audits — **sync fails** if hospital-name quality regresses
+
+Use `--skip-fetch` when ERAS was already fetched and you only need to re-enrich:
+
+```bash
+python3 sync_catalog.py --skip-fetch
+```
+
+### Quality gates
+
+After enrichment, `audit_names.py` checks:
+
+- **Corrupted** hospital strings (PDF scrape artifacts)
+- **Vague** hospital names (generic 1–2 word names without campus)
+- **ERAS mismatches** (catalog diverged from ERAS without a campus enrichment reason)
+
+By default sync fails if more than **100** vague hospital names remain. Override only
+when investigating:
+
+```bash
+python3 audit_names.py --max-vague 500
+```
+
+Check `ACGME_manifest.json` for stats:
+
+```json
+"enrichment": {
+  "withCityState": 14069,
+  "vagueHospitalRemaining": 44
+}
+```
+
+### Ship to the app safely
+
+1. Run `sync_catalog.py` and confirm audits pass
+2. Commit updated `ACGME_2026.json`, `ACGME_manifest.json`, and `ERAS2026.json`
+3. Bump manifest `version` in `enrich_catalog.py` if shipping a remote update
+4. **Clean build** in Xcode so the new JSON is bundled
+5. Smoke-test search: acronyms (`UCF`, `FSU`, `MGH`), full names, city, ACGME ID
+
+### ERAS is authoritative
+
+Hospital names come from ERAS when an accreditation ID matches. Enrichment may **add**
+campus qualifiers to vague ERAS names (e.g. `Tulane University` → `Tulane University
+(New Orleans)`) using sibling specialties at the same institution — but it will not
+overwrite a complete ERAS name like `University of Central Florida/HCA Florida Healthcare
+(Greater Orlando/Lake Monroe)`.
+
+### Search aliases in the app
+
+`ProgramSearchMatcher` derives acronyms from institution names and maps common nicknames
+(`ucf`, `mgh`, `hopkins`) to full names. After catalog updates, acronym search works
+automatically for `University of X` patterns; add nicknames to `queryAliases` only when
+acronym derivation is insufficient.

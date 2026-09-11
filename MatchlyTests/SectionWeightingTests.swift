@@ -65,14 +65,20 @@ final class SectionWeightingTests: XCTestCase {
             return
         }
 
-        for index in questionnaire.sections[sectionEIndex].items.indices {
+        let items = questionnaire.sections[sectionEIndex].items
+        for index in items.indices {
             questionnaire.sections[sectionEIndex].items[index].programRating = 1
         }
-        questionnaire.sections[sectionEIndex].items.last?.programRating = 5
+        let lastIndex = items.count - 1
+        questionnaire.sections[sectionEIndex].items[lastIndex].programRating = 5
 
         let score = questionnaire.totalWeightedScore(preferences: prefs)
         XCTAssertGreaterThan(score, 0)
-        XCTAssertEqual(questionnaire.standardSectionAverage("Section E", preferences: prefs), 10.0 / 6.0, accuracy: 0.001)
+        guard let sectionAverage = questionnaire.standardSectionAverage("Section E", preferences: prefs) else {
+            XCTFail("Expected section E average")
+            return
+        }
+        XCTAssertEqual(sectionAverage, 10.0 / 6.0, accuracy: 0.001)
     }
 
     func testRedistributeAfterSectionDisabled() {

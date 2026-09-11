@@ -3,14 +3,23 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import sys
 from pathlib import Path
 
+SCRIPTS_ACGME = Path(__file__).resolve().parent
+if str(SCRIPTS_ACGME) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_ACGME))
+
+from enrich_catalog import is_vague_hospital
+
 ROOT = Path(__file__).resolve().parents[2]
 CATALOG_PATH = ROOT / "Data" / "ACGME_2026.json"
 ERAS_PATH = ROOT / "Data" / "ERAS2026.json"
+MANIFEST_PATH = ROOT / "Data" / "ACGME_manifest.json"
+DEFAULT_MAX_VAGUE = 100
 
 CITY_NAME_TOKENS = {
     "tampa", "orlando", "miami", "jacksonville", "gainesville", "tallahassee",
@@ -84,6 +93,15 @@ def normalize_for_compare(name: str) -> str:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Audit ACGME catalog hospital names")
+    parser.add_argument(
+        "--max-vague",
+        type=int,
+        default=DEFAULT_MAX_VAGUE,
+        help=f"Fail if more than this many vague hospital names remain (default {DEFAULT_MAX_VAGUE})",
+    )
+    args = parser.parse_args()
+
     if not CATALOG_PATH.exists():
         print(f"Catalog not found: {CATALOG_PATH}", file=sys.stderr)
         return 1
@@ -97,6 +115,7 @@ def main() -> int:
                 eras_by_id[acc_id] = program
 
     rows: list[str] = []
+    vague_rows: list[str] = []
     for program in programs:
         acc_id = program.get("accreditationID") or program.get("id") or "?"
         hospital = program.get("hospital") or ""
@@ -105,10 +124,26 @@ def main() -> int:
         if looks_corrupted(hospital):
             issues.append("corrupted_name")
 
+        if is_vague_hospital(hospital):
+            issues.append("vague_name")
+            vague_rows.append(
+                f"{acc_id}\t{hospital}\t{program.get('city', '')}\t{program.get('state', '')}"
+            )
+
         eras = eras_by_id.get(acc_id)
         if eras:
             eras_hospital = eras.get("hospital") or ""
-            if eras_hospital and normalize_for_compare(eras_hospital) != normalize_for_compare(hospital):
+            catalog_norm = normalize_for_compare(hospital)
+            eras_norm = normalize_for_compare(eras_hospital)
+            # Enrichment may legitimately add campus qualifiers to vague ERAS names.
+            if (
+                eras_hospital
+                and catalog_norm != eras_norm
+                and not (
+                    is_vague_hospital(eras_hospital)
+                    and catalog_norm.startswith(eras_norm)
+                )
+            ):
                 issues.append(f"eras_mismatch:eras={eras_hospital}")
 
         if issues:
@@ -118,10 +153,24 @@ def main() -> int:
             )
 
     print(f"Scanned {len(programs)} programs; {len(rows)} name issues.")
+    print(f"Vague hospital names remaining: {len(vague_rows)} (max allowed: {args.max_vague})")
     for row in rows[:300]:
         print(row)
     if len(rows) > 300:
         print(f"... and {len(rows) - 300} more")
+    if vague_rows:
+        print("\nSample vague hospital names:")
+        for row in vague_rows[:40]:
+            print(row)
+        if len(vague_rows) > 40:
+            print(f"... and {len(vague_rows) - 40} more")
+
+    if len(vague_rows) > args.max_vague:
+        print(
+            f"\nFAIL: {len(vague_rows)} vague hospital names exceed limit of {args.max_vague}.",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 
