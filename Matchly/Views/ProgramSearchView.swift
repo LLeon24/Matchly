@@ -16,36 +16,98 @@ struct ProgramSearchView: View {
     @State private var showStateFilter: Bool = false
     @State private var tempSelectedStates: Set<String> = []
     @State private var tempShowAllStates: Bool = true
-    @State private var selectedProgramTypes: Set<String> = []
-    @State private var showAllProgramTypes: Bool = true
-    @State private var showProgramTypeFilter: Bool = false
-    @State private var tempSelectedProgramTypes: Set<String> = [] // Temporary selections while sheet is open
-    @State private var tempShowAllProgramTypes: Bool = true
     @State private var selectedPrograms: Set<String> = []
+    /// Full catalog entries for every selected id — selections must survive new
+    /// searches and filter changes, which replace `searchResults` entirely.
+    @State private var selectedProgramInfoById: [String: ResidencyProgramInfo] = [:]
     @State private var selectedSpecialties: Set<String> = []
     @State private var showAllSpecialties: Bool = false // Track if user explicitly wants all
     @State private var showSpecialtyFilter: Bool = false
     @State private var tempSelectedSpecialties: Set<String> = [] // Temporary selections while sheet is open
     @State private var tempShowAllSpecialties: Bool = true
-    
+    @State private var selectedFellowshipCodes: Set<String> = []
+    @State private var showAllFellowshipTypes: Bool = true
+    @State private var showFellowshipTypeFilter: Bool = false
+    @State private var tempSelectedFellowshipCodes: Set<String> = []
+    @State private var tempShowAllFellowshipTypes: Bool = true
+    @State private var trainingLevelFilter: ProgramTrainingLevelFilter = .residency
+    @State private var showTrainingLevelFilter = false
+    @State private var tempTrainingLevelFilter: ProgramTrainingLevelFilter = .residency
+    @State private var searchResults: [ResidencyProgramInfo] = []
+    @State private var sortedSearchResults: [ResidencyProgramInfo] = []
+    @State private var addedCatalogIdentityKeys: Set<String> = []
+    @State private var totalMatchCount = 0
+    @State private var isResultSetTruncated = false
+    @State private var resultLimit = ResidencyProgramDatabase.defaultResultLimit
+    @State private var hasRunSearch = false
+    @State private var searchRefreshTask: Task<Void, Never>?
+    @State private var showManualEntry = false
+    @State private var specialtyAddConfirmation: SpecialtyAddConfirmation?
+
     let onSelect: (ResidencyProgramInfo) -> Void
     var allowMultiSelect: Bool = false
     
-    private var database = ResidencyProgramDatabase.shared
+    @ObservedObject private var database = ResidencyProgramDatabase.shared
     
-    // All available specialties
-    private let allSpecialties = [
-        "Internal Medicine", "Family Medicine", "Emergency Medicine", "Pediatrics",
-        "General Surgery", "OB/GYN", "Psychiatry", "Neurology", "Anesthesiology",
-        "Radiology", "Pathology", "Orthopedics", "ENT", "Urology", "PM&R",
-        "Dermatology", "Neurosurgery", "Child Neurology", "Nuclear Medicine",
-        "Radiation Oncology", "Plastic Surgery", "Ophthalmology", "Interventional Radiology - Integrated",
-        "Thoracic Surgery - Integrated", "Vascular Surgery - Integrated", "Transitional Year",
-        "Aerospace Medicine", "Occupational and Environmental Medicine",
-        "Public Health and General Preventive Medicine", "Osteopathic Neuromusculoskeletal Medicine"
-    ]
-    
-    // All US states for filter
+    // All available specialties (residency + common fellowship areas)
+    private var allSpecialties: [String] {
+        SpecialtyFormatter.commonSpecialties
+    }
+
+    private var parentSpecialtiesForFellowship: [String] {
+        if !showAllSpecialties, !selectedSpecialties.isEmpty {
+            return Array(selectedSpecialties)
+        }
+        if !dataManager.preferences.specialties.isEmpty {
+            return dataManager.preferences.specialties
+        }
+        return []
+    }
+
+    private var fellowshipCodesToUse: Set<String>? {
+        guard trainingLevelFilter == .fellowship,
+              !showAllFellowshipTypes,
+              !selectedFellowshipCodes.isEmpty
+        else { return nil }
+        return selectedFellowshipCodes
+    }
+
+    private func pruneInvalidFellowshipSelections() {
+        let valid = Set(FellowshipFilterCatalog.options(forUserSpecialties: parentSpecialtiesForFellowship).map(\.code))
+        selectedFellowshipCodes = selectedFellowshipCodes.intersection(valid)
+        if selectedFellowshipCodes.isEmpty {
+            showAllFellowshipTypes = true
+        }
+    }
+
+    private var preferredTrainingLevel: ProgramTrainingLevelFilter {
+        ProgramTrainingLevelFilter(rawValue: dataManager.preferences.applyingTrack) ?? .residency
+    }
+
+    private var trainingLevelFilterIsCustom: Bool {
+        trainingLevelFilter != preferredTrainingLevel || trainingLevelFilter == .all
+    }
+
+    private var trainingLevelFilterIcon: String {
+        switch trainingLevelFilter {
+        case .all: return "square.grid.2x2"
+        case .residency: return "graduationcap"
+        case .fellowship: return "arrow.triangle.branch"
+        }
+    }
+
+    private var hasSpecialtySelection: Bool {
+        !selectedSpecialties.isEmpty || !dataManager.preferences.specialties.isEmpty
+    }
+
+    private var specialtyFilterDiffersFromDefaults: Bool {
+        let defaults = Set(dataManager.preferences.specialties)
+        if defaults.isEmpty {
+            return !selectedSpecialties.isEmpty || !showAllSpecialties
+        }
+        return selectedSpecialties != defaults || showAllSpecialties
+    }
+
     private let allStates = [
         "All", "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID",
         "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO",
@@ -53,82 +115,121 @@ struct ProgramSearchView: View {
         "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY", "DC", "PR"
     ]
     
-    private let programTypes = ["Academic", "Community", "Hybrid"]
-    
     init(onSelect: @escaping (ResidencyProgramInfo) -> Void, allowMultiSelect: Bool = false) {
         self.onSelect = onSelect
         self.allowMultiSelect = allowMultiSelect
     }
-    
-    // Cache search results to avoid recalculating on every view update
-    @State private var cachedSearchResults: [ResidencyProgramInfo] = []
-    @State private var lastSearchCacheKey: String = ""
-    
-    private var searchResults: [ResidencyProgramInfo] {
-        // Create cache key from all search parameters
-        let specialtiesKey = showAllSpecialties ? "all" : (selectedSpecialties.isEmpty ? "prefs" : selectedSpecialties.sorted().joined(separator: ","))
-        let typesKey = showAllProgramTypes ? "all" : selectedProgramTypes.sorted().joined(separator: ",")
-        let statesKey = showAllStates ? "all" : selectedStates.sorted().joined(separator: ",")
-        let cacheKey = "\(searchText)-\(specialtiesKey)-\(typesKey)-\(statesKey)"
-        
-        // Return cached result if search parameters haven't changed
-        if cacheKey == lastSearchCacheKey && !cachedSearchResults.isEmpty {
-            return cachedSearchResults
+
+    private var hasActiveFilters: Bool {
+        !searchText.trimmingCharacters(in: .whitespaces).isEmpty
+            || !showAllStates && !selectedStates.isEmpty
+            || hasSpecialtySelection
+            || !showAllFellowshipTypes && !selectedFellowshipCodes.isEmpty
+            || trainingLevelFilter != preferredTrainingLevel
+            || trainingLevelFilter == .all
+    }
+
+    private var specialtiesToUse: [String]? {
+        let userSpecialties = dataManager.preferences.specialties
+
+        if !selectedSpecialties.isEmpty {
+            return Array(selectedSpecialties)
         }
-        
-        // Determine which specialties to use
-        let specialtiesToUse: [String]?
-        if showAllSpecialties || (selectedSpecialties.isEmpty && dataManager.preferences.specialties.isEmpty) {
-            specialtiesToUse = nil // Show all
-        } else if !selectedSpecialties.isEmpty {
-            specialtiesToUse = Array(selectedSpecialties) // User's explicit selection
+
+        if !userSpecialties.isEmpty {
+            return userSpecialties
+        }
+
+        if showAllSpecialties {
+            return nil
+        }
+
+        return nil
+    }
+
+    private func resetSpecialtyFilterToUserDefaults() {
+        let userSpecialties = dataManager.preferences.specialties
+        if !userSpecialties.isEmpty {
+            selectedSpecialties = Set(userSpecialties)
+            showAllSpecialties = false
         } else {
-            specialtiesToUse = dataManager.preferences.specialties // Use preferences
+            selectedSpecialties.removeAll()
+            showAllSpecialties = true
         }
-        
-        // Determine which program types to use
-        let programTypesToUse: [String]?
-        if showAllProgramTypes || selectedProgramTypes.isEmpty {
-            programTypesToUse = nil // Show all
-        } else {
-            programTypesToUse = Array(selectedProgramTypes)
+    }
+
+    private var stateFiltersToUse: Set<String>? {
+        if showAllStates || selectedStates.isEmpty {
+            return nil
         }
-        
-        // Use stateFilters (Set) if states are selected, otherwise nil
-        let stateFilters: Set<String>? = {
-            if showAllStates || selectedStates.isEmpty {
-                return nil
-            } else {
-                return selectedStates
-            }
-        }()
-        
+        return selectedStates
+    }
+
+    private func refreshSearch(resetLimit: Bool = false) {
+        guard database.isReady else { return }
+        if resetLimit {
+            resultLimit = ResidencyProgramDatabase.defaultResultLimit
+        }
+        guard hasActiveFilters else {
+            searchResults = []
+            sortedSearchResults = []
+            totalMatchCount = 0
+            isResultSetTruncated = false
+            hasRunSearch = false
+            return
+        }
+
         let results = database.search(
             query: searchText,
             specialty: nil,
             specialties: specialtiesToUse,
-            stateFilter: nil, // Use stateFilters instead
-            stateFilters: stateFilters,
-            programTypeFilter: nil, // Use programTypes instead
-            programTypes: programTypesToUse,
-            imgFriendlyOnly: false // IMG-Friendly is now handled via programTypes
+            fellowshipCodes: fellowshipCodesToUse,
+            stateFilter: nil,
+            stateFilters: stateFiltersToUse,
+            programTypeFilter: nil,
+            programTypes: nil,
+            trainingLevel: trainingLevelFilter.trainingLevel,
+            imgFriendlyOnly: false,
+            limit: resultLimit
         )
-        
-        // Cache the results asynchronously
-        DispatchQueue.main.async {
-            cachedSearchResults = results
-            lastSearchCacheKey = cacheKey
+
+        searchResults = results.programs
+        sortedSearchResults = results.programs.sorted {
+            $0.formattedHospital.localizedCaseInsensitiveCompare($1.formattedHospital) == .orderedAscending
         }
-        
-        return results
+        totalMatchCount = results.totalCount
+        isResultSetTruncated = results.isTruncated
+        hasRunSearch = true
+    }
+
+    private func rebuildAddedCatalogIdentityKeys() {
+        addedCatalogIdentityKeys = ProgramIdentity.addedCatalogIdentityKeys(from: dataManager.programs)
+    }
+
+    private func loadMoreResults() {
+        resultLimit += ResidencyProgramDatabase.defaultResultLimit
+        refreshSearch()
+    }
+
+    private func scheduleSearchRefresh() {
+        searchRefreshTask?.cancel()
+        searchRefreshTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            guard !Task.isCancelled else { return }
+            refreshSearch(resetLimit: true)
+        }
     }
     
     var body: some View {
-        NavigationView {
+        MatchlyNavigationView {
             VStack(spacing: 0) {
                 searchAndFiltersView
                 resultsView
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                manualEntryFooter
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .appCanvasBackground()
             .navigationTitle("Search Programs")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -142,11 +243,109 @@ struct ProgramSearchView: View {
                 }
             }
             .onAppear {
-                if !dataManager.preferences.specialties.isEmpty {
-                    selectedSpecialties = Set(dataManager.preferences.specialties)
+                trainingLevelFilter = preferredTrainingLevel
+                resetSpecialtyFilterToUserDefaults()
+                if preferredTrainingLevel == .fellowship,
+                   !dataManager.preferences.fellowshipSpecialtyCodes.isEmpty {
+                    selectedFellowshipCodes = Set(dataManager.preferences.fellowshipSpecialtyCodes)
+                    showAllFellowshipTypes = false
                 }
+                refreshSearch()
+            }
+            .onChange(of: searchText) { _, _ in scheduleSearchRefresh() }
+            .onChange(of: selectedStates) { _, _ in refreshSearch(resetLimit: true) }
+            .onChange(of: showAllStates) { _, _ in refreshSearch(resetLimit: true) }
+            .onChange(of: selectedSpecialties) { _, _ in
+                pruneInvalidFellowshipSelections()
+                refreshSearch(resetLimit: true)
+            }
+            .onChange(of: showAllSpecialties) { _, _ in
+                pruneInvalidFellowshipSelections()
+                refreshSearch(resetLimit: true)
+            }
+            .onChange(of: selectedFellowshipCodes) { _, _ in refreshSearch(resetLimit: true) }
+            .onChange(of: showAllFellowshipTypes) { _, _ in refreshSearch(resetLimit: true) }
+            .onChange(of: trainingLevelFilter) { _, newValue in
+                dataManager.preferences.applyingTrack = newValue.rawValue
+                dataManager.savePreferences()
+                if newValue != .fellowship {
+                    selectedFellowshipCodes.removeAll()
+                    showAllFellowshipTypes = true
+                }
+                refreshSearch(resetLimit: true)
+            }
+            .onChange(of: database.isReady) { _, isReady in
+                if isReady { refreshSearch() }
+            }
+            .onAppear {
+                rebuildAddedCatalogIdentityKeys()
+            }
+            .onChange(of: dataManager.programs.count) { _, _ in
+                rebuildAddedCatalogIdentityKeys()
+            }
+            .alert(
+                "Already in List",
+                isPresented: Binding(
+                    get: { dataManager.lastAddProgramNotice != nil },
+                    set: { if !$0 { dataManager.lastAddProgramNotice = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) {
+                    dataManager.lastAddProgramNotice = nil
+                }
+            } message: {
+                Text(dataManager.lastAddProgramNotice ?? "")
+            }
+            .alert(
+                specialtyConfirmationTitle,
+                isPresented: Binding(
+                    get: { specialtyAddConfirmation != nil },
+                    set: { if !$0 { specialtyAddConfirmation = nil } }
+                )
+            ) {
+                Button(addProgramsOnlyButtonTitle) {
+                    finalizeSpecialtyAdd(updatePreferences: false)
+                }
+                Button("Add & Update Specialties") {
+                    finalizeSpecialtyAdd(updatePreferences: true)
+                }
+                Button("Cancel") {
+                    specialtyAddConfirmation = nil
+                }
+            } message: {
+                Text(specialtyConfirmationMessage)
+            }
+            .sheet(isPresented: $showManualEntry) {
+                MatchlyNavigationView {
+                    ProgramEntryView(program: nil)
+                        .environmentObject(dataManager)
+                }
+                .matchlyExpandedSheet()
             }
         }
+    }
+
+    private var manualEntryFooter: some View {
+        VStack(spacing: 0) {
+            Divider()
+            Button(action: { showManualEntry = true }) {
+                HStack(spacing: 10) {
+                    Image(systemName: "square.and.pencil")
+                        .foregroundColor(.blue)
+                    Text("Can't find your program? Add manually")
+                        .font(.arial(size: 15, weight: .medium))
+                        .foregroundColor(.primary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 14)
+            }
+            .buttonStyle(.plain)
+        }
+        .background(.ultraThinMaterial)
     }
     
     private var searchAndFiltersView: some View {
@@ -163,36 +362,33 @@ struct ProgramSearchView: View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .foregroundColor(.blue)
-                .font(.system(size: 16))
-            TextField("Search programs...", text: $searchText)
-                .textFieldStyle(.plain)
+                .font(.arial(size: 16))
+            ClearableTextField("Search programs...", text: $searchText)
                 .autocapitalization(.none)
                 .disableAutocorrection(true)
-                .font(.system(size: 16))
-            
-            if !searchText.isEmpty {
-                Button(action: {
-                    searchText = ""
-                }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.secondary.opacity(0.6))
-                        .font(.system(size: 16))
-                }
-            }
+                .font(.arial(size: 16))
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(Color(.systemBackground))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Color(.systemGray4), lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.03), radius: 1, x: 0, y: 1)
+        // Floating search field → Liquid Glass capsule. The native material
+        // adapts to light/dark and to whatever scrolls beneath it.
+        .glassEffect(.regular, in: .capsule)
     }
     
     private var filtersView: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 10) {
+        ViewThatFits(in: .horizontal) {
+            filtersChipRow
+            ScrollView(.horizontal, showsIndicators: false) {
+                filtersChipRow
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 4)
+    }
+
+    private var filtersChipRow: some View {
+        GlassEffectContainer(spacing: 10) {
+            HStack(spacing: 10) {
                             // Specialty filter - sheet-based like program types
                             Button(action: {
                                 // Initialize temp selections from current state
@@ -204,55 +400,173 @@ struct ProgramSearchView: View {
                             }) {
                                 HStack(spacing: 6) {
                                     Image(systemName: "stethoscope")
-                                        .font(.system(size: 13))
+                                        .font(.arial(size: 13))
                                         .foregroundColor(.blue)
                                     
                                     let displayText: String = {
                                         if showAllSpecialties {
-                                            return "All"
+                                            return trainingLevelFilter == .fellowship ? "All Fields" : "All"
+                                        } else if selectedSpecialties.count == 1, let one = selectedSpecialties.first {
+                                            return SpecialtyFormatter.abbreviation(for: one)
                                         } else if !selectedSpecialties.isEmpty {
                                             return "\(selectedSpecialties.count)"
                                         } else if !dataManager.preferences.specialties.isEmpty {
+                                            if dataManager.preferences.specialties.count == 1,
+                                               let one = dataManager.preferences.specialties.first {
+                                                return SpecialtyFormatter.abbreviation(for: one)
+                                            }
                                             return "\(dataManager.preferences.specialties.count)"
                                         } else {
-                                            return "All"
+                                            return trainingLevelFilter == .fellowship ? "All Fields" : "All"
                                         }
                                     }()
                                     
                                     Text(displayText)
-                                        .font(.system(size: 12, weight: .medium))
+                                        .font(.arial(size: 12, weight: .medium))
                                         .lineLimit(1)
                                         .minimumScaleFactor(0.8)
                                     
                                     Image(systemName: "chevron.down")
-                                        .font(.system(size: 9))
+                                        .font(.arial(size: 9))
                                         .foregroundColor(.secondary)
                                 }
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background({
-                                    let hasSelection = !showAllSpecialties && (!selectedSpecialties.isEmpty || !dataManager.preferences.specialties.isEmpty)
-                                    return hasSelection 
-                                        ? Color.blue.opacity(0.12) 
-                                        : Color(.systemGray5)
-                                }())
-                                .cornerRadius(7)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .glassEffect(
+                                    (!showAllSpecialties && (!selectedSpecialties.isEmpty || !dataManager.preferences.specialties.isEmpty))
+                                        ? .regular.tint(Color.blue.opacity(0.25)).interactive()
+                                        : .regular.interactive(),
+                                    in: .capsule
+                                )
                             }
                             .sheet(isPresented: $showSpecialtyFilter) {
                                 SpecialtyFilterSheet(
                                     allSpecialties: allSpecialties,
                                     selectedSpecialties: $tempSelectedSpecialties,
                                     showAll: $tempShowAllSpecialties,
+                                    navigationTitle: trainingLevelFilter == .fellowship ? "Your Specialty" : "Filter Specialties",
                                     onApply: {
                                         selectedSpecialties = tempSelectedSpecialties
                                         showAllSpecialties = tempShowAllSpecialties
                                         showSpecialtyFilter = false
+                                        pruneInvalidFellowshipSelections()
+                                        refreshSearch()
                                     },
                                     onClear: {
-                                        tempSelectedSpecialties.removeAll()
-                                        tempShowAllSpecialties = true
+                                        if dataManager.preferences.specialties.isEmpty {
+                                            tempSelectedSpecialties.removeAll()
+                                            tempShowAllSpecialties = true
+                                        } else {
+                                            tempSelectedSpecialties = Set(dataManager.preferences.specialties)
+                                            tempShowAllSpecialties = false
+                                        }
                                     }
                                 )
+                                .matchlyExpandedSheet()
+                            }
+
+                            Button(action: {
+                                tempTrainingLevelFilter = trainingLevelFilter
+                                showTrainingLevelFilter = true
+                            }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: trainingLevelFilterIcon)
+                                        .font(.arial(size: 13))
+                                        .foregroundColor(.purple)
+
+                                    Text(trainingLevelFilter.rawValue)
+                                        .font(.arial(size: 12, weight: .medium))
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.8)
+
+                                    Image(systemName: "chevron.down")
+                                        .font(.arial(size: 9))
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .glassEffect(
+                                    trainingLevelFilterIsCustom
+                                        ? .regular.tint(Color.purple.opacity(0.25)).interactive()
+                                        : .regular.interactive(),
+                                    in: .capsule
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .sheet(isPresented: $showTrainingLevelFilter) {
+                                TrainingLevelFilterSheet(
+                                    selection: $tempTrainingLevelFilter,
+                                    onApply: {
+                                        trainingLevelFilter = tempTrainingLevelFilter
+                                        showTrainingLevelFilter = false
+                                    }
+                                )
+                                .matchlyExpandedSheet()
+                            }
+
+                            if trainingLevelFilter == .fellowship {
+                                Button(action: {
+                                    tempSelectedFellowshipCodes = selectedFellowshipCodes
+                                    tempShowAllFellowshipTypes = showAllFellowshipTypes
+                                    showFellowshipTypeFilter = true
+                                }) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "arrow.triangle.branch")
+                                            .font(.arial(size: 13))
+                                            .foregroundColor(.purple)
+
+                                        let fellowshipDisplayText: String = {
+                                            if showAllFellowshipTypes || selectedFellowshipCodes.isEmpty {
+                                                return "All Types"
+                                            }
+                                            if selectedFellowshipCodes.count == 1,
+                                               let code = selectedFellowshipCodes.first,
+                                               let name = FellowshipFilterCatalog.displayName(forCode: code) {
+                                                if let paren = name.firstIndex(of: "(") {
+                                                    return String(name[..<paren]).trimmingCharacters(in: .whitespaces)
+                                                }
+                                                return name
+                                            }
+                                            return "\(selectedFellowshipCodes.count) types"
+                                        }()
+
+                                        Text(fellowshipDisplayText)
+                                            .font(.arial(size: 12, weight: .medium))
+                                            .lineLimit(2)
+                                            .multilineTextAlignment(.leading)
+                                            .fixedSize(horizontal: false, vertical: true)
+
+                                        Image(systemName: "chevron.down")
+                                            .font(.arial(size: 9))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .glassEffect(
+                                        (!showAllFellowshipTypes && !selectedFellowshipCodes.isEmpty)
+                                            ? .regular.tint(Color.purple.opacity(0.25)).interactive()
+                                            : .regular.interactive(),
+                                        in: .capsule
+                                    )
+                                }
+                                .sheet(isPresented: $showFellowshipTypeFilter) {
+                                    FellowshipTypeFilterSheet(
+                                        userSpecialties: parentSpecialtiesForFellowship,
+                                        selectedCodes: $tempSelectedFellowshipCodes,
+                                        showAll: $tempShowAllFellowshipTypes,
+                                        onApply: {
+                                            selectedFellowshipCodes = tempSelectedFellowshipCodes
+                                            showAllFellowshipTypes = tempShowAllFellowshipTypes
+                                            showFellowshipTypeFilter = false
+                                            refreshSearch()
+                                        },
+                                        onClear: {
+                                            tempSelectedFellowshipCodes.removeAll()
+                                            tempShowAllFellowshipTypes = true
+                                        }
+                                    )
+                                    .matchlyExpandedSheet()
+                                }
                             }
                         
                         // State filter - sheet-based like specialty and program types
@@ -264,7 +578,7 @@ struct ProgramSearchView: View {
                         }) {
                             HStack(spacing: 6) {
                                 Image(systemName: "map.fill")
-                                    .font(.system(size: 13))
+                                    .font(.arial(size: 13))
                                     .foregroundColor(.green)
                                 
                                 let displayText: String = {
@@ -278,23 +592,22 @@ struct ProgramSearchView: View {
                                 }()
                                 
                                 Text(displayText)
-                                    .font(.system(size: 12, weight: .medium))
+                                    .font(.arial(size: 12, weight: .medium))
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.8)
                                 
                                 Image(systemName: "chevron.down")
-                                    .font(.system(size: 9))
+                                    .font(.arial(size: 9))
                                     .foregroundColor(.secondary)
                             }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background({
-                                let hasSelection = !showAllStates && !selectedStates.isEmpty
-                                return hasSelection 
-                                    ? Color.green.opacity(0.12) 
-                                    : Color(.systemGray5)
-                            }())
-                            .cornerRadius(7)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .glassEffect(
+                                (!showAllStates && !selectedStates.isEmpty)
+                                    ? .regular.tint(Color.green.opacity(0.25)).interactive()
+                                    : .regular.interactive(),
+                                in: .capsule
+                            )
                         }
                         .sheet(isPresented: $showStateFilter) {
                             StateFilterSheet(
@@ -305,201 +618,317 @@ struct ProgramSearchView: View {
                                     selectedStates = tempSelectedStates
                                     showAllStates = tempShowAllStates
                                     showStateFilter = false
+                                    refreshSearch()
                                 },
                                 onClear: {
                                     tempSelectedStates.removeAll()
                                     tempShowAllStates = true
                                 }
                             )
-                        }
-                        
-                        // Program type filter - opens a sheet that stays open
-                        Button(action: {
-                            // Initialize temp selections with current selections
-                            tempSelectedProgramTypes = selectedProgramTypes
-                            tempShowAllProgramTypes = showAllProgramTypes
-                            showProgramTypeFilter = true
-                        }) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "building.2.fill")
-                                    .font(.system(size: 13))
-                                    .foregroundColor(.orange)
-                                
-                                let displayText: String = {
-                                    if showAllProgramTypes {
-                                        return "All"
-                                    } else if !selectedProgramTypes.isEmpty {
-                                        return "\(selectedProgramTypes.count)"
-                                    } else {
-                                        return "All"
-                                    }
-                                }()
-                                
-                                Text(displayText)
-                                    .font(.system(size: 12, weight: .medium))
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.8)
-                                
-                                Image(systemName: "chevron.down")
-                                    .font(.system(size: 9))
-                                    .foregroundColor(.secondary)
-                            }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background({
-                                let hasSelection = !showAllProgramTypes && !selectedProgramTypes.isEmpty
-                                return hasSelection 
-                                    ? Color.orange.opacity(0.12) 
-                                    : Color(.systemGray5)
-                            }())
-                            .cornerRadius(7)
-                        }
-                        .sheet(isPresented: $showProgramTypeFilter) {
-                            ProgramTypeFilterSheet(
-                                programTypes: programTypes,
-                                selectedTypes: $tempSelectedProgramTypes,
-                                showAll: $tempShowAllProgramTypes,
-                                onApply: {
-                                    selectedProgramTypes = tempSelectedProgramTypes
-                                    showAllProgramTypes = tempShowAllProgramTypes
-                                    showProgramTypeFilter = false
-                                },
-                                onClear: {
-                                    tempSelectedProgramTypes.removeAll()
-                                    tempShowAllProgramTypes = true
-                                }
-                            )
+                            .matchlyExpandedSheet()
                         }
                         
                         Spacer()
                         
                         // Clear filters button
-                        if (!selectedStates.isEmpty && !showAllStates) || (!selectedProgramTypes.isEmpty && !showAllProgramTypes) || (!selectedSpecialties.isEmpty && !showAllSpecialties) {
+                        if (!selectedStates.isEmpty && !showAllStates)
+                            || specialtyFilterDiffersFromDefaults
+                            || (!selectedFellowshipCodes.isEmpty && !showAllFellowshipTypes)
+                            || trainingLevelFilter != preferredTrainingLevel {
                             Button(action: {
                                 withAnimation {
+                                    searchText = ""
                                     selectedStates.removeAll()
                                     showAllStates = true
-                                    selectedProgramTypes.removeAll()
-                                    showAllProgramTypes = true
-                                    selectedSpecialties.removeAll()
-                                    showAllSpecialties = true
+                                    resetSpecialtyFilterToUserDefaults()
+                                    selectedFellowshipCodes.removeAll()
+                                    showAllFellowshipTypes = true
+                                    trainingLevelFilter = preferredTrainingLevel
+                                    refreshSearch(resetLimit: true)
                                 }
                             }) {
                                 HStack(spacing: 4) {
                                     Image(systemName: "xmark.circle.fill")
-                                        .font(.system(size: 10))
+                                        .font(.arial(size: 10))
                                     Text("Clear")
-                                        .font(.system(size: 12, weight: .medium))
+                                        .font(.arial(size: 12, weight: .medium))
                                 }
                                 .foregroundColor(.blue)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(Color.blue.opacity(0.1))
-                                .cornerRadius(7)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .glassEffect(.regular.tint(Color.blue.opacity(0.18)).interactive(), in: .capsule)
                             }
                         }
-                        }
-                        .padding(.horizontal, 4)
+            }
         }
     }
     
     private var resultsView: some View {
         Group {
-            let specialtiesToUse: [String]? = {
-                if showAllSpecialties || (selectedSpecialties.isEmpty && dataManager.preferences.specialties.isEmpty) {
-                    return nil
-                } else if !selectedSpecialties.isEmpty {
-                    return Array(selectedSpecialties)
-                } else {
-                    return dataManager.preferences.specialties
+            if !database.isReady {
+                VStack(spacing: 16) {
+                    ProgressView()
+                    Text("Loading \(database.programCount > 0 ? "\(database.programCount)" : "program") catalog…")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
                 }
-            }()
-            
-            let allPrograms = specialtiesToUse == nil
-                ? database.getAllPrograms()
-                : database.getAllPrograms(specialties: specialtiesToUse!)
-            let displayResults = searchText.isEmpty && showAllStates && showAllProgramTypes && (selectedSpecialties.isEmpty || showAllSpecialties)
-                ? allPrograms
-                : searchResults
-            
-            if displayResults.isEmpty {
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if !hasActiveFilters {
+                promptToSearchView
+            } else if searchResults.isEmpty && hasRunSearch {
                 emptyResultsView
             } else {
-                programsListView(displayResults: displayResults)
+                programsListView(displayResults: searchResults)
             }
         }
+    }
+
+    private var promptToSearchView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "text.magnifyingglass")
+                .font(.arial(size: 50))
+                .foregroundColor(.secondary)
+            Text("Search \(database.programCount.formatted()) programs")
+                .font(.headline)
+            Text("Type a hospital, city, or state — or apply specialty/state filters. Defaults to \(trainingLevelFilter.rawValue.lowercased()) programs.")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+            if trainingLevelFilter == .fellowship {
+                Text("Use Your Specialty for your field, then Fellowship Type to narrow subspecialties.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            }
+            if database.fellowshipCount > 0 {
+                Text("\(database.residencyCount.formatted()) residencies · \(database.fellowshipCount.formatted()) fellowships")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     
     private var emptyResultsView: some View {
         VStack(spacing: 20) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 50))
+                .font(.arial(size: 50))
                 .foregroundColor(.secondary)
             Text("No programs found")
                 .font(.headline)
                 .foregroundColor(.secondary)
-            Text("Try a different search term")
+            Text("Try a different search term, or add the program manually below.")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     
     private func programsListView(displayResults: [ResidencyProgramInfo]) -> some View {
         VStack(spacing: 0) {
-            // Optimize: Pre-sort once instead of in Dictionary grouping
-            let sortedResults = displayResults.sorted {
-                HospitalNameFormatter.format($0.hospital) < HospitalNameFormatter.format($1.hospital)
-            }
-            let groupedPrograms = Dictionary(grouping: sortedResults) { program in
-                String(HospitalNameFormatter.format(program.hospital).prefix(1).uppercased())
-            }
-            let sortedKeys = groupedPrograms.keys.sorted()
-            
-            ScrollViewReader { proxy in
-                HStack(spacing: 0) {
-                            List {
-                                ForEach(sortedKeys, id: \.self) { key in
-                                    Section(header: 
-                                        Text(key)
-                                            .font(.system(size: 13, weight: .semibold))
-                                            .foregroundColor(.secondary)
-                                            .textCase(.none)
-                                    ) {
-                                ForEach(groupedPrograms[key] ?? []) { program in
-                                    ProgramSearchRowView(
-                                        program: program,
-                                        isSelected: selectedPrograms.contains(program.id),
-                                        allowMultiSelect: allowMultiSelect,
-                                        onTap: {
-                                            if allowMultiSelect {
-                                                if selectedPrograms.contains(program.id) {
-                                                    selectedPrograms.remove(program.id)
-                                                } else {
-                                                    selectedPrograms.insert(program.id)
-                                                }
-                                            } else {
-                                                onSelect(program)
-                                                dismiss()
-                                            }
-                                        }
-                                    )
-                                }
-                            }
-                            .id(key)
-                        }
-                    }
-                    .listStyle(.insetGrouped)
-                    
-                    alphabetScrollIndex(sortedKeys: sortedKeys, proxy: proxy)
+            let sortedResults = sortedSearchResults.isEmpty ? displayResults : sortedSearchResults
+            let useGroupedList = sortedResults.count <= 120
+
+            if useGroupedList {
+                let groupedPrograms = Dictionary(grouping: sortedResults) { program in
+                    String(program.formattedHospital.prefix(1).uppercased())
                 }
+                let sortedKeys = groupedPrograms.keys.sorted()
+
+                ScrollViewReader { proxy in
+                    HStack(spacing: 0) {
+                        List {
+                            ForEach(sortedKeys, id: \.self) { key in
+                                Section(header:
+                                    Text(key)
+                                        .font(.arial(size: 13, weight: .semibold))
+                                        .foregroundColor(.secondary)
+                                        .textCase(.none)
+                                ) {
+                                    ForEach(groupedPrograms[key] ?? []) { program in
+                                        programRow(for: program)
+                                    }
+                                }
+                                .id(key)
+                            }
+                        }
+                        .listStyle(.insetGrouped)
+
+                        alphabetScrollIndex(sortedKeys: sortedKeys, proxy: proxy)
+                    }
+                }
+                .frame(maxHeight: .infinity)
+            } else {
+                List(sortedResults) { program in
+                    programRow(for: program)
+                }
+                .listStyle(.insetGrouped)
+                .frame(maxHeight: .infinity)
             }
-            
-            footerWithCount(count: displayResults.count)
-            
+
+            footerWithCount(displayed: sortedResults.count)
+
             if allowMultiSelect && !selectedPrograms.isEmpty {
                 addSelectedButton
             }
+        }
+        .frame(maxHeight: .infinity)
+    }
+
+    @ViewBuilder
+    private func programRow(for program: ResidencyProgramInfo) -> some View {
+        let isAlreadyInList = ProgramIdentity.isCatalogProgramAlreadyAdded(
+            program,
+            existingKeys: addedCatalogIdentityKeys
+        )
+
+        ProgramSearchRowView(
+            program: program,
+            isSelected: selectedPrograms.contains(program.id),
+            allowMultiSelect: allowMultiSelect,
+            isAlreadyInList: isAlreadyInList,
+            onTap: {
+                if isAlreadyInList {
+                    dataManager.lastAddProgramNotice = "This program is already in your list."
+                    return
+                }
+
+                if allowMultiSelect {
+                    if selectedPrograms.contains(program.id) {
+                        selectedPrograms.remove(program.id)
+                        selectedProgramInfoById.removeValue(forKey: program.id)
+                    } else {
+                        selectedPrograms.insert(program.id)
+                        selectedProgramInfoById[program.id] = program
+                    }
+                } else {
+                    attemptAddPrograms([program]) {
+                        onSelect(program)
+                        dismiss()
+                    }
+                }
+            }
+        )
+    }
+
+    private var specialtyConfirmationTitle: String {
+        guard let prompt = specialtyAddConfirmation else { return "Different Specialty" }
+        return prompt.catalogPrograms.count == 1 ? "Different Specialty" : "Different Specialties"
+    }
+
+    private var addProgramsOnlyButtonTitle: String {
+        guard let prompt = specialtyAddConfirmation else { return "Add Program" }
+        return prompt.catalogPrograms.count == 1 ? "Add Program" : "Add Programs"
+    }
+
+    private var specialtyConfirmationMessage: String {
+        guard let prompt = specialtyAddConfirmation else { return "" }
+
+        let programSpecialties = SpecialtyFormatter.formattedSpecialtyList(prompt.resolvedSpecialtyNames)
+        let userSpecialties = SpecialtyFormatter.formattedSpecialtyList(dataManager.preferences.specialties)
+
+        if prompt.catalogPrograms.count == 1 {
+            return "This is a \(programSpecialties) program, but your Settings currently track \(userSpecialties). Add it anyway?"
+        }
+        return "These \(prompt.catalogPrograms.count) programs are for \(programSpecialties), but your Settings currently track \(userSpecialties). Add them anyway?"
+    }
+
+    private func attemptAddPrograms(_ catalogPrograms: [ResidencyProgramInfo], onComplete: @escaping () -> Void) {
+        var addedCount = 0
+        var duplicateCount = 0
+        var specialtyMismatchPrograms: [ResidencyProgramInfo] = []
+        var pendingAdds: [Program] = []
+        var identityKeys = addedCatalogIdentityKeys
+
+        for catalog in catalogPrograms {
+            if ProgramIdentity.isCatalogProgramAlreadyAdded(catalog, existingKeys: identityKeys) {
+                duplicateCount += 1
+                continue
+            }
+
+            let mapped = CatalogProgramMapper.toSavedProgram(catalog)
+
+            if !dataManager.preferences.specialties.isEmpty,
+               !SpecialtyFormatter.matchesAny(userSpecialties: dataManager.preferences.specialties, savedProgram: mapped) {
+                specialtyMismatchPrograms.append(catalog)
+                continue
+            }
+
+            pendingAdds.append(mapped)
+            identityKeys.insert(ProgramIdentity.catalogIdentityKey(for: catalog))
+        }
+
+        if !pendingAdds.isEmpty {
+            addedCount += dataManager.addPrograms(pendingAdds)
+            rebuildAddedCatalogIdentityKeys()
+        }
+
+        if !specialtyMismatchPrograms.isEmpty {
+            specialtyAddConfirmation = SpecialtyAddConfirmation(
+                catalogPrograms: specialtyMismatchPrograms,
+                alreadyAddedCount: addedCount,
+                duplicateCount: duplicateCount,
+                onComplete: onComplete
+            )
+            return
+        }
+
+        if duplicateCount > 0 && addedCount == 0 {
+            dataManager.lastAddProgramNotice = duplicateCount == 1
+                ? "This program is already in your list."
+                : "Those programs are already in your list."
+        } else if duplicateCount > 0 {
+            dataManager.lastAddProgramNotice = "Added \(addedCount) program\(addedCount == 1 ? "" : "s"). Skipped \(duplicateCount) duplicate\(duplicateCount == 1 ? "" : "s")."
+        }
+
+        if addedCount > 0 {
+            onComplete()
+        }
+    }
+
+    private func finalizeSpecialtyAdd(updatePreferences: Bool) {
+        guard let prompt = specialtyAddConfirmation else { return }
+
+        var addedCount = prompt.alreadyAddedCount
+        var duplicateCount = prompt.duplicateCount
+
+        for catalog in prompt.catalogPrograms {
+            let mapped = CatalogProgramMapper.toSavedProgram(catalog)
+            let specialty = updatePreferences
+                ? SpecialtyFormatter.resolvedPreferenceSpecialty(for: catalog)
+                : nil
+
+            switch dataManager.addProgram(
+                mapped,
+                allowSpecialtyMismatch: true,
+                addSpecialtyToPreferences: specialty
+            ) {
+            case .added:
+                addedCount += 1
+            case .duplicate:
+                duplicateCount += 1
+            case .specialtyMismatch:
+                break
+            }
+        }
+
+        let newlyAdded = addedCount - prompt.alreadyAddedCount
+        specialtyAddConfirmation = nil
+
+        if duplicateCount > 0 && newlyAdded == 0 {
+            dataManager.lastAddProgramNotice = duplicateCount == 1
+                ? "This program is already in your list."
+                : "Those programs are already in your list."
+        } else if duplicateCount > 0 {
+            dataManager.lastAddProgramNotice = "Added \(addedCount) program\(addedCount == 1 ? "" : "s"). Skipped \(duplicateCount) duplicate\(duplicateCount == 1 ? "" : "s")."
+        }
+
+        if newlyAdded > 0 {
+            prompt.onComplete()
         }
     }
     
@@ -512,7 +941,7 @@ struct ProgramSearchView: View {
                     }
                 }) {
                     Text(key)
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.arial(size: 11, weight: .medium))
                         .foregroundColor(.blue)
                         .frame(width: 20)
                 }
@@ -522,23 +951,41 @@ struct ProgramSearchView: View {
         .padding(.vertical, 8)
     }
     
-    private func footerWithCount(count: Int) -> some View {
+    private func footerWithCount(displayed: Int) -> some View {
         VStack(spacing: 0) {
             Divider()
-            HStack {
-                Spacer()
+            VStack(spacing: 8) {
                 HStack(spacing: 5) {
                     Image(systemName: "list.bullet")
-                        .font(.system(size: 11))
+                        .font(.arial(size: 11))
                         .foregroundColor(.secondary.opacity(0.7))
-                    Text("\(count) program\(count == 1 ? "" : "s")")
-                        .font(.system(size: 12, weight: .medium))
+                    Text("\(displayed) shown")
+                        .font(.arial(size: 12, weight: .medium))
                         .foregroundColor(.secondary)
+                    if isResultSetTruncated {
+                        Text("of \(totalMatchCount.formatted())")
+                            .font(.arial(size: 12))
+                            .foregroundColor(.secondary)
+                    }
                 }
-                .padding(.vertical, 8)
-                Spacer()
+
+                if isResultSetTruncated {
+                    Button(action: loadMoreResults) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.down.circle.fill")
+                                .font(.arial(size: 14))
+                            Text("Show \(min(ResidencyProgramDatabase.defaultResultLimit, totalMatchCount - displayed)) more")
+                                .font(.arial(size: 14, weight: .semibold))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                    }
+                    .buttonStyle(.glass)
+                }
             }
-            .background(Color(.systemGray6).opacity(0.5))
+            .padding(.vertical, 10)
+            .padding(.horizontal)
+            .glassEffect(.regular, in: .rect(cornerRadius: 0))
         }
     }
     
@@ -546,49 +993,40 @@ struct ProgramSearchView: View {
         VStack(spacing: 0) {
             Divider()
             Button(action: {
-                for program in searchResults where selectedPrograms.contains(program.id) {
-                    let newProgram = Program(
-                        specialty: program.specialty,
-                        name: program.name,
-                        hospital: HospitalNameFormatter.format(program.hospital),
-                        city: program.city,
-                        state: program.state,
-                        address: program.address,
-                        type: program.type,
-                        accreditationID: program.accreditationID,
-                        isIMGFriendly: program.isIMGFriendly
-                    )
-                    dataManager.addProgram(newProgram)
+                let selectedCatalogPrograms = selectedPrograms.compactMap { id in
+                    selectedProgramInfoById[id] ?? searchResults.first(where: { $0.id == id })
                 }
-                dismiss()
+                attemptAddPrograms(selectedCatalogPrograms) {
+                    dismiss()
+                }
             }) {
                 HStack {
                     Spacer()
                     Text("Add \(selectedPrograms.count) Program\(selectedPrograms.count == 1 ? "" : "s")")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(.white)
+                        .font(.arial(size: 17, weight: .semibold))
                         .padding(.vertical, 14)
                     Spacer()
                 }
-                .background(Color.blue)
-                .cornerRadius(12)
             }
+            // Primary confirm action → prominent Liquid Glass tinted brand blue.
+            .buttonStyle(.glassProminent)
+            .tint(.blue)
             .padding()
-            .background(Color(.systemBackground))
+            .glassEffect(.regular, in: .rect(cornerRadius: 0))
         }
     }
-    
-    private func programTypeColor(_ type: String) -> Color {
-        switch type {
-        case "Academic":
-            return .blue
-        case "Community":
-            return .green
-        case "Hybrid":
-            return .orange
-        default:
-            return .gray
-        }
+}
+
+private struct SpecialtyAddConfirmation {
+    let catalogPrograms: [ResidencyProgramInfo]
+    let alreadyAddedCount: Int
+    let duplicateCount: Int
+    let onComplete: () -> Void
+
+    var resolvedSpecialtyNames: [String] {
+        Array(
+            Set(catalogPrograms.map { SpecialtyFormatter.resolvedPreferenceSpecialty(for: $0) })
+        ).sorted()
     }
 }
 

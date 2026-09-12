@@ -10,12 +10,20 @@ import Charts
 import UIKit
 import Combine
 
+private enum HeroStatDestination: Hashable {
+    case needDates
+    case needReview
+}
+
 struct DashboardView: View {
     @EnvironmentObject var dataManager: DataManager
+    @EnvironmentObject private var deepLinkHandler: CoupleDeepLinkHandler
+    @Environment(\.matchlyLayout) private var screenLayout
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var showAddProgram = false
     @State private var showCustomization = false
     @State private var showProfileEdit = false
-    @State private var selectedSection: Int = 0
+    @State private var heroStatDestination: HeroStatDestination?
     @Binding var selectedTab: Int
     
     init(selectedTab: Binding<Int> = .constant(0)) {
@@ -25,42 +33,43 @@ struct DashboardView: View {
     private var layout: DashboardLayout {
         dataManager.preferences.dashboardLayout
     }
+
+    private var isCoupleLinked: Bool {
+        FeatureFlags.couplesMatchEnabled && dataManager.preferences.couple?.isLinked == true
+    }
+
+    private var dashboardPreferences: DashboardPreferences {
+        dataManager.preferences.dashboardPreferences
+    }
+
+    /// Changes when layout or header prefs change — forces dashboard to refresh.
+    private var dashboardCustomizationToken: String {
+        let layout = dataManager.preferences.dashboardLayout
+        let prefs = dataManager.preferences.dashboardPreferences
+        let disabled = layout.disabledSections.sorted().joined(separator: ",")
+        let order = layout.sectionOrder.joined(separator: ",")
+        return "\(order)|\(disabled)|\(prefs.greetingStyle.rawValue)|\(prefs.headerSubtitleMode.rawValue)"
+    }
     
     var body: some View {
         VStack(spacing: 0) {
-            // Persistent compact header (greeting + profile + customize) that stays
-            // pinned above the swipeable section pages — the premium "command bar".
             headerBar
+                .id(dashboardCustomizationToken)
 
             if dataManager.programs.isEmpty {
                 ScrollView {
                     emptyStateSection
                         .padding(.horizontal, 16)
                         .padding(.top, 12)
-                        .padding(.bottom, 100)
+                        .padding(.bottom, screenLayout.pageBottomInset)
                 }
+                .matchlyScrollTabBarClearance()
             } else {
-                // Clean animated-underline section selector, kept in sync with
-                // the paged TabView below.
-                DashboardSectionTabBar(
-                    titles: ["Overview", "Programs", "Interviews"],
-                    selection: $selectedSection
-                )
-                .padding(.horizontal, 20)
-                .padding(.top, 4)
-                .padding(.bottom, 14)
-
-                TabView(selection: $selectedSection) {
-                    overviewPage
-                        .tag(0)
-                    programsPage
-                        .tag(1)
-                    interviewsPage
-                        .tag(2)
-                }
-                .tabViewStyle(.page(indexDisplayMode: .never))
+                dashboardPage
+                    .id("dashboard-\(dashboardCustomizationToken)")
             }
         }
+        .matchlyRootContentFrame()
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .navigationBar)
         .background(
@@ -74,26 +83,21 @@ struct DashboardView: View {
                 .environmentObject(dataManager)
         }
         .sheet(isPresented: $showProfileEdit) {
-            NavigationView {
+            MatchlyNavigationView {
                 ProfileEditView()
             }
         }
         .onChange(of: selectedTab) { _, newValue in
-            // When the Dashboard tab is (re)selected, return to the Overview page.
-            if newValue == 0 {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    selectedSection = 0
-                }
+            if newValue == MainTabLayout.dashboardIndex {
+                NotificationCenter.default.post(name: NSNotification.Name("ScrollToTop"), object: nil)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ScrollToTop"))) { _ in
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                selectedSection = 0
-            }
+            // Dashboard is a single scroll view — PopToRoot handles navigation stack reset.
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("PopToRoot"))) { _ in
-            // Pop to root when Dashboard tab is tapped — dismisses any pushed
-            // NavigationLink destinations.
+            // Pop to root when Dashboard tab is tapped — dismisses any pushed destinations.
+            heroStatDestination = nil
             DispatchQueue.main.async {
                 if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
                    let window = windowScene.windows.first,
@@ -102,31 +106,48 @@ struct DashboardView: View {
                 }
             }
         }
+        .navigationDestination(item: $heroStatDestination) { destination in
+            switch destination {
+            case .needDates:
+                SetInterviewDatesView()
+            case .needReview:
+                ProgramsNeedingReviewView()
+            }
+        }
         .sheet(isPresented: $showAddProgram) {
-            NavigationView {
+            MatchlyNavigationView {
                 ProgramSearchView(
-                    onSelect: { programInfo in
-                        let newProgram = Program(
-                            specialty: programInfo.specialty,
-                            name: programInfo.name,
-                            hospital: HospitalNameFormatter.format(programInfo.hospital),
-                            city: programInfo.city,
-                            state: programInfo.state,
-                            address: programInfo.address,
-                            type: programInfo.type,
-                            accreditationID: programInfo.accreditationID,
-                            websiteURL: programInfo.websiteURL,
-                            contactEmail: programInfo.contactEmail,
-                            contactPhone: programInfo.contactPhone,
-                            programCoordinator: programInfo.programCoordinator,
-                            isIMGFriendly: programInfo.isIMGFriendly
-                        )
-                        dataManager.addProgram(newProgram)
-                    },
+                    onSelect: { _ in },
                     allowMultiSelect: true
                 )
             }
+            .matchlyExpandedSheet()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .matchlyPromptFirstProgramAdd)) { _ in
+            presentFirstProgramAddIfNeeded()
+        }
+        .onChange(of: dataManager.programs.isEmpty) { _, isEmpty in
+            if !isEmpty {
+                clearFirstProgramAddPrompt()
+            }
+        }
+        .onChange(of: showAddProgram) { _, isPresented in
+            if !isPresented {
+                clearFirstProgramAddPrompt()
+            }
+        }
+    }
+
+    private func presentFirstProgramAddIfNeeded() {
+        guard dataManager.preferences.shouldPromptFirstProgramAdd,
+              dataManager.programs.isEmpty else { return }
+        showAddProgram = true
+    }
+
+    private func clearFirstProgramAddPrompt() {
+        guard dataManager.preferences.shouldPromptFirstProgramAdd else { return }
+        dataManager.preferences.shouldPromptFirstProgramAdd = false
+        dataManager.savePreferences()
     }
 
     // MARK: - Persistent Header
@@ -134,48 +155,51 @@ struct DashboardView: View {
     /// Compact command bar that stays pinned above the swipeable pages:
     /// profile photo (opens profile editor), greeting, and the customize button.
     private var headerBar: some View {
-        HStack(spacing: 14) {
+        HStack(alignment: .top, spacing: screenLayout == .compactVertical ? 10 : 14) {
             Button(action: { showProfileEdit = true }) {
                 headerAvatar
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Edit profile")
+            .padding(.top, 2)
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(getGreeting())
-                    .font(.arial(size: 24, weight: .bold))
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+            VStack(alignment: .leading, spacing: screenLayout == .compactVertical ? 2 : 4) {
+                MatchlyDashboardGreeting(
+                    text: getGreeting(),
+                    size: screenLayout.headerGreetingFont
+                )
 
-                Text(headerSubtitle)
-                    .font(.arial(size: 14, weight: .medium))
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                MatchlyFunctionalSubtitle(
+                    text: headerSubtitle,
+                    size: screenLayout.headerSubtitleFont
+                )
             }
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
 
             Spacer(minLength: 8)
 
             Button(action: { showCustomization = true }) {
                 Image(systemName: "slider.horizontal.3")
-                    .font(.arial(size: 18, weight: .medium))
-                    .foregroundColor(.secondary)
-                    .frame(width: 36, height: 36)
-                    .contentShape(Rectangle())
+                    .font(.arial(size: screenLayout == .compactVertical ? 16 : 18, weight: .medium))
+                    .foregroundColor(.primary)
+                    .frame(width: screenLayout.headerCustomizeButtonSize, height: screenLayout.headerCustomizeButtonSize)
+                    .contentShape(Circle())
             }
+            .buttonStyle(.plain)
+            .glassEffect(.clear.interactive(), in: .circle)
             .accessibilityLabel("Customize dashboard")
+            .padding(.top, 2)
         }
         .padding(.horizontal, 20)
-        .padding(.top, 10)
-        .padding(.bottom, 16)
+        .padding(.top, screenLayout == .compactVertical ? 8 : 10)
+        .padding(.bottom, screenLayout.headerVerticalPadding + 4)
     }
 
     /// Profile photo if set, otherwise the user's initials in a clean tinted
     /// circle, with a single SF Symbol as a last resort when there's no name.
     @ViewBuilder
     private var headerAvatar: some View {
-        let size: CGFloat = 48
+        let size = screenLayout.headerAvatarSize
 
         if let photoData = dataManager.preferences.profile.photoData,
            let uiImage = UIImage(data: photoData) {
@@ -190,196 +214,386 @@ struct DashboardView: View {
                     .fill(AppColors.primaryGradient)
                     .frame(width: size, height: size)
                 Text(initials)
-                    .font(.arial(size: 19, weight: .semibold))
+                    .font(.arial(size: size * 0.4, weight: .semibold))
                     .foregroundColor(.white)
             }
+            .frame(width: size, height: size)
         } else {
             ZStack {
                 Circle()
-                    .fill(AppColors.primaryBlue.opacity(0.15))
+                    .fill(AppColors.primaryGradient)
                     .frame(width: size, height: size)
                 Image(systemName: "person.fill")
                     .font(.arial(size: 20, weight: .medium))
-                    .foregroundColor(AppColors.primaryBlue)
+                    .foregroundColor(.white)
             }
+            .frame(width: size, height: size)
         }
     }
 
     /// Up to two uppercased initials derived from the profile name.
     private var profileInitials: String? {
-        let name = dataManager.preferences.profile.name.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty else { return nil }
+        let first = dataManager.preferences.profile.firstName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let last = dataManager.preferences.profile.lastName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !first.isEmpty || !last.isEmpty else { return nil }
 
-        let parts = name.split(separator: " ").filter { !$0.isEmpty }
-        let first = parts.first?.first.map(String.init) ?? ""
-        let last = parts.count > 1 ? (parts.last?.first.map(String.init) ?? "") : ""
-        let initials = (first + last).uppercased()
+        let firstInitial = first.first.map(String.init) ?? ""
+        let lastInitial = last.first.map(String.init) ?? ""
+        let initials = (firstInitial + lastInitial).uppercased()
         return initials.isEmpty ? nil : initials
     }
 
-    /// Clean, contextual subtitle: today's date (e.g. "Saturday, June 13").
+    /// Clean, contextual subtitle under the greeting — date, motivational line, or specialty count.
     private var headerSubtitle: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEEE, MMMM d"
-        return formatter.string(from: Date())
+        switch dashboardPreferences.headerSubtitleMode {
+        case .motivational:
+            return getMotivationalMessage()
+        case .specialtyCount:
+            let count = dataManager.preferences.specialties.count
+            guard count > 0 else {
+                let formatter = DateFormatter()
+                formatter.dateFormat = "EEEE, MMMM d"
+                return formatter.string(from: Date())
+            }
+            return "Tracking \(count) specialt\(count == 1 ? "y" : "ies")"
+        case .date:
+            let formatter = DateFormatter()
+            formatter.dateFormat = "EEEE, MMMM d"
+            return formatter.string(from: Date())
+        }
     }
 
-    // MARK: - Section Pages
+    // MARK: - Dashboard Page
 
-    /// 1) Overview — Match Readiness hero + application funnel + quick actions.
-    private var overviewPage: some View {
+    private var dashboardPage: some View {
         ScrollView {
-            VStack(spacing: 14) {
-                DashboardRingHero(
-                    score: averageScore,
-                    progress: matchProgress,
-                    bigNumber: String(format: "%.0f", averageScore),
-                    unit: "Avg Score",
-                    title: "Match Readiness",
-                    subtitle: "Average score across \(dataManager.programs.count) program\(dataManager.programs.count == 1 ? "" : "s")"
-                )
-                .dashboardCardStyle()
-
-                VStack(alignment: .leading, spacing: 14) {
-                    DashboardSectionHeader(
-                        title: "Application Funnel",
-                        icon: "line.3.horizontal.decrease",
-                        tint: AppColors.primaryBlue
-                    )
-                    ApplicationFunnelChart(stages: funnelStages)
+            VStack(spacing: screenLayout.dashboardSectionSpacing) {
+                ForEach(dashboardSectionIDs, id: \.self) { sectionId in
+                    dashboardSectionView(for: sectionId)
                 }
-                .dashboardCardStyle()
-
-                quickActionsSection
             }
             .padding(.horizontal, 16)
             .padding(.top, 2)
-            .padding(.bottom, 110)
+            .padding(.bottom, screenLayout.pageBottomInset)
         }
+        .matchlyScrollTabBarClearance()
         .refreshable {
             dataManager.recalculateAllScores()
             dataManager.objectWillChange.send()
         }
     }
 
-    /// 2) Programs — count hero + score distribution + type split + top programs.
-    private var programsPage: some View {
-        ScrollView {
-            VStack(spacing: 14) {
-                DashboardNumberHero(
-                    bigNumber: "\(dataManager.programs.count)",
-                    unit: "",
-                    title: "Programs Tracked",
-                    subtitle: topProgramMaxScore > 0
-                        ? "Top score \(String(format: "%.1f", topProgramMaxScore))"
-                        : "Score programs to build your rank list",
-                    icon: "building.2.fill",
-                    tint: AppColors.primaryBlue
-                )
-                .dashboardCardStyle()
+    private var dashboardSectionIDs: [String] {
+        layout.orderedSectionIDs(in: DashboardLayout.dashboardSectionIDs)
+            .filter { shouldShowSection($0) }
+    }
 
-                VStack(alignment: .leading, spacing: 14) {
-                    DashboardSectionHeader(
-                        title: "Score Distribution",
-                        icon: "chart.bar.fill",
-                        tint: AppColors.accentOrange
-                    )
-                    ScoreDistributionChart(buckets: scoreBuckets)
-                }
-                .dashboardCardStyle()
-
-                VStack(alignment: .leading, spacing: 14) {
-                    DashboardSectionHeader(
-                        title: "Program Type",
-                        icon: "square.split.2x1.fill",
-                        tint: AppColors.accentTeal
-                    )
-                    ProgramTypeSplit(
-                        academic: academicCount,
-                        community: communityCount,
-                        hybrid: hybridCount
-                    )
-                }
-                .dashboardCardStyle()
-
-                if !topPrograms.isEmpty {
-                    topProgramsSection
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 2)
-            .padding(.bottom, 110)
-        }
-        .refreshable {
-            dataManager.recalculateAllScores()
-            dataManager.objectWillChange.send()
+    @ViewBuilder
+    private func dashboardSectionView(for sectionId: String) -> some View {
+        switch sectionId {
+        case "overviewHero":
+            DashboardSnapshotHero(
+                progress: overviewHeroProgress,
+                progressCaption: overviewHeroProgressCaption,
+                bigNumber: overviewHeroBigNumber,
+                unit: overviewHeroUnit,
+                title: "Your Interview Season",
+                nextInterviewProgram: upcomingInterviews.first,
+                ringSegments: overviewHeroRingSegments,
+                stats: overviewHeroStats,
+                accentTint: overviewHeroAccentTint,
+                onStatTap: handleHeroStatTap
+            )
+            .dashboardCardStyle()
+        case "needsAttention":
+            needsAttentionCard
+        case "analytics":
+            analyticsSection
+        case "quickActions":
+            quickActionsSection
+        case "programsCompare":
+            programsCompareCard
+        default:
+            EmptyView()
         }
     }
 
-    /// 3) Interviews — upcoming count hero + chronological timeline.
-    private var interviewsPage: some View {
-        ScrollView {
-            VStack(spacing: 14) {
-                DashboardNumberHero(
-                    bigNumber: "\(upcomingInterviews.count)",
-                    unit: "",
-                    title: "Upcoming Interviews",
-                    subtitle: interviewCount > 0
-                        ? "\(interviewCount) scheduled in total"
-                        : "Add interview dates to plan ahead",
-                    icon: "calendar.badge.clock",
-                    tint: AppColors.accentGreen
-                )
-                .dashboardCardStyle()
-
-                if upcomingInterviews.isEmpty {
-                    interviewsEmptyCard
-                } else {
-                    interviewsTimelineCard
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 2)
-            .padding(.bottom, 110)
-        }
-    }
-
-    private var interviewsTimelineCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+    private var overviewFunnelCard: some View {
+        VStack(alignment: .leading, spacing: screenLayout == .compactVertical ? 10 : 14) {
             DashboardSectionHeader(
-                title: "Timeline",
-                icon: "calendar",
-                tint: AppColors.accentGreen
+                title: "Interview Pipeline",
+                icon: "line.3.horizontal.decrease",
+                tint: AppColors.primaryBlue
+            )
+            ApplicationFunnelChart(stages: funnelStages)
+        }
+        .dashboardCardStyle()
+    }
+
+    private var programsScoreDistributionCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            DashboardSectionHeader(
+                title: "Score Distribution",
+                icon: "chart.bar.fill",
+                tint: AppColors.accentOrange
+            )
+            ScoreDistributionChart(buckets: scoreBuckets, chartHeight: 120)
+        }
+        .dashboardCardStyle()
+    }
+
+    private var programsCompareCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            DashboardSectionHeader(
+                title: "Compare Programs",
+                icon: "square.grid.2x2",
+                tint: AppColors.primaryBlue
             )
 
-            VStack(spacing: 6) {
-                ForEach(upcomingInterviews, id: \.id) { program in
-                    NavigationLink(destination: ProgramEntryView(program: program)) {
-                        UpcomingInterviewRow(program: program)
+            NavigationLink(destination: ProgramComparisonView()) {
+                HStack {
+                    Text("Side-by-side scores and details for 2–4 programs")
+                        .font(.arial(size: 12, weight: .semibold))
+                        .foregroundColor(AppColors.primaryBlue)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.arial(size: 12))
+                        .foregroundColor(.secondary.opacity(0.5))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .dashboardCardStyle()
+    }
+
+    // MARK: - Overview: Needs Attention
+
+    /// Hero center: total programs tracked for the season.
+    private var overviewHeroBigNumber: String {
+        "\(dataManager.programs.count)"
+    }
+
+    private var overviewHeroUnit: String {
+        dataManager.programs.count == 1 ? "program" : "programs"
+    }
+
+    /// Ring: interview completion when dates exist; otherwise rank-list readiness.
+    private var overviewHeroProgress: Double {
+        let total = dataManager.programs.count
+        guard total > 0 else { return 0 }
+
+        if interviewCount > 0 {
+            return min(max(Double(completedInterviewsCount) / Double(interviewCount), 0), 1)
+        }
+
+        let ranked = dataManager.programs.filter { $0.finalScore > 0 }.count
+        return min(max(Double(ranked) / Double(total), 0), 1)
+    }
+
+    private var overviewHeroProgressCaption: String {
+        let total = dataManager.programs.count
+        if total == 0 {
+            return "No invites logged yet"
+        }
+
+        if interviewCount > 0 {
+            return "\(completedInterviewsCount) of \(interviewCount) interviews completed"
+        }
+
+        if programsNeedingInterviewDateCount > 0 {
+            return "\(programsNeedingInterviewDateCount) of \(total) invite\(total == 1 ? "" : "s") need a date"
+        }
+
+        let ranked = dataManager.programs.filter { $0.finalScore > 0 }.count
+        return "\(ranked) of \(total) scored for your rank list"
+    }
+
+    /// Overview section identity — orange, matching the Overview tab.
+    private var overviewHeroAccentTint: Color {
+        AppColors.accentOrange
+    }
+
+    private var overviewHeroStats: [DashboardSnapshotStat] {
+        let programCount = dataManager.programs.count
+        guard programCount > 0 else { return [] }
+
+        let counts = InterviewSeasonStage.statCounts(
+            for: dataManager.programs,
+            preferences: dataManager.preferences
+        )
+        return InterviewSeasonStage.allCases.map { stage in
+            let count = counts[stage] ?? 0
+            return DashboardSnapshotStat(
+                id: stage.rawValue,
+                value: "\(count)",
+                label: stage.label,
+                tint: stage == .toReview && count == 0 ? .secondary : stage.color
+            )
+        }
+    }
+
+    private var pipelineStageCounts: [InterviewSeasonStage: Int] {
+        InterviewSeasonStage.ringStageCounts(for: dataManager.programs, preferences: dataManager.preferences)
+    }
+
+    private func handleHeroStatTap(_ stage: InterviewSeasonStage) {
+        switch stage {
+        case .needDate:
+            deepLinkHandler.requestInterviewsListFocus(.needDate)
+            selectedTab = MainTabLayout.interviewsIndex
+        case .upcoming:
+            deepLinkHandler.requestInterviewsListFocus(.upcoming)
+            selectedTab = MainTabLayout.interviewsIndex
+        case .scored:
+            selectedTab = MainTabLayout.rankListIndex(isCoupleLinked: isCoupleLinked)
+        case .toReview:
+            deepLinkHandler.requestProgramsListFocus(.incomplete)
+            selectedTab = MainTabLayout.programsIndex
+        }
+    }
+
+    /// One arc per pipeline stage; fractions sum to 100% of tracked programs.
+    private var overviewHeroRingSegments: [DashboardSnapshotRingSegment] {
+        let total = dataManager.programs.count
+        guard total > 0 else { return [] }
+
+        let counts = pipelineStageCounts
+        return InterviewSeasonStage.allCases.compactMap { stage in
+            let count = counts[stage] ?? 0
+            guard count > 0 else { return nil }
+            return DashboardSnapshotRingSegment(
+                id: stage.rawValue,
+                fraction: Double(count) / Double(total),
+                color: stage.color
+            )
+        }
+    }
+
+    private var programsNeedingInterviewDateCount: Int {
+        dataManager.programs.filter { $0.interviewDate == nil }.count
+    }
+
+    /// Invites with a past interview date but an incomplete questionnaire.
+    private var postInterviewNeedingScoreCount: Int {
+        let now = Date()
+        let prefs = dataManager.preferences
+        return dataManager.programs.filter { program in
+            guard let date = program.interviewDate, date < now else { return false }
+            return program.needsScoring(preferences: prefs)
+        }.count
+    }
+
+    /// Invites whose questionnaire isn't fully scored yet.
+    private var programsNeedingScoringCount: Int {
+        let prefs = dataManager.preferences
+        return dataManager.programs.filter { $0.needsScoring(preferences: prefs) }.count
+    }
+
+    /// Ring fill: share of enabled questionnaire questions answered across all programs.
+    private var overallQuestionnaireProgress: Double {
+        min(max(completionPercentage / 100.0, 0), 1)
+    }
+
+    private var completedInterviewsCount: Int {
+        let now = Date()
+        return dataManager.programs.filter { program in
+            guard let date = program.interviewDate else { return false }
+            return date < now
+        }.count
+    }
+
+    /// Honest subtitle for the Average Score hero.
+    private var averageScoreSubtitle: String {
+        let count = dataManager.programs.count
+        let scored = dataManager.programs.filter { $0.finalScore > 0 }.count
+        if scored == 0 {
+            return "Rate programs to build your average"
+        }
+        return "Across \(scored) scored program\(scored == 1 ? "" : "s") of \(count)"
+    }
+
+    /// Actionable to-dos surfaced from existing data, each routing to the
+    /// matching existing screen. Shows an "all caught up" state when empty.
+    private var needsAttentionCard: some View {
+        let items = Array(getNextSteps().prefix(4))
+
+        return VStack(alignment: .leading, spacing: 12) {
+            DashboardSectionHeader(
+                title: "Needs Attention",
+                icon: "bell.badge.fill",
+                tint: AppColors.accentOrange
+            )
+
+            if items.isEmpty {
+                HStack(spacing: 12) {
+                    ZStack {
+                        Circle()
+                            .fill(AppColors.accentGreen.opacity(0.15))
+                            .frame(width: 44, height: 44)
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.arial(size: 20, weight: .semibold))
+                            .foregroundColor(AppColors.accentGreen)
+                            .symbolRenderingMode(.hierarchical)
                     }
-                    .buttonStyle(.plain)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("You're all caught up")
+                            .font(.arial(size: 15, weight: .semibold))
+                            .foregroundColor(.primary)
+                        Text("No pending reviews or flags right now")
+                            .font(.arial(size: 13))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.vertical, 4)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(Array(items.enumerated()), id: \.offset) { _, step in
+                        NavigationLink(destination: step.destination) {
+                            attentionRow(step)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
         }
         .dashboardCardStyle()
     }
 
-    private var interviewsEmptyCard: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "calendar.badge.plus")
-                .font(.arial(size: 34, weight: .light))
-                .foregroundColor(.secondary)
-            Text("No upcoming interviews")
-                .font(.arial(size: 16, weight: .semibold))
-                .foregroundColor(.primary)
-            Text("Interview dates you add to programs will appear here, sorted by date.")
-                .font(.arial(size: 13))
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
+    @ViewBuilder
+    private func attentionRow(_ step: NextStep) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(step.color.opacity(0.15))
+                    .frame(width: 44, height: 44)
+                Image(systemName: step.icon)
+                    .font(.arial(size: 18, weight: .semibold))
+                    .foregroundColor(step.color)
+                    .symbolRenderingMode(.hierarchical)
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(step.title)
+                    .font(.arial(size: 15, weight: .semibold))
+                    .foregroundColor(.primary)
+                if !step.subtitle.isEmpty {
+                    Text(step.subtitle)
+                        .font(.arial(size: 13))
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
-        .dashboardCardStyle()
+        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(step.color.opacity(0.08))
+        )
+        .contentShape(Rectangle())
     }
 
     // MARK: - Derived Metrics for Pages
@@ -390,31 +604,19 @@ struct DashboardView: View {
     private var funnelStages: [FunnelStage] {
         let programs = dataManager.programs
         let total = programs.count
-        let reviewed = programs.filter { $0.isReviewed }.count
         let scheduled = programs.filter { $0.interviewDate != nil }.count
+        let interviewed = completedInterviewsCount
         let ranked = programs.filter { $0.finalScore > 0 }.count
         return [
-            FunnelStage(label: "Total", count: total, color: AppColors.primaryBlue),
-            FunnelStage(label: "Reviewed", count: reviewed, color: AppColors.accentTeal),
-            FunnelStage(label: "Interviews", count: scheduled, color: AppColors.accentGreen),
+            FunnelStage(label: "Invites", count: total, color: AppColors.primaryBlue),
+            FunnelStage(label: "Scheduled", count: scheduled, color: AppColors.accentTeal),
+            FunnelStage(label: "Interviewed", count: interviewed, color: AppColors.accentGreen),
             FunnelStage(label: "Ranked", count: ranked, color: AppColors.accentPurple)
         ]
     }
 
     private var scoreBuckets: [ScoreBucket] {
         scoreDistribution.map { ScoreBucket(range: $0.range, count: $0.count, color: $0.color) }
-    }
-
-    private var academicCount: Int {
-        dataManager.programs.filter { $0.type == "Academic" }.count
-    }
-
-    private var communityCount: Int {
-        dataManager.programs.filter { $0.type == "Community" }.count
-    }
-
-    private var hybridCount: Int {
-        dataManager.programs.filter { $0.type == "Hybrid" }.count
     }
 
     private var topProgramMaxScore: Double {
@@ -684,7 +886,7 @@ struct DashboardView: View {
     private var quickStatsRow: some View {
         HStack(spacing: 12) {
             Button(action: {
-                selectedTab = 1 // My Programs tab
+                selectedTab = MainTabLayout.programsIndex
             }) {
                 QuickStatMini(
                     value: "\(dataManager.programs.count)",
@@ -694,7 +896,9 @@ struct DashboardView: View {
             }
             .buttonStyle(.plain)
             
-            NavigationLink(destination: InterviewsView()) {
+            Button(action: {
+                selectedTab = MainTabLayout.interviewsIndex
+            }) {
                 QuickStatMini(
                     value: "\(interviewCount)",
                     label: "Interviews",
@@ -762,8 +966,8 @@ struct DashboardView: View {
     }
     
     private func getGreeting() -> String {
-        let prefs = dataManager.preferences.dashboardPreferences
-        let name = dataManager.preferences.profile.name
+        let prefs = dashboardPreferences
+        let name = dataManager.preferences.profile.greetingFirstName
         
         switch prefs.greetingStyle {
         case .timeBased:
@@ -835,7 +1039,7 @@ struct DashboardView: View {
             ], spacing: 10) {
                 // Total Programs - Primary KPI (top-left priority)
                 Button(action: {
-                    selectedTab = 1 // My Programs tab
+                    selectedTab = MainTabLayout.programsIndex
                 }) {
                     StatCard(
                         title: "Total Programs",
@@ -860,7 +1064,9 @@ struct DashboardView: View {
                 .buttonStyle(.plain)
                 
                 // Interviews - Success indicator (green for positive status)
-                NavigationLink(destination: InterviewsView()) {
+                Button(action: {
+                    selectedTab = MainTabLayout.interviewsIndex
+                }) {
                     StatCard(
                         title: "Interviews",
                         value: "\(interviewCount)",
@@ -901,10 +1107,10 @@ struct DashboardView: View {
     
     // MARK: - Quick Actions
     private var quickActionsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             DashboardSectionHeader(title: "Quick Actions", icon: "bolt.fill", tint: AppColors.accentOrange)
             
-            HStack(spacing: 12) {
+            HStack(spacing: 8) {
                 QuickActionButton(
                     title: "Add Program",
                     icon: "plus.circle.fill",
@@ -913,7 +1119,7 @@ struct DashboardView: View {
                 )
                 
                 Button(action: {
-                    selectedTab = 1 // My Programs tab
+                    selectedTab = MainTabLayout.programsIndex
                 }) {
                     QuickActionContent(
                         title: "My Programs",
@@ -923,7 +1129,7 @@ struct DashboardView: View {
                 }
                 
                 Button(action: {
-                    selectedTab = 2 // Rank List tab
+                    selectedTab = MainTabLayout.rankListIndex(isCoupleLinked: isCoupleLinked)
                 }) {
                     QuickActionContent(
                         title: "Rank List",
@@ -939,7 +1145,7 @@ struct DashboardView: View {
     
     // MARK: - Top Programs
     private var topProgramsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             DashboardSectionHeader(title: "Top Programs", icon: "trophy.fill", tint: AppColors.accentOrange) {
                 NavigationLink(destination: RankListView()) {
                     HStack(spacing: 4) {
@@ -964,68 +1170,79 @@ struct DashboardView: View {
         .dashboardCardStyle()
     }
     
-    // MARK: - Upcoming Interviews
-    private var upcomingInterviewsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            DashboardSectionHeader(title: "Upcoming Interviews", icon: "calendar.badge.clock", tint: AppColors.accentGreen)
-            
-            VStack(spacing: 6) {
-                ForEach(Array(upcomingInterviews.prefix(3)), id: \.id) { program in
-                    NavigationLink(destination: ProgramEntryView(program: program)) {
-                        UpcomingInterviewRow(program: program)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .dashboardCardStyle()
-    }
-    
     // MARK: - Empty State
     private var emptyStateSection: some View {
-        VStack(spacing: 24) {
-            ZStack {
-                // Clean subtle circle
-                Circle()
-                    .fill(Color(.systemGray6))
-                    .frame(width: 100, height: 100)
-                
-                Image(systemName: "cross.case.fill")
-                    .font(.arial(size: 48, weight: .light))
-                    .foregroundColor(Color(white: 0.3))
-            }
-            
-            VStack(spacing: 10) {
-                Text("Get Started")
-                    .font(.arial(size: 24, weight: .semibold))
-                    .foregroundColor(.primary)
-                
-                Text("Add your first residency program to begin building your rank list")
-                    .font(.arial(size: 15, weight: .regular))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 40)
-                    .lineSpacing(2)
-            }
-            
-            Button(action: {
-                showAddProgram = true
-            }) {
-                HStack(spacing: 10) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.arial(size: 18, weight: .medium))
-                    Text("Add Your First Program")
-                        .font(.arial(size: 17, weight: .semibold))
-                }
-                .foregroundColor(.white)
-                .padding(.horizontal, 32)
-                .padding(.vertical, 15)
-                .background(Color(.label))
-                .cornerRadius(12)
-                .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
+        Group {
+            if MatchlyDeviceLayout.isPad && horizontalSizeClass == .regular {
+                iPadEmptyStateSection
+            } else {
+                phoneEmptyStateSection
             }
         }
+    }
+
+    private var phoneEmptyStateSection: some View {
+        VStack(spacing: 22) {
+            MatchlyBrandMark(size: .feature)
+
+            MatchlyBrandHairline(width: 44)
+
+            VStack(spacing: 12) {
+                Text("Get Started")
+                    .font(.arial(size: 24, weight: .light))
+                    .foregroundColor(.primary)
+                    .kerning(1)
+
+                MatchlyEditorialBody(
+                    text: "Search the ACGME catalog and add your first program to start scoring, ranking, and interview prep."
+                )
+                .padding(.horizontal, 28)
+            }
+
+            emptyStateAddButton
+        }
         .padding(.vertical, 50)
+    }
+
+    private var iPadEmptyStateSection: some View {
+        HStack(alignment: .center, spacing: 40) {
+            MatchlyBrandMark(size: .onboarding)
+
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Get Started")
+                    .font(.arial(size: 28, weight: .light))
+                    .foregroundColor(.primary)
+                    .kerning(1)
+
+                MatchlyEditorialBody(
+                    text: "Search the ACGME catalog and add your first program to start scoring, ranking, and interview prep.",
+                    alignment: .leading
+                )
+                .frame(maxWidth: 420, alignment: .leading)
+
+                emptyStateAddButton
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 36)
+        .padding(.horizontal, 24)
+    }
+
+    private var emptyStateAddButton: some View {
+        Button(action: {
+            showAddProgram = true
+        }) {
+            HStack(spacing: 10) {
+                Image(systemName: "plus.circle.fill")
+                    .font(.arial(size: 18, weight: .medium))
+                Text("Add Your First Program")
+                    .font(.arial(size: 17, weight: .semibold))
+            }
+            .padding(.horizontal, 32)
+            .padding(.vertical, 15)
+        }
+        .buttonStyle(.glassProminent)
+        .tint(AppColors.primaryBlue)
     }
     
     // MARK: - Computed Properties
@@ -1060,10 +1277,15 @@ struct DashboardView: View {
             }
             .sorted { ($0.interviewDate ?? now) < ($1.interviewDate ?? now) }
     }
-    
-    private var specialtyBreakdown: [String: Int] {
-        Dictionary(grouping: dataManager.programs, by: { $0.specialty })
-            .mapValues { $0.count }
+
+    private var completedInterviews: [Program] {
+        let now = Date()
+        return dataManager.programs
+            .filter { program in
+                guard let date = program.interviewDate else { return false }
+                return date < now
+            }
+            .sorted { ($0.interviewDate ?? now) > ($1.interviewDate ?? now) }
     }
     
     private var goldSignalCount: Int {
@@ -1102,339 +1324,80 @@ struct DashboardView: View {
         }
     }
     
-    // MARK: - Analytics Section
+    // MARK: - Programs Tab: Signals & Status
+    private var signalBudgetSummaries: [DataManager.SignalBudgetSummary] {
+        dataManager.signalBudgetSummaries()
+    }
+
     private var analyticsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            DashboardSectionHeader(title: "Analytics & Insights", icon: "chart.line.uptrend.xyaxis", tint: AppColors.accentTeal)
-            
-            // Key Metrics Row - with progress indicators (grouped related metrics)
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Performance Metrics")
-                    .font(.arial(size: 12, weight: .semibold))
-                    .foregroundColor(.secondary)
-                    .padding(.horizontal, 2)
-                
-                HStack(spacing: 10) {
-                    AnalyticsStatCardWithProgress(
-                        title: "Average Score",
-                        value: String(format: "%.1f", averageScore),
-                        icon: "star.fill",
-                        color: .orange,
-                        progress: min(averageScore / 100.0, 1.0)
-                    )
-                    
-                    AnalyticsStatCardWithProgress(
-                        title: "Completion",
-                        value: "\(Int(completionPercentage))%",
-                        icon: "checkmark.circle.fill",
-                        color: completionPercentage >= 80 ? .green : (completionPercentage >= 50 ? .orange : .red),
-                        progress: completionPercentage / 100.0
-                    )
-                    
-                    AnalyticsStatCard(
-                        title: "Programs Rated",
-                        value: "\(ratedProgramsCount)/\(dataManager.programs.count)",
-                        icon: "chart.bar.fill",
-                        color: AppColors.primaryBlue
+        VStack(alignment: .leading, spacing: 8) {
+            DashboardSectionHeader(
+                title: "Signals & Status",
+                icon: "star.circle.fill",
+                tint: AppColors.accentOrange
+            )
+
+            if !signalBudgetSummaries.isEmpty {
+                DashboardSignalsDetailBlock(summaries: signalBudgetSummaries)
+            }
+
+            if programsNeedingReview > 0 {
+                if !signalBudgetSummaries.isEmpty {
+                    Divider()
+                        .padding(.vertical, 2)
+                }
+                NavigationLink(destination: ProgramsNeedingReviewView()) {
+                    programsStatusRow(
+                        title: "\(programsNeedingReview) Program\(programsNeedingReview == 1 ? "" : "s") Need Review",
+                        subtitle: "Questionnaires still incomplete after interviews",
+                        icon: "exclamationmark.triangle.fill",
+                        tint: .orange
                     )
                 }
+                .buttonStyle(.plain)
             }
-            
-            // Red Flags Warning - Purposeful red color for critical alerts
+
             if redFlaggedProgramsCount > 0 {
                 NavigationLink(destination: RedFlaggedProgramsView()) {
-                    HStack(spacing: 10) {
-                        ZStack {
-                            Circle()
-                                .fill(Color.red.opacity(0.15))
-                                .frame(width: 36, height: 36)
-                            
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.arial(size: 16, weight: .semibold))
-                                .foregroundColor(.red)
-                        }
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("\(redFlaggedProgramsCount) Program\(redFlaggedProgramsCount == 1 ? "" : "s") with Red Flags")
-                                .font(.arial(size: 14, weight: .semibold))
-                                .foregroundColor(.red)
-                            Text("Review flagged programs")
-                                .font(.arial(size: 11))
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        Spacer()
-                        
-                        Image(systemName: "chevron.right")
-                            .font(.arial(size: 10))
-                            .foregroundColor(.secondary.opacity(0.5))
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(Color.red.opacity(0.08))
-                    .cornerRadius(10)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.red.opacity(0.2), lineWidth: 1)
+                    programsStatusRow(
+                        title: "\(redFlaggedProgramsCount) Program\(redFlaggedProgramsCount == 1 ? "" : "s") with Red Flags",
+                        subtitle: "Review flagged concerns before ranking",
+                        icon: "flag.fill",
+                        tint: .red
                     )
                 }
                 .buttonStyle(.plain)
-            }
-            
-            // Signal Tracking - Enhanced with progress
-            VStack(spacing: 8) {
-                // All Signals - full width with progress
-                NavigationLink(destination: AllSignaledProgramsView()) {
-                    HStack(spacing: 12) {
-                        // Progress indicator
-                        let signalProgress = getSignalProgress()
-                        ZStack {
-                            Circle()
-                                .stroke(Color.orange.opacity(0.2), lineWidth: 3)
-                                .frame(width: 44, height: 44)
-                            
-                            Circle()
-                                .trim(from: 0, to: signalProgress)
-                                .stroke(Color.orange, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                                .frame(width: 44, height: 44)
-                                .rotationEffect(.degrees(-90))
-                                .animation(.spring(response: 0.6, dampingFraction: 0.8), value: signalProgress)
-                            
-                            VStack(spacing: 0) {
-                                Text("\(totalSignalCount)")
-                                    .font(.arial(size: 14, weight: .bold))
-                                    .foregroundColor(.orange)
-                                Text("total")
-                                    .font(.arial(size: 8))
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Signals")
-                                .font(.arial(size: 13, weight: .semibold))
-                                .foregroundColor(.primary)
-                            
-                            HStack(spacing: 6) {
-                                // Show tiered signals (Gold/Silver) if user has any tiered signal programs
-                                if hasTieredSignals {
-                                    if goldSignalCount > 0 {
-                                        HStack(spacing: 2) {
-                                            Image(systemName: "star.fill")
-                                                .font(.arial(size: 9))
-                                            Text("\(goldSignalCount)")
-                                                .font(.arial(size: 10, weight: .medium))
-                                        }
-                                        .foregroundColor(.yellow)
-                                    }
-                                    
-                                    if silverSignalCount > 0 {
-                                        HStack(spacing: 2) {
-                                            Image(systemName: "star")
-                                                .font(.arial(size: 9))
-                                            Text("\(silverSignalCount)")
-                                                .font(.arial(size: 10, weight: .medium))
-                                        }
-                                        .foregroundColor(.gray)
-                                    }
-                                }
-                                
-                                // Show single-level signals if user has any single-level signal programs
-                                if hasSingleLevelSignals && singleLevelSignalCount > 0 {
-                                    HStack(spacing: 2) {
-                                        Image(systemName: "star.fill")
-                                            .font(.arial(size: 9))
-                                        Text("\(singleLevelSignalCount)")
-                                            .font(.arial(size: 10, weight: .medium))
-                                    }
-                                    .foregroundColor(.blue)
-                                }
-                            }
-                        }
-                        
-                        Spacer()
-                        
-                        Image(systemName: "chevron.right")
-                            .font(.arial(size: 10))
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(.vertical, 10)
-                    .padding(.horizontal, 12)
-                    .background(
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(.ultraThinMaterial)
-                            
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(Color.orange.opacity(totalSignalCount > 0 ? 0.08 : 0.04))
-                        }
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.orange.opacity(totalSignalCount > 0 ? 0.25 : 0.12), lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.plain)
-            }
-            
-            // Programs Needing Attention - Yellow warning for attention needed
-            if programsNeedingReview > 0 {
-                NavigationLink(destination: ProgramsNeedingReviewView()) {
-                    HStack(spacing: 10) {
-                        ZStack {
-                            Circle()
-                                .fill(Color.orange.opacity(0.15))
-                                .frame(width: 36, height: 36)
-                            
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.arial(size: 16, weight: .semibold))
-                                .foregroundColor(.orange)
-                        }
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("\(programsNeedingReview) Program\(programsNeedingReview == 1 ? "" : "s") Need Review")
-                                .font(.arial(size: 14, weight: .semibold))
-                                .foregroundColor(.primary)
-                            Text("Complete questionnaire data")
-                                .font(.arial(size: 11))
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        Spacer()
-                        
-                        Image(systemName: "chevron.right")
-                            .font(.arial(size: 10))
-                            .foregroundColor(.secondary.opacity(0.5))
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(Color.orange.opacity(0.08))
-                    .cornerRadius(10)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.orange.opacity(0.2), lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.plain)
-            }
-            
-            // Specialty Breakdown - Enhanced visualization
-            if !specialtyBreakdown.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("By Specialty")
-                        .font(.arial(size: 12, weight: .semibold))
-                        .foregroundColor(.secondary)
-                    
-                    let sortedSpecialties = Array(specialtyBreakdown.sorted(by: { $0.value > $1.value }).prefix(5))
-                    let maxCount = sortedSpecialties.map { $0.value }.max() ?? 1
-                    
-                    VStack(spacing: 6) {
-                        ForEach(sortedSpecialties, id: \.key) { specialty, count in
-                            HStack(spacing: 10) {
-                                // Specialty icon and name
-                                HStack(spacing: 6) {
-                                    Image(systemName: "stethoscope")
-                                        .font(.arial(size: 12))
-                                        .foregroundColor(SpecialtyFormatter.color(for: specialty))
-                                    
-                                    Text(SpecialtyFormatter.abbreviation(for: specialty))
-                                        .font(.arial(size: 11, weight: .semibold))
-                                        .foregroundColor(SpecialtyFormatter.color(for: specialty))
-                                }
-                                .frame(width: 60, alignment: .leading)
-                                
-                                // Progress bar
-                                GeometryReader { geometry in
-                                    ZStack(alignment: .leading) {
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .fill(SpecialtyFormatter.color(for: specialty).opacity(0.15))
-                                            .frame(height: 20)
-                                        
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .fill(
-                                                LinearGradient(
-                                                    colors: [
-                                                        SpecialtyFormatter.color(for: specialty),
-                                                        SpecialtyFormatter.color(for: specialty).opacity(0.7)
-                                                    ],
-                                                    startPoint: .leading,
-                                                    endPoint: .trailing
-                                                )
-                                            )
-                                            .frame(width: geometry.size.width * CGFloat(count) / CGFloat(maxCount), height: 20)
-                                            .animation(.spring(response: 0.5, dampingFraction: 0.7), value: count)
-                                    }
-                                }
-                                .frame(height: 20)
-                                
-                                // Count
-                                Text("\(count)")
-                                    .font(.arial(size: 12, weight: .bold))
-                                    .foregroundColor(.primary)
-                                    .frame(width: 30, alignment: .trailing)
-                            }
-                        }
-                    }
-                    .padding(.vertical, 6)
-                    .padding(.horizontal, 4)
-                }
-            }
-            
-            // Score Distribution - Enhanced visualization
-            if !scoreDistribution.isEmpty && scoreDistribution.contains(where: { $0.count > 0 }) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Score Distribution")
-                        .font(.arial(size: 12, weight: .semibold))
-                        .foregroundColor(.secondary)
-                    
-                    let maxCount = scoreDistribution.map { $0.count }.max() ?? 1
-                    
-                    VStack(spacing: 6) {
-                        HStack(alignment: .bottom, spacing: 6) {
-                            ForEach(scoreDistribution, id: \.range) { bucket in
-                                VStack(spacing: 4) {
-                                    // Bar chart
-                                    VStack(spacing: 0) {
-                                        Spacer(minLength: 0)
-                                        
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .fill(
-                                                LinearGradient(
-                                                    colors: [
-                                                        bucket.color,
-                                                        bucket.color.opacity(0.7)
-                                                    ],
-                                                    startPoint: .top,
-                                                    endPoint: .bottom
-                                                )
-                                            )
-                                            .frame(height: maxCount > 0 ? max(8, CGFloat(bucket.count) / CGFloat(maxCount) * 60) : 8)
-                                            .shadow(color: bucket.color.opacity(0.3), radius: 2, x: 0, y: 1)
-                                    }
-                                    .frame(height: 60)
-                                    
-                                    Text("\(bucket.count)")
-                                        .font(.arial(size: 10, weight: .bold))
-                                        .foregroundColor(.primary)
-                                    
-                                    Text(bucket.range)
-                                        .font(.arial(size: 9))
-                                        .foregroundColor(.secondary)
-                                }
-                                .frame(maxWidth: .infinity)
-                            }
-                        }
-                    }
-                    .padding(.vertical, 8)
-                    .padding(.horizontal, 4)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color(.systemGray6).opacity(0.5))
-                    )
-                }
             }
         }
         .dashboardCardStyle()
+    }
+
+    private func programsStatusRow(title: String, subtitle: String, icon: String, tint: Color) -> some View {
+        HStack(spacing: 10) {
+            ZStack {
+                Circle()
+                    .fill(tint.opacity(0.15))
+                    .frame(width: 32, height: 32)
+                Image(systemName: icon)
+                    .font(.arial(size: 14, weight: .semibold))
+                    .foregroundColor(tint)
+            }
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.arial(size: 13, weight: .semibold))
+                    .foregroundColor(.primary)
+                Text(subtitle)
+                    .font(.arial(size: 10))
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: 8)
+        }
+        .padding(.horizontal, 2)
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
     }
     
     // MARK: - Next Steps Section
@@ -1549,42 +1512,64 @@ struct DashboardView: View {
     // MARK: - Helper Methods for Next Steps
     private func getNextSteps() -> [NextStep] {
         var steps: [NextStep] = []
-        
-        // Programs needing review
-        if programsNeedingReview > 0 {
+
+        // Invites missing an interview date — the most common first step after adding a program.
+        let programsWithoutInterviews = dataManager.programs.filter { $0.interviewDate == nil }
+        if !programsWithoutInterviews.isEmpty {
             steps.append(NextStep(
-                title: "Review \(programsNeedingReview) program\(programsNeedingReview == 1 ? "" : "s")",
-                subtitle: "Complete missing data",
-                icon: "exclamationmark.triangle.fill",
-                color: .red,
+                title: programsWithoutInterviews.count == 1 ? "Set interview date" : "Set interview dates",
+                subtitle: "\(programsWithoutInterviews.count) invite\(programsWithoutInterviews.count == 1 ? "" : "s") missing a date",
+                icon: "calendar.badge.plus",
+                color: AppColors.accentOrange,
+                destination: AnyView(SetInterviewDatesView())
+            ))
+        }
+
+        // Scoring to-dos — post-interview first, then partial, then never started.
+        if postInterviewNeedingScoreCount > 0 {
+            steps.append(NextStep(
+                title: "Score \(postInterviewNeedingScoreCount) interview\(postInterviewNeedingScoreCount == 1 ? "" : "s")",
+                subtitle: "Complete questionnaires after your visit",
+                icon: "list.star",
+                color: AppColors.primaryBlue,
+                destination: AnyView(ProgramsNeedingReviewView())
+            ))
+        } else if programsNeedingScoringCount > 0 {
+            steps.append(NextStep(
+                title: "Finish scoring \(programsNeedingScoringCount) program\(programsNeedingScoringCount == 1 ? "" : "s")",
+                subtitle: "Complete questionnaires for your rank list",
+                icon: "square.and.pencil",
+                color: AppColors.primaryBlue,
                 destination: AnyView(ProgramsNeedingReviewView())
             ))
         }
-        
-        // Programs without interview dates
-        let programsWithoutInterviews = dataManager.programs.filter { $0.interviewDate == nil }
-        if !programsWithoutInterviews.isEmpty && programsWithoutInterviews.count < dataManager.programs.count {
+
+        // Upcoming interview within the next week.
+        if let soon = upcomingInterviewsThisWeek.first, let date = soon.interviewDate {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "MMM d"
+            let name = HospitalNameFormatter.format(soon.hospital.isEmpty ? soon.name : soon.hospital)
             steps.append(NextStep(
-                title: "Add interview dates",
-                subtitle: "\(programsWithoutInterviews.count) program\(programsWithoutInterviews.count == 1 ? "" : "s") missing dates",
-                icon: "calendar.badge.plus",
-                color: .blue,
-                destination: AnyView(InterviewsView())
+                title: "Prep for \(name)",
+                subtitle: "Interview \(Calendar.current.isDateInToday(date) ? "today" : "on \(formatter.string(from: date))")",
+                icon: "calendar.badge.clock",
+                color: AppColors.accentGreen,
+                destination: AnyView(InterviewPrepView(program: soon))
             ))
         }
-        
-        // Red flags
-        if redFlaggedProgramsCount > 0 {
-            steps.append(NextStep(
-                title: "Review \(redFlaggedProgramsCount) red flag\(redFlaggedProgramsCount == 1 ? "" : "s")",
-                subtitle: "Important considerations",
-                icon: "flag.fill",
-                color: .red,
-                destination: AnyView(RedFlaggedProgramsView())
-            ))
-        }
-        
+
         return steps
+    }
+
+    private var upcomingInterviewsThisWeek: [Program] {
+        let now = Date()
+        guard let weekOut = Calendar.current.date(byAdding: .day, value: 7, to: now) else {
+            return upcomingInterviews
+        }
+        return upcomingInterviews.filter { program in
+            guard let date = program.interviewDate else { return false }
+            return date <= weekOut
+        }
     }
     
     private func getRecentPrograms() -> [Program] {
@@ -1603,13 +1588,7 @@ struct DashboardView: View {
     }
     
     private var programsNeedingReview: Int {
-        dataManager.programs.filter { program in
-            // Program has no questionnaire data or very incomplete data
-            let hasAnyRating = program.questionnaire.sections.contains { section in
-                section.items.contains { $0.programRating > 0 }
-            }
-            return !hasAnyRating
-        }.count
+        programsNeedingScoringCount
     }
     
     private var topProgramScore: Double {
@@ -1659,100 +1638,40 @@ struct DashboardView: View {
     private var completionPercentage: Double {
         let programs = dataManager.programs
         guard !programs.isEmpty else { return 0 }
-        
-        var totalQuestions = 0
-        var answeredQuestions = 0
-        
-        for program in programs {
-            for section in program.questionnaire.sections {
-                if section.title.contains("Red flags") { continue }
-                for item in section.items {
-                    totalQuestions += 1
-                    if item.programRating > 0 {
-                        answeredQuestions += 1
-                    }
-                }
-            }
-        }
-        
-        guard totalQuestions > 0 else { return 0 }
-        return (Double(answeredQuestions) / Double(totalQuestions)) * 100
+        let prefs = dataManager.preferences
+
+        let ratios = programs.map { $0.questionnaireCompletionRatio(preferences: prefs) }
+        return (ratios.reduce(0, +) / Double(ratios.count)) * 100
     }
     
     private func getSignalProgress() -> Double {
-        // Calculate progress based on signal usage across all specialties
-        let specialties = Set(dataManager.programs.map { $0.specialty })
-        guard !specialties.isEmpty else { return 0 }
-        
-        var totalUsed = 0
-        var totalAvailable = 0
-        
-        for specialty in specialties {
-            let usage = dataManager.getSignalUsage(for: specialty)
-            totalUsed += usage.goldUsed + usage.silverUsed
-            totalAvailable += usage.goldLimit + usage.silverLimit
+        let summaries = dataManager.signalBudgetSummaries()
+        guard !summaries.isEmpty else { return 0 }
+
+        let totalUsed = summaries.reduce(0) { $0 + $1.goldUsed + $1.silverUsed }
+        let totalAvailable = summaries.reduce(0) { partial, summary in
+            partial + summary.goldLimit + summary.silverLimit
         }
-        
+
         guard totalAvailable > 0 else { return 0 }
         return min(Double(totalUsed) / Double(totalAvailable), 1.0)
     }
     
     // MARK: - Dashboard Layout Helpers
-    private struct DashboardSection {
-        let id: String
-        let view: AnyView
-    }
-    
-    private func getOrderedSections() -> [DashboardSection] {
-        // Build sections dictionary - handle AnyView returns properly
-        var allSections: [String: AnyView] = [:]
-        
-        allSections["welcome"] = AnyView(welcomeHeader)
-        allSections["quickActions"] = AnyView(quickActionsSection)
-        allSections["nextSteps"] = AnyView(nextStepsSection)
-        allSections["quickStats"] = AnyView(quickStatsSection)
-        allSections["analytics"] = AnyView(analyticsSection)
-        allSections["topPrograms"] = AnyView(topProgramsSection)
-        allSections["upcomingInterviews"] = AnyView(upcomingInterviewsSection)
-        allSections["recentActivity"] = AnyView(recentActivitySection)
-        
-        // Get ordered section IDs from preferences, or use default order
-        // Prioritize key metrics at top (information hierarchy principle)
-        let defaultOrder = ["welcome", "quickStats", "quickActions", "nextSteps", "analytics", "topPrograms", "upcomingInterviews", "recentActivity"]
-        let orderedIds = layout.sectionOrder.isEmpty ? defaultOrder : layout.sectionOrder
-        
-        // Build ordered sections array
-        var orderedSections: [DashboardSection] = []
-        for id in orderedIds {
-            if let view = allSections[id] {
-                orderedSections.append(DashboardSection(id: id, view: view))
-            }
-        }
-        
-        // Add any sections not in the order list at the end
-        for (id, view) in allSections {
-            if !orderedIds.contains(id) {
-                orderedSections.append(DashboardSection(id: id, view: view))
-            }
-        }
-        
-        return orderedSections
-    }
-    
+
     private func shouldShowSection(_ sectionId: String) -> Bool {
-        // Check if section is enabled in preferences
         guard layout.isSectionEnabled(sectionId) else { return false }
-        
-        // Additional conditional logic for specific sections
+
         switch sectionId {
-        case "nextSteps", "analytics", "recentActivity":
-            return !dataManager.programs.isEmpty
-        case "topPrograms":
-            return !topPrograms.isEmpty
-        case "upcomingInterviews":
-            return !upcomingInterviews.isEmpty
-        default:
+        case "needsAttention", "overviewHero", "quickActions":
             return true
+        case "analytics":
+            let hasStatus = programsNeedingReview > 0 || redFlaggedProgramsCount > 0
+            return !signalBudgetSummaries.isEmpty || (!dataManager.programs.isEmpty && hasStatus)
+        case "programsCompare":
+            return dataManager.programs.count >= 2
+        default:
+            return false
         }
     }
     
@@ -1782,8 +1701,11 @@ struct DashboardSectionHeader<Trailing: View>: View {
             }
             
             Text(title)
-                .font(.arial(size: 20, weight: .bold))
+                .font(MatchlyEditorialTypography.displayFont(size: 16))
                 .foregroundColor(.primary)
+                .kerning(MatchlyEditorialTypography.heroTitleKerning(for: 16))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
             
             Spacer(minLength: 8)
             
@@ -1845,11 +1767,7 @@ struct StatCard: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 14)
         .frame(maxWidth: .infinity, minHeight: 110, maxHeight: 110, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 14)
-                .fill(Color(.systemBackground))
-        )
-        .shadow(color: Color.black.opacity(0.04), radius: 8, x: 0, y: 2)
+        .glassEffect(.regular, in: .rect(cornerRadius: 14))
         .contentShape(Rectangle()) // Makes entire card tappable
     }
 }
@@ -1873,29 +1791,25 @@ struct QuickActionContent: View {
     let color: Color
     
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 6) {
             ZStack {
                 Circle()
                     .fill(color.opacity(0.15))
-                    .frame(width: 48, height: 48)
+                    .frame(width: 40, height: 40)
                 Image(systemName: icon)
-                    .font(.arial(size: 22, weight: .semibold))
+                    .font(.arial(size: 18, weight: .semibold))
                     .foregroundColor(color)
                     .symbolRenderingMode(.hierarchical)
             }
             
             Text(title)
-                .font(.arial(size: 14, weight: .semibold))
+                .font(.arial(size: 12, weight: .semibold))
                 .foregroundColor(.primary)
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 18)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(AppColors.dashboardCard)
-        )
-        .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 3)
+        .padding(.vertical, 12)
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 14))
     }
 }
 
@@ -1949,13 +1863,13 @@ struct TopProgramRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(HospitalNameFormatter.format(program.hospital.isEmpty ? program.name : program.hospital))
                     .font(.arial(size: 15, weight: .semibold))
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.8)
+                    .lineLimit(3)
+                    .minimumScaleFactor(0.85)
                     .fixedSize(horizontal: false, vertical: true)
                 
                 HStack(spacing: 6) {
-                    if !program.city.isEmpty && !program.state.isEmpty {
-                        Text("\(program.city), \(program.state)")
+                    if program.hasDisplayLocation {
+                        Text(program.displayCityState)
                             .font(.arial(size: 13))
                             .foregroundColor(.secondary)
                     }
@@ -1967,47 +1881,8 @@ struct TopProgramRow: View {
                             .font(.arial(size: 13, weight: .semibold))
                     }
                     .foregroundColor(scoreColor(program.finalScore))
-                }
-            }
-            
-            Spacer()
-            
-            Image(systemName: "chevron.right")
-                .font(.arial(size: 12))
-                .foregroundColor(.secondary.opacity(0.4))
-        }
-        .padding(.vertical, 10)
-        .padding(.horizontal, 4)
-    }
-    
-}
 
-struct UpcomingInterviewRow: View {
-    let program: Program
-    
-    var body: some View {
-        HStack(spacing: 12) {
-            // Calendar icon - cleaner and more vibrant
-            ZStack {
-                Circle()
-                    .fill(Color(red: 0.15, green: 0.75, blue: 0.35).opacity(0.15))
-                    .frame(width: 40, height: 40)
-                
-                Image(systemName: "calendar.badge.clock")
-                    .font(.arial(size: 18, weight: .semibold))
-                    .foregroundColor(Color(red: 0.15, green: 0.75, blue: 0.35))
-            }
-            
-            // Program info
-            VStack(alignment: .leading, spacing: 4) {
-                Text(HospitalNameFormatter.format(program.hospital.isEmpty ? program.name : program.hospital))
-                    .font(.arial(size: 15, weight: .semibold))
-                    .lineLimit(1)
-                
-                if let interviewDate = program.interviewDate {
-                    Text(interviewDate, style: .date)
-                        .font(.arial(size: 13))
-                        .foregroundColor(.secondary)
+                    ProgramVoiceMemoBadge(program: program, iconSize: 9, textSize: 11)
                 }
             }
             
@@ -2020,6 +1895,7 @@ struct UpcomingInterviewRow: View {
         .padding(.vertical, 10)
         .padding(.horizontal, 4)
     }
+    
 }
 
 // MARK: - Helper Functions
@@ -2036,90 +1912,6 @@ extension DashboardView {
         if let presented = viewController.presentedViewController {
             findAndPopNavigationControllers(in: presented)
         }
-    }
-}
-
-struct AnalyticsStatCard: View {
-    let title: String
-    let value: String
-    let icon: String
-    let color: Color
-    
-    var body: some View {
-        VStack(spacing: 6) {
-            // Icon container - same size as progress circle (40x40)
-            ZStack {
-                Circle()
-                    .fill(color.opacity(0.15))
-                    .frame(width: 40, height: 40)
-                
-                Image(systemName: icon)
-                    .font(.arial(size: 14, weight: .medium))
-                    .foregroundColor(color)
-            }
-            
-            Text(value)
-                .font(.arial(size: 16, weight: .bold))
-                .foregroundColor(.primary)
-            
-            Text(title)
-                .font(.arial(size: 9, weight: .medium))
-                .foregroundColor(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: 100) // Fixed height to match AnalyticsStatCardWithProgress
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(color.opacity(0.08))
-        )
-    }
-}
-
-struct AnalyticsStatCardWithProgress: View {
-    let title: String
-    let value: String
-    let icon: String
-    let color: Color
-    let progress: Double
-    
-    var body: some View {
-        VStack(spacing: 6) {
-            ZStack {
-                // Background circle
-                Circle()
-                    .stroke(color.opacity(0.2), lineWidth: 4)
-                    .frame(width: 40, height: 40)
-                
-                // Progress circle
-                Circle()
-                    .trim(from: 0, to: progress)
-                    .stroke(color, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                    .frame(width: 40, height: 40)
-                    .rotationEffect(.degrees(-90))
-                    .animation(.spring(response: 0.6, dampingFraction: 0.8), value: progress)
-                
-                // Icon in center
-                Image(systemName: icon)
-                    .font(.arial(size: 12, weight: .medium))
-                    .foregroundColor(color)
-            }
-            
-            Text(value)
-                .font(.arial(size: 16, weight: .bold))
-                .foregroundColor(.primary)
-            
-            Text(title)
-                .font(.arial(size: 9, weight: .medium))
-                .foregroundColor(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: 100) // Fixed height to match AnalyticsStatCard
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(color.opacity(0.08))
-        )
     }
 }
 
@@ -2153,5 +1945,6 @@ struct QuickStatMini: View {
 #Preview {
     DashboardView()
         .environmentObject(DataManager.shared)
+        .environmentObject(CoupleDeepLinkHandler())
 }
 

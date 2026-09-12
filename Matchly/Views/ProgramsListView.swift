@@ -10,8 +10,10 @@ import Combine
 
 struct ProgramsListView: View {
     @EnvironmentObject var dataManager: DataManager
+    @EnvironmentObject private var deepLinkHandler: CoupleDeepLinkHandler
     @State private var showAddProgram = false
     @State private var sortOption: SortOption = .name
+    @State private var listFilter: ProgramListFilter = .all
     @State private var isEditMode = false
     @State private var selectedPrograms = Set<String>()
     
@@ -21,159 +23,133 @@ struct ProgramsListView: View {
         case location = "Location"
         case specialty = "Specialty"
     }
-    
+
+    enum ProgramListFilter: String, CaseIterable {
+        case all = "All"
+        case completed = "Completed"
+        case incomplete = "Incomplete"
+    }
+
+    private var programFilterTabs: [MatchlyColoredTabOption<ProgramListFilter>] {
+        let visiblePrograms = savedPrograms
+        let incompleteCount = visiblePrograms.filter { $0.needsScoring(preferences: dataManager.preferences) }.count
+        return [
+            MatchlyColoredTabOption(value: .all, title: "All", tint: AppColors.primaryBlue, count: visiblePrograms.count),
+            MatchlyColoredTabOption(value: .completed, title: "Completed", tint: AppColors.pipelineScored, count: visiblePrograms.count - incompleteCount),
+            MatchlyColoredTabOption(value: .incomplete, title: "Incomplete", tint: AppColors.pipelineToReview, count: incompleteCount)
+        ]
+    }
+
+    /// Every saved program, including cross-specialty adds that aren't in Settings specialties yet.
+    private var savedPrograms: [Program] {
+        dataManager.programs
+    }
+
     var body: some View {
-        NavigationView {
+        MatchlyNavigationView {
             Group {
                 if dataManager.programs.isEmpty {
                     EmptyProgramsView(showAddProgram: $showAddProgram)
+                        .matchlyRootContentFrame()
                 } else {
                     // Group programs by specialty
-                    let groupedPrograms = Dictionary(grouping: sortedPrograms) { $0.specialty }
+                    let groupedPrograms = Dictionary(grouping: filteredPrograms) {
+                        SpecialtyFormatter.normalizedUserSpecialty($0.specialty)
+                    }
                     let sortedSpecialties = groupedPrograms.keys.sorted()
                     
-                    List {
-                        ForEach(sortedSpecialties, id: \.self) { specialty in
-                            Section(header: 
-                                HStack(spacing: 6) {
-                                    Image(systemName: "stethoscope")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(SpecialtyFormatter.color(for: specialty))
-                                    Text("\(specialty) (\(SpecialtyFormatter.abbreviation(for: specialty)))")
-                                        .font(.system(size: 13, weight: .semibold))
-                                }
-                                .foregroundColor(.secondary)
-                            ) {
-                                ForEach(groupedPrograms[specialty] ?? []) { program in
-                                    if isEditMode {
-                                        HStack {
-                                            Button(action: {
-                                                if selectedPrograms.contains(program.id) {
-                                                    selectedPrograms.remove(program.id)
-                                                } else {
-                                                    selectedPrograms.insert(program.id)
+                    VStack(spacing: 0) {
+                        MatchlyListPageTitleRow(title: "My Programs")
+
+                        MatchlyColoredTabBar(options: programFilterTabs, selection: $listFilter)
+                            .padding(.bottom, 4)
+
+                        programsFilterToolbar
+
+                        programsSectionDivider
+                        programsPrimaryActionRow
+
+                        programsSectionDivider
+                            .padding(.bottom, 4)
+
+                        if listFilter == .incomplete && filteredPrograms.isEmpty {
+                            ContentUnavailableView {
+                                Label("All Questionnaires Complete", systemImage: "checkmark.circle.fill")
+                            } description: {
+                                Text("Every program has answered all enabled questionnaire items.")
+                            }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .padding(.horizontal, 24)
+                        } else if listFilter == .completed && filteredPrograms.isEmpty {
+                            ContentUnavailableView {
+                                Label("No Completed Programs Yet", systemImage: "doc.text")
+                            } description: {
+                                Text("Finish questionnaires to mark programs as complete.")
+                            }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .padding(.horizontal, 24)
+                        } else {
+                        List {
+                            ForEach(sortedSpecialties, id: \.self) { specialty in
+                                Section(header: MatchlySpecialtySectionHeader(specialty: specialty)) {
+                                    ForEach(groupedPrograms[specialty] ?? []) { program in
+                                        if isEditMode {
+                                            HStack {
+                                                Button(action: {
+                                                    if selectedPrograms.contains(program.id) {
+                                                        selectedPrograms.remove(program.id)
+                                                    } else {
+                                                        selectedPrograms.insert(program.id)
+                                                    }
+                                                }) {
+                                                    Image(systemName: selectedPrograms.contains(program.id) ? "checkmark.circle.fill" : "circle")
+                                                        .foregroundColor(selectedPrograms.contains(program.id) ? .blue : .gray)
+                                                        .font(.arial(size: 22))
                                                 }
-                                            }) {
-                                                Image(systemName: selectedPrograms.contains(program.id) ? "checkmark.circle.fill" : "circle")
-                                                    .foregroundColor(selectedPrograms.contains(program.id) ? .blue : .gray)
-                                                    .font(.system(size: 22))
+                                                .buttonStyle(.plain)
+
+                                                CompactProgramRowView(program: program)
                                             }
-                                            .buttonStyle(.plain)
-                                            
-                                            CompactProgramRowView(program: program)
-                                        }
-                                    } else {
-                                        NavigationLink(destination: ProgramEntryView(program: program)) {
-                                            CompactProgramRowView(program: program)
+                                            .listRowInsets(programsListRowInsets)
+                                        } else {
+                                            NavigationLink(
+                                                destination: ProgramEntryView(
+                                                    program: program
+                                                )
+                                            ) {
+                                                CompactProgramRowView(program: program)
+                                            }
+                                            .listRowInsets(programsListRowInsets)
                                         }
                                     }
-                                }
-                                .onDelete { offsets in
-                                    deleteProgramsInSpecialty(specialty, at: offsets, from: groupedPrograms[specialty] ?? [])
-                                }
-                            }
-                        }
-                    }
-                    .listStyle(.insetGrouped)
-                    .padding(.bottom, 90) // Space for custom tab bar
-                    .refreshable {
-                        dataManager.recalculateAllScores()
-                        dataManager.objectWillChange.send()
-                    }
-                }
-            }
-            .navigationTitle("My Programs")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Menu {
-                        ForEach(SortOption.allCases, id: \.self) { option in
-                            Button(action: {
-                                sortOption = option
-                            }) {
-                                HStack {
-                                    Text(option.rawValue)
-                                    if sortOption == option {
-                                        Spacer()
-                                        Image(systemName: "checkmark")
+                                    .onDelete { offsets in
+                                        deleteProgramsInSpecialty(specialty, at: offsets, from: groupedPrograms[specialty] ?? [])
                                     }
                                 }
                             }
                         }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "arrow.up.arrow.down")
-                                .font(.system(size: 14))
-                            Text("Sort")
-                                .font(.system(size: 15))
+                        .listStyle(.insetGrouped)
+                        .scrollContentBackground(.hidden)
+                        .listSectionSpacing(16)
+                        .matchlyReadableWidth()
+                        .matchlyScrollTabBarClearance()
+                        .refreshable {
+                            dataManager.recalculateAllScores()
+                            dataManager.objectWillChange.send()
                         }
-                    }
-                }
-                
-                ToolbarItemGroup(placement: .navigationBarTrailing) {
-                    if isEditMode {
-                        // Delete selected programs
-                        Button(action: {
-                            for programId in selectedPrograms {
-                                if let program = dataManager.programs.first(where: { $0.id == programId }) {
-                                    dataManager.deleteProgram(program)
-                                }
-                            }
-                            selectedPrograms.removeAll()
-                            isEditMode = false
-                        }) {
-                            Image(systemName: "trash.fill")
-                                .foregroundColor(selectedPrograms.isEmpty ? .gray : .red)
-                        }
-                        .disabled(selectedPrograms.isEmpty)
-                        
-                        // Done button
-                        Button("Done") {
-                            isEditMode = false
-                            selectedPrograms.removeAll()
-                        }
-                    } else {
-                        NavigationLink(destination: ProgramsMapView()) {
-                            Image(systemName: "map.fill")
-                                .font(.system(size: 18))
-                                .foregroundColor(.blue)
-                        }
-                        
-                        Button(action: {
-                            showAddProgram = true
-                        }) {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.system(size: 22))
-                                .foregroundColor(.blue)
-                        }
-                        
-                        // Edit button
-                        Button(action: {
-                            isEditMode = true
-                        }) {
-                            Text("Edit")
                         }
                     }
                 }
             }
+            .matchlyRootContentFrame()
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $showAddProgram) {
                 ProgramSearchView(
-                    onSelect: { programInfo in
-                        // Create Program from ResidencyProgramInfo and add it
-                        let newProgram = Program(
-                            specialty: programInfo.specialty,
-                            name: programInfo.name,
-                            hospital: HospitalNameFormatter.format(programInfo.hospital),
-                            city: programInfo.city,
-                            state: programInfo.state,
-                            address: programInfo.address,
-                            type: programInfo.type,
-                            accreditationID: programInfo.accreditationID,
-                            isIMGFriendly: programInfo.isIMGFriendly
-                        )
-                        dataManager.addProgram(newProgram)
-                    },
+                    onSelect: { _ in },
                     allowMultiSelect: true
                 )
+                .matchlyExpandedSheet()
             }
             .onAppear {
                 // Refresh when view appears to ensure latest scores are shown
@@ -182,10 +158,154 @@ struct ProgramsListView: View {
                 cachedSortedPrograms = []
                 lastSortOption = nil
                 lastProgramsCount = 0
+                applyProgramsListFocusIfNeeded()
             }
+            .onChange(of: deepLinkHandler.pendingProgramsListFocus) { _, focus in
+                guard focus != nil else { return }
+                applyProgramsListFocusIfNeeded()
+            }
+            .appCanvasBackground()
         }
     }
-    
+
+    // MARK: - View Components
+
+    private func applyProgramsListFocusIfNeeded() {
+        guard deepLinkHandler.consumeProgramsListFocus() == .incomplete else { return }
+        listFilter = .incomplete
+        isEditMode = false
+        selectedPrograms.removeAll()
+    }
+
+    private var programsSectionDivider: some View {
+        MatchlyBrandHairline(fullWidth: true, color: AppColors.secondaryText.opacity(0.22))
+            .padding(.horizontal, 16)
+    }
+
+    private var programsFilterToolbar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                sortMenu
+                    .disabled(isEditMode)
+
+                Spacer(minLength: 0)
+
+                Text("\(filteredPrograms.count) program\(filteredPrograms.count == 1 ? "" : "s")")
+                    .font(.arial(size: 12, weight: .medium))
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 4)
+        .padding(.bottom, 10)
+    }
+
+    private var programsPrimaryActionRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                if isEditMode {
+                    Button {
+                        for programId in selectedPrograms {
+                            if let program = dataManager.programs.first(where: { $0.id == programId }) {
+                                dataManager.deleteProgram(program)
+                            }
+                        }
+                        selectedPrograms.removeAll()
+                        isEditMode = false
+                    } label: {
+                        MatchlyActionChipLabel(
+                            icon: "trash.fill",
+                            text: "Delete",
+                            tint: selectedPrograms.isEmpty ? .secondary : AppColors.accentRed,
+                            isFilled: !selectedPrograms.isEmpty
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(selectedPrograms.isEmpty)
+
+                    Button {
+                        isEditMode = false
+                        selectedPrograms.removeAll()
+                    } label: {
+                        MatchlyActionChipLabel(
+                            icon: "checkmark",
+                            text: "Done",
+                            tint: AppColors.primaryBlue,
+                            isFilled: true
+                        )
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Button {
+                        showAddProgram = true
+                    } label: {
+                        MatchlyActionChipLabel(
+                            icon: "plus",
+                            text: "Add Program",
+                            tint: AppColors.primaryBlue,
+                            isFilled: true
+                        )
+                    }
+                    .buttonStyle(.plain)
+
+                    if dataManager.programs.count >= 2 {
+                        NavigationLink(destination: ProgramComparisonView()) {
+                            MatchlyActionChipLabel(
+                                icon: "square.grid.2x2",
+                                text: "Compare",
+                                tint: AppColors.accentTeal,
+                                isFilled: true
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Button {
+                        isEditMode = true
+                    } label: {
+                        MatchlyActionChipLabel(
+                            icon: "pencil",
+                            text: "Edit",
+                            tint: AppColors.primaryBlue,
+                            isFilled: false
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+        .padding(.vertical, 10)
+    }
+
+    private var sortMenu: some View {
+        Menu {
+            ForEach(SortOption.allCases, id: \.self) { option in
+                Button(action: {
+                    sortOption = option
+                }) {
+                    HStack {
+                        Text(option.rawValue)
+                        Spacer()
+                        if sortOption == option {
+                            Image(systemName: "checkmark")
+                                .foregroundColor(.blue)
+                        }
+                    }
+                }
+            }
+        } label: {
+            MatchlyFilterChipLabel(
+                icon: "arrow.up.arrow.down",
+                text: "Sort: \(sortOption.rawValue)"
+            )
+        }
+    }
+
+    private var programsListRowInsets: EdgeInsets {
+        EdgeInsets(top: 12, leading: 10, bottom: 12, trailing: 10)
+    }
+
     private func deletePrograms(at offsets: IndexSet) {
         for index in offsets {
             dataManager.deleteProgram(dataManager.programs[index])
@@ -198,6 +318,17 @@ struct ProgramsListView: View {
         }
     }
     
+    private var filteredPrograms: [Program] {
+        switch listFilter {
+        case .all:
+            return sortedPrograms
+        case .completed:
+            return sortedPrograms.filter { !$0.needsScoring(preferences: dataManager.preferences) }
+        case .incomplete:
+            return sortedPrograms.filter { $0.needsScoring(preferences: dataManager.preferences) }
+        }
+    }
+
     // Cache sorted programs to avoid recalculating on every view update
     @State private var cachedSortedPrograms: [Program] = []
     @State private var lastSortOption: SortOption?
@@ -205,9 +336,9 @@ struct ProgramsListView: View {
     
     private var sortedPrograms: [Program] {
         // Only recalculate if sort option changed or programs changed
-        let currentCount = dataManager.programs.count
+        let currentCount = savedPrograms.count
         if sortOption != lastSortOption || currentCount != lastProgramsCount {
-            var programs = dataManager.programs
+            var programs = savedPrograms
             
             switch sortOption {
             case .name:
@@ -243,7 +374,7 @@ struct ProgramsListView: View {
         }
         
         // Fallback: calculate if cache is invalid
-        var programs = dataManager.programs
+        var programs = savedPrograms
         switch sortOption {
         case .name:
             programs = programs.sorted { 
@@ -266,119 +397,112 @@ struct ProgramsListView: View {
 }
 
 struct CompactProgramRowView: View {
+    @EnvironmentObject private var dataManager: DataManager
     let program: Program
+
+    private var completionRatio: Double {
+        program.questionnaireCompletionRatio(preferences: dataManager.preferences)
+    }
+
+    private var showsIncompleteBadge: Bool {
+        program.needsScoring(preferences: dataManager.preferences)
+    }
+
+    private var completionPercent: Int {
+        Int((completionRatio * 100).rounded())
+    }
+
+    private var completionTint: Color {
+        switch completionPercent {
+        case 80...: return AppColors.accentGreen
+        case 50..<80: return AppColors.pipelineNeedDate
+        default: return AppColors.pipelineToReview
+        }
+    }
     
     var body: some View {
         HStack(spacing: 12) {
-            // Score indicator with icon - smaller
-            ZStack {
-                Circle()
-                    .fill(scoreColor(program.finalScore).opacity(0.15))
-                    .frame(width: 42, height: 42)
-                
-                VStack(spacing: 0) {
-                    Image(systemName: "star.fill")
-                        .font(.system(size: 9))
-                        .foregroundColor(scoreColor(program.finalScore))
-                    Text(String(format: "%.0f", program.finalScore))
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(scoreColor(program.finalScore))
+            if showsIncompleteBadge {
+                ProgramCompletionRing(ratio: completionRatio)
+            } else {
+                ZStack {
+                    Circle()
+                        .fill(scoreColor(program.finalScore).opacity(0.15))
+                        .frame(width: 42, height: 42)
+                    
+                    VStack(spacing: 0) {
+                        Image(systemName: "star.fill")
+                            .font(.arial(size: 9))
+                            .foregroundColor(scoreColor(program.finalScore))
+                        Text(String(format: "%.0f", program.finalScore))
+                            .font(.arial(size: 15, weight: .bold))
+                            .foregroundColor(scoreColor(program.finalScore))
+                    }
                 }
             }
             
             // Program info - EXACT same layout as ProgramSearchRowView
             VStack(alignment: .leading, spacing: 3) {
-                // Hospital name with signal indicator and red flag
-                HStack(spacing: 6) {
-                    Text(HospitalNameFormatter.format(program.hospital.isEmpty ? (program.name.isEmpty ? "Unnamed Program" : program.name) : program.hospital))
-                        .font(.system(size: 15, weight: .semibold))
-                        .lineLimit(2)
-                    
-                    // Red flag indicator
-                    if program.hasRedFlags() {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 12))
-                            .foregroundColor(.red)
-                    }
-                    
-                    // Signal indicator - subtle
-                    if program.signalType != .none {
-                        Image(systemName: program.signalType == .gold ? "star.fill" : "star")
-                            .font(.system(size: 11))
-                            .foregroundColor(program.signalType == .gold ? .yellow : .gray)
-                    }
-                }
+                // Hospital name
+                Text(HospitalNameFormatter.format(program.hospital.isEmpty ? (program.name.isEmpty ? "Unnamed Program" : program.name) : program.hospital))
+                    .font(.arial(size: 15, weight: .semibold))
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
                 
                 // Specialty badge (only badge-style element) - matching search
                 if !program.specialty.isEmpty {
-                    let specialtyColor = SpecialtyFormatter.color(for: program.specialty)
-                    let specialtyAbbrev = SpecialtyFormatter.abbreviation(for: program.specialty)
-                    
-                    HStack(spacing: 3) {
-                        Image(systemName: "stethoscope")
-                            .font(.system(size: 8))
-                        Text(specialtyAbbrev)
-                            .font(.system(size: 10, weight: .semibold))
-                    }
-                    .foregroundColor(specialtyColor)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(specialtyColor.opacity(0.15))
-                    .cornerRadius(4)
+                    MatchlyProgramSpecialtyBadge(specialty: program.specialty)
                 }
+
+                MatchlyProgramLocationAndIDRow(program: program)
+
+                ProgramInterviewScheduleLine(program: program, style: .compact)
                 
-                // Location and Accreditation ID on first line - EXACT match to search
+                SavedProgramIMGBadge(program: program)
+                
+                // Signal, red flags, and questionnaire status
                 HStack(spacing: 8) {
-                    // Location
-                    if !program.city.isEmpty && !program.state.isEmpty {
+                    if showsIncompleteBadge {
                         HStack(spacing: 3) {
-                            Image(systemName: "mappin.circle.fill")
-                                .font(.system(size: 9))
-                            Text("\(program.city), \(program.state)")
-                                .font(.system(size: 11))
+                            Image(systemName: completionPercent == 0 ? "circle" : "circle.lefthalf.filled")
+                                .font(.arial(size: 8))
+                            Text(completionPercent == 0 ? "Questionnaire not started" : "Questionnaire \(completionPercent)% complete")
+                                .font(.arial(size: 10, weight: .medium))
                         }
-                        .foregroundColor(.secondary)
+                        .foregroundColor(completionTint)
+                    }
+
+                    // Signal indicator - clear tag showing signal type
+                    if program.signalType != .none {
+                        let isTiered = SignalLimits.isTiered(for: program.specialty)
+                        let signalText = isTiered 
+                            ? (program.signalType == .gold ? "Gold Signal" : "Silver Signal")
+                            : "Signal"
+                        let signalColor = isTiered
+                            ? (program.signalType == .gold ? Color.yellow : Color(white: 0.6))
+                            : Color.blue
+                        
+                        HStack(spacing: 3) {
+                            Image(systemName: program.signalType == .gold ? "star.fill" : "star")
+                                .font(.arial(size: 8))
+                            Text(signalText)
+                                .font(.arial(size: 10, weight: .medium))
+                        }
+                        .foregroundColor(signalColor)
                     }
                     
-                    // Accreditation ID - subtle, no background (matching search exactly)
-                    if let acgmeID = program.accreditationID, !acgmeID.isEmpty {
-                        HStack(spacing: 2) {
-                            Image(systemName: "number.circle.fill")
-                                .font(.system(size: 9))
-                            Text("ID:")
-                                .font(.system(size: 10, weight: .medium))
-                            Text(acgmeID)
-                                .font(.system(size: 11, weight: .medium))
-                        }
-                        .foregroundColor(.secondary)
-                    }
-                }
-                
-                // Program Type and IMG on second line - EXACT match to search
-                HStack(spacing: 8) {
-                    // Program Type - full text, not abbreviated (matching search)
-                    if !program.type.isEmpty {
+                    // Red flag indicator
+                    if program.hasRedFlags() {
                         HStack(spacing: 3) {
-                            Image(systemName: programTypeIcon(program.type))
-                                .font(.system(size: 8))
-                            Text(program.type)
-                                .font(.system(size: 10, weight: .medium))
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.arial(size: 8))
+                            Text("Red Flag")
+                                .font(.arial(size: 10, weight: .medium))
                         }
-                        .foregroundColor(programTypeColor(program.type))
+                        .foregroundColor(.red)
                     }
-                    
-                    // IMG-Friendly - same style as Program Type (text with icon, no badge) - matching search
-                    // Check both explicit status and assess if nil
-                    let imgStatus = program.isIMGFriendly ?? IMGFriendlyHelper.shared.assessIMGFriendlinessForProgram(program)
-                    if imgStatus == true {
-                        HStack(spacing: 3) {
-                            Image(systemName: "globe.americas.fill")
-                                .font(.system(size: 8))
-                            Text("IMG")
-                                .font(.system(size: 10, weight: .medium))
-                        }
-                        .foregroundColor(.purple)
-                    }
+
+                    ProgramVoiceMemoBadge(program: program)
                 }
             }
             
@@ -387,29 +511,42 @@ struct CompactProgramRowView: View {
         .padding(.vertical, 6)
     }
     
-    private func scoreColor(_ score: Double) -> Color {
-        if score >= 80 { return .green }
-        if score >= 60 { return .blue }
-        if score >= 40 { return .orange }
-        return .red
+}
+
+struct ProgramCompletionRing: View {
+    let ratio: Double
+
+    private var percent: Int {
+        Int((ratio * 100).rounded())
     }
-    
-    private func programTypeColor(_ type: String) -> Color {
-        switch type {
-        case "Academic": return .blue
-        case "Community": return .green
-        case "Hybrid": return .orange
-        default: return .secondary
+
+    private var tint: Color {
+        switch percent {
+        case 80...: return AppColors.accentGreen
+        case 50..<80: return AppColors.pipelineNeedDate
+        default: return AppColors.pipelineToReview
         }
     }
-    
-    private func programTypeIcon(_ type: String) -> String {
-        switch type {
-        case "Academic": return "graduationcap.fill"
-        case "Community": return "house.fill"
-        case "Hybrid": return "square.stack.3d.up.fill"
-        default: return "building.2.fill"
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(tint.opacity(0.18), lineWidth: 3.5)
+                .frame(width: 42, height: 42)
+
+            Circle()
+                .trim(from: 0, to: CGFloat(min(max(ratio, 0), 1)))
+                .stroke(tint, style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
+                .frame(width: 42, height: 42)
+                .rotationEffect(.degrees(-90))
+
+            Text("\(percent)%")
+                .font(.arial(size: 11, weight: .bold))
+                .foregroundStyle(tint)
+                .minimumScaleFactor(0.8)
+                .lineLimit(1)
         }
+        .accessibilityLabel("\(percent) percent complete")
     }
 }
 
@@ -418,6 +555,7 @@ struct EmptyProgramsView: View {
     
     var body: some View {
         VStack(spacing: 24) {
+            Spacer(minLength: 0)
             ZStack {
                 Circle()
                     .fill(
@@ -430,7 +568,7 @@ struct EmptyProgramsView: View {
                     .frame(width: 120, height: 120)
                 
                 Image(systemName: "heart.text.square.fill")
-                    .font(.system(size: 60))
+                    .font(.arial(size: 60))
                     .foregroundStyle(
                         LinearGradient(
                             colors: [.blue, .purple],
@@ -442,7 +580,7 @@ struct EmptyProgramsView: View {
             
             VStack(spacing: 8) {
                 Text("No Programs Yet")
-                    .font(.system(size: 24, weight: .bold))
+                    .font(.arial(size: 24, weight: .bold))
                 
                 Text("Add your first residency program to get started")
                     .font(.subheadline)
@@ -456,29 +594,26 @@ struct EmptyProgramsView: View {
             }) {
                 HStack(spacing: 8) {
                     Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 18))
+                        .font(.arial(size: 18))
                     Text("Add Program")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.arial(size: 17, weight: .semibold))
                 }
-                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
                 .padding(.horizontal, 32)
                 .padding(.vertical, 14)
-                .background(
-                    LinearGradient(
-                        colors: [.blue, .purple],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .cornerRadius(12)
-                .shadow(color: Color.blue.opacity(0.3), radius: 8, x: 0, y: 4)
             }
+            .buttonStyle(.glassProminent)
+            .tint(AppColors.primaryBlue)
+            
+            Spacer(minLength: 0)
         }
+        .padding(.horizontal, 24)
     }
 }
 
 #Preview {
     ProgramsListView()
         .environmentObject(DataManager.shared)
+        .environmentObject(CoupleDeepLinkHandler())
 }
 

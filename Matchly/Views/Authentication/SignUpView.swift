@@ -9,7 +9,7 @@ import SwiftUI
 
 struct SignUpView: View {
     @Environment(\.dismiss) var dismiss
-    @StateObject private var authManager = AuthManager.shared
+    @ObservedObject private var authManager = AuthManager.shared
     @State private var email = ""
     @State private var password = ""
     @State private var confirmPassword = ""
@@ -18,25 +18,48 @@ struct SignUpView: View {
     @State private var errorMessage: String?
     
     var body: some View {
-        NavigationView {
+        MatchlyNavigationView {
             Form {
                 Section {
-                    TextField("Display Name (Optional)", text: $displayName)
-                        .textContentType(.name)
-                        .autocapitalization(.words)
-                    
-                    TextField("Email", text: $email)
-                        .textContentType(.emailAddress)
-                        .autocapitalization(.none)
+                    ClearableTextField("Display Name (Optional)", text: $displayName, textContentType: .name)
+                        .textInputAutocapitalization(.words)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .glassEffect(.regular, in: .capsule)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                        .listRowBackground(Color.clear)
+                } header: {
+                    Text("Profile")
+                }
+
+                Section {
+                    ClearableTextField("Email", text: $email, textContentType: .emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
                         .keyboardType(.emailAddress)
-                    
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .glassEffect(.regular, in: .capsule)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
+                        .listRowBackground(Color.clear)
+
                     SecureField("Password", text: $password)
                         .textContentType(.newPassword)
-                    
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .glassEffect(.regular, in: .capsule)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                        .listRowBackground(Color.clear)
+
                     SecureField("Confirm Password", text: $confirmPassword)
-                        .textContentType(.newPassword)
+                        .textContentType(.password)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .glassEffect(.regular, in: .capsule)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
+                        .listRowBackground(Color.clear)
                 } header: {
-                    Text("Create Account")
+                    Text("Sign-In Details")
                 } footer: {
                     VStack(alignment: .leading, spacing: 4) {
                         if let error = errorMessage {
@@ -67,9 +90,15 @@ struct SignUpView: View {
                             Spacer()
                         }
                     }
+                    .buttonStyle(.glassProminent)
+                    .tint(AppColors.primaryBlue)
                     .disabled(isLoading || !isFormValid)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    .listRowBackground(Color.clear)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .appCanvasBackground()
             .navigationTitle("Sign Up")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -126,5 +155,3 @@ struct SignUpView: View {
 #Preview {
     SignUpView()
 }
-
-

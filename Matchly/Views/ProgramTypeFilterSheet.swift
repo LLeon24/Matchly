@@ -16,11 +16,11 @@ struct ProgramTypeFilterSheet: View {
     @Environment(\.dismiss) var dismiss
     
     var body: some View {
-        NavigationView {
+        MatchlyNavigationView {
             List {
-                // Program Types section
                 Section("Program Types") {
                     ForEach(programTypes, id: \.self) { type in
+                        let isSelected = selectedTypes.contains(type)
                         Button(action: {
                             showAll = false
                             if selectedTypes.contains(type) {
@@ -32,16 +32,16 @@ struct ProgramTypeFilterSheet: View {
                             HStack {
                                 ZStack {
                                     Circle()
-                                        .fill(selectedTypes.contains(type) ? Color.blue : Color.clear)
+                                        .fill(isSelected ? Color.blue : Color.clear)
                                         .frame(width: 22, height: 22)
                                         .overlay(
                                             Circle()
-                                                .stroke(selectedTypes.contains(type) ? Color.blue : Color.secondary, lineWidth: 2)
+                                                .stroke(isSelected ? Color.blue : Color.secondary, lineWidth: 2)
                                         )
                                     
-                                    if selectedTypes.contains(type) {
+                                    if isSelected {
                                         Image(systemName: "checkmark")
-                                            .font(.system(size: 12, weight: .bold))
+                                            .font(.arial(size: 12, weight: .bold))
                                             .foregroundColor(.white)
                                     }
                                 }
@@ -52,13 +52,18 @@ struct ProgramTypeFilterSheet: View {
                                 
                                 Spacer()
                             }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .glassChipStyle(tint: isSelected ? .blue : nil)
                         }
                         .buttonStyle(.plain)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                        .listRowBackground(Color.clear)
                     }
                 }
                 
-                // IMG-Friendly section
                 Section {
+                    let isIMGSelected = selectedTypes.contains("IMG-Friendly")
                     Button(action: {
                         showAll = false
                         if selectedTypes.contains("IMG-Friendly") {
@@ -70,16 +75,16 @@ struct ProgramTypeFilterSheet: View {
                         HStack {
                             ZStack {
                                 Circle()
-                                    .fill(selectedTypes.contains("IMG-Friendly") ? Color.blue : Color.clear)
+                                    .fill(isIMGSelected ? Color.blue : Color.clear)
                                     .frame(width: 22, height: 22)
                                     .overlay(
                                         Circle()
-                                            .stroke(selectedTypes.contains("IMG-Friendly") ? Color.blue : Color.secondary, lineWidth: 2)
+                                            .stroke(isIMGSelected ? Color.blue : Color.secondary, lineWidth: 2)
                                     )
                                 
-                                if selectedTypes.contains("IMG-Friendly") {
+                                if isIMGSelected {
                                     Image(systemName: "checkmark")
-                                        .font(.system(size: 12, weight: .bold))
+                                        .font(.arial(size: 12, weight: .bold))
                                         .foregroundColor(.white)
                                 }
                             }
@@ -87,17 +92,24 @@ struct ProgramTypeFilterSheet: View {
                             
                             Image(systemName: "globe.americas.fill")
                                 .foregroundColor(.purple)
-                                .font(.system(size: 12))
+                                .font(.arial(size: 12))
                             
                             Text("IMG-Friendly")
                                 .foregroundColor(.primary)
                             
                             Spacer()
                         }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .glassChipStyle(tint: isIMGSelected ? .purple : nil)
                     }
                     .buttonStyle(.plain)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                    .listRowBackground(Color.clear)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .appCanvasBackground()
             .navigationTitle("Program Types")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -111,9 +123,10 @@ struct ProgramTypeFilterSheet: View {
                         onApply()
                     }
                     .fontWeight(.semibold)
+                    .buttonStyle(.glassProminent)
+                    .tint(AppColors.primaryBlue)
                 }
             }
         }
     }
 }
-

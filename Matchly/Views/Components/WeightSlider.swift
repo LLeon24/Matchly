@@ -16,19 +16,17 @@ struct WeightSlider: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text(title)
-                    .font(.system(size: 16, weight: .medium))
+                    .font(.arial(size: 16, weight: .medium))
                 Spacer()
                 Text("\(Int(value))%")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.arial(size: 16, weight: .semibold))
                     .foregroundColor(color)
             }
             
             Slider(value: $value, in: 0...100, step: 1)
                 .tint(color)
         }
-        .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(10)
+        .glassPanelStyle(cornerRadius: 10)
     }
 }
 

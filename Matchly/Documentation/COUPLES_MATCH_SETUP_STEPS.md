@@ -206,6 +206,41 @@ When all five pass, Phase 1 setup is complete.
   `iCloud.com.matchly.Matchly` container checked.
 - **Entitlements file shows unexpected changes:** the target values are listed in the table
   above — as long as it ends up containing those keys/values you're fine.
+- **Couples link always says "No partner found with that code":**
+  1. On the **inviting** phone, open Couples Matching and wait for **"Invite ready for your partner"** (green check). If you see an orange error, tap **Retry Publishing Invite** after confirming iCloud is signed in.
+  2. Both phones must use the **same CloudKit environment**: two Xcode debug builds, or two TestFlight/App Store builds. A debug build from Xcode and a TestFlight build **cannot** see each other's invite codes.
+  3. **CloudKit schema + security (required for publish/link errors)** — in [CloudKit Dashboard](https://icloud.developer.apple.com/):
+     - Container **`iCloud.com.matchly.Matchly`** → **Development** (for Xcode builds).
+     - **Schema → Record Types → `CoupleCodeInvite`**: every field must be type **String**:
+       `code`, `coupleID`, `inviterRecordName`, `inviterName`, `inviterEmail`, `status`, `createdAt`, `partnerRecordName`, `partnerName`, `partnerEmail`, `linkedAt`.
+       Error **12** usually means `createdAt` (or another field) is **Date/Time** instead of **String** — fix the type and Save.
+     - **Schema → Security Roles**: `_icloud` → Create + Read + Write on `CoupleCodeInvite`; `_world` → Read.
+     - On the phone: **Generate New Code** → **Retry Publishing Invite** → confirm green **Invite ready**.
+  4. Before TestFlight: **Schema → Deploy Schema Changes…** Development → Production.
+- **Partner chat fails to send or load:**
+  1. Chat uses record type **`CoupleMessageThread`** (one record per couple, fetched by ID — **no indexes required**).
+  2. In [CloudKit Dashboard](https://icloud.developer.apple.com/) → **`iCloud.com.matchly.Matchly`** → **Development** → **Schema → Record Types → +**:
+     - Name: **`CoupleMessageThread`**
+     - Fields:
+       - `coupleID` — **String**
+       - `messagesData` — **Bytes**
+       - `updatedAt` — **String**
+     - No queryable indexes needed for chat to work.
+  3. **Schema → Security Roles → `_icloud`**: Create, Read, Write on **`CoupleMessageThread`**.
+  4. For TestFlight: **Deploy Schema Changes…** Development → Production.
+  5. You can ignore the older **`CoupleMessage`** record type (one-record-per-message design); it is no longer used.
+  6. Both partners must use the same CloudKit environment (both Xcode debug or both TestFlight).
+- **Partner programs don't appear on Couples Rank List:**
+  1. Add record type **`CoupleProgramBundle`** in CloudKit Dashboard (Development + Production):
+     - `coupleID` — **String**
+     - `ownerRecordName` — **String**
+     - `programsData` — **Bytes**
+     - `updatedAt` — **String** (optional metadata)
+     - No query indexes required (fetched by record ID).
+  2. Also add **`CoupleRankList`** (`coupleID` String, `pairsData` Bytes, `lastEditorRecordName` String, `updatedAt` String) and **`CoupleSharedPreferences`** (`coupleID` String, `preferencesData` Bytes, `lastEditorRecordName` String, `updatedAt` String) for full couples sync.
+  3. **Security Roles → `_icloud`**: Create, Read, Write on all three types.
+  4. **Both partners** must open Matchly (Couple tab), have programs in **My Programs**, and be on the same build type (Xcode or TestFlight).
+  5. Pull to refresh on the Couples Rank List page.
 
 ---
 

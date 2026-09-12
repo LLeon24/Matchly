@@ -11,42 +11,44 @@ import UIKit
 
 struct SettingsView: View {
     @EnvironmentObject var dataManager: DataManager
-    @StateObject private var authManager = AuthManager.shared
+    @ObservedObject private var authManager = AuthManager.shared
     @State private var showResetAlert = false
     @State private var showSignOutAlert = false
     @State private var showSpecialtyChange = false
-    @State private var showWeights = false
-    @State private var showERASImport = false
-    @State private var showImportSuccess = false
-    @State private var showImportError = false
-    @State private var importErrorMessage = ""
+    @State private var showLinkEmailPassword = false
+    @State private var showDeleteAccountAlert = false
+    @State private var showDeletePasswordPrompt = false
+    @State private var deleteAccountPassword = ""
+    @State private var isDeletingAccount = false
+    @State private var deleteAccountError: String?
     
     var body: some View {
-        NavigationView {
-            Form {
-                profileSection
-                appInformationSection
-                couplesMatchingSection
-                questionnaireSection
-                calendarSection
-                dataManagementSection
-                accountSection
-                
-                Section("About") {
-                    HStack {
-                        Text("Version")
-                        Spacer()
-                        Text("1.0.0")
-                            .foregroundColor(.secondary)
+        MatchlyNavigationView {
+            VStack(spacing: 0) {
+                MatchlyListPageTitleRow(title: "Settings")
+
+                Form {
+                    aboutSection
+                    profileSection
+                    questionnaireSection
+                    preferencesSection
+                    if FeatureFlags.couplesMatchEnabled {
+                        couplesMatchingSection
                     }
-                    
-                    Text("Matchly helps medical students organize residency interview information and generate personalized rank lists.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    dataManagementSection
+                    accountSection
+                    #if DEBUG
+                    screenshotDemoSection
+                    #endif
+                    versionSection
                 }
+                .scrollContentBackground(.hidden)
             }
-            .padding(.bottom, 90) // Space for custom tab bar
-            .navigationTitle("Settings")
+            .matchlyReadableWidth()
+            .matchlyScrollTabBarClearance()
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .appCanvasBackground()
             .alert("Reset All Data", isPresented: $showResetAlert) {
                 Button("Cancel", role: .cancel) { }
                 Button("Reset", role: .destructive) {
@@ -61,33 +63,94 @@ struct SettingsView: View {
                     authManager.signOut()
                 }
             } message: {
-                Text("Are you sure you want to sign out? You'll need to sign in again to access your data.")
+                Text(
+                    authManager.isBiometricLoginEnabled
+                        ? "You'll sign out of this session. Tap Sign in with \(authManager.biometricDisplayName) when you're ready to return."
+                        : "Are you sure you want to sign out? You'll need to sign in again to access your data."
+                )
+            }
+            .alert("Delete Account", isPresented: $showDeleteAccountAlert) {
+                Button("Cancel", role: .cancel) { }
+                Button("Delete", role: .destructive) {
+                    if authManager.deletionRequiresPassword {
+                        showDeletePasswordPrompt = true
+                    } else {
+                        deleteAccount(password: nil)
+                    }
+                }
+            } message: {
+                Text(deleteAccountMessage)
+            }
+            .alert("Confirm Password", isPresented: $showDeletePasswordPrompt) {
+                SecureField("Password", text: $deleteAccountPassword)
+                Button("Cancel", role: .cancel) {
+                    deleteAccountPassword = ""
+                }
+                Button("Delete", role: .destructive) {
+                    deleteAccount(password: deleteAccountPassword)
+                }
+            } message: {
+                Text("Enter your password to permanently delete your account.")
+            }
+            .alert("Couldn't Delete Account", isPresented: deleteAccountErrorBinding) {
+                Button("OK", role: .cancel) { deleteAccountError = nil }
+            } message: {
+                Text(deleteAccountError ?? "")
             }
             .sheet(isPresented: $showSpecialtyChange) {
                 SpecialtySelectionView()
             }
-            .fileImporter(
-                isPresented: $showERASImport,
-                allowedContentTypes: [.json],
-                allowsMultipleSelection: false
-            ) { result in
-                handleERASImport(result: result)
-            }
-            .alert("Import Successful", isPresented: $showImportSuccess) {
-                Button("OK") { }
-            } message: {
-                Text("ERAS 2026 data has been imported successfully. The app will restart to load the new data.")
-            }
-            .alert("Import Error", isPresented: $showImportError) {
-                Button("OK") { }
-            } message: {
-                Text(importErrorMessage)
+            .sheet(isPresented: $showLinkEmailPassword) {
+                LinkEmailPasswordView()
             }
         }
     }
     
+    private var aboutSection: some View {
+        Section {
+            VStack(spacing: 14) {
+                MatchlyBrandLockup(style: .about, showsTagline: false)
+
+                Text("Matchly helps medical students organize residency interview information and generate personalized rank lists.")
+                    .font(.arial(size: MatchlyEditorialTypography.captionSize, weight: .light))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(3)
+                    .frame(maxWidth: .infinity)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+        }
+    }
+
+    private var versionSection: some View {
+        Section {
+            HStack {
+                Text("Version")
+                Spacer()
+                Text(MatchlyBuildInfo.version)
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+
+    #if DEBUG
+    private var screenshotDemoSection: some View {
+        Section {
+            Button("Load App Store Demo Data") {
+                MatchlyScreenshotSeed.apply()
+            }
+        } header: {
+            MatchlyFormSectionHeader(title: "App Store Screenshots")
+        } footer: {
+            Text("Loads 12 Internal Medicine programs with scores, interview dates, and signals. Use Light mode, then capture on iPhone 16 Pro Max simulator (⌘S).")
+                .font(.arial(size: 12))
+        }
+    }
+    #endif
+
     private var profileSection: some View {
-        Section("Profile") {
+        Section {
                     NavigationLink(destination: ProfileEditView()) {
                         HStack(spacing: 12) {
                             // Profile photo or icon
@@ -111,7 +174,7 @@ struct SettingsView: View {
                                         .frame(width: 50, height: 50)
                                     
                                     Image(systemName: "person.fill")
-                                        .font(.system(size: 24))
+                                        .font(.arial(size: 24))
                                         .foregroundStyle(
                                             LinearGradient(
                                                 colors: [.blue, .purple],
@@ -124,16 +187,16 @@ struct SettingsView: View {
                             
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(dataManager.preferences.profile.name.isEmpty ? "Add Profile" : dataManager.preferences.profile.name)
-                                    .font(.system(size: 17, weight: .medium))
+                                    .font(.arial(size: 17, weight: .medium))
                                     .foregroundColor(.primary)
                                 
                                 if let aamcID = dataManager.preferences.profile.aamcID, !aamcID.isEmpty {
                                     Text("AAMC ID: \(aamcID)")
-                                        .font(.system(size: 13))
+                                        .font(.arial(size: 13))
                                         .foregroundColor(.secondary)
                                 } else {
                                     Text("Tap to edit profile")
-                                        .font(.system(size: 13))
+                                        .font(.arial(size: 13))
                                         .foregroundColor(.secondary)
                                 }
                             }
@@ -142,43 +205,95 @@ struct SettingsView: View {
                         }
                         .padding(.vertical, 4)
                     }
-                }
+                    .listRowBackground(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(.clear)
+                            .glassEffect(.regular, in: .rect(cornerRadius: 16))
+                            .padding(.vertical, 4)
+                    )
+        } header: {
+            MatchlyFormSectionHeader(title: "Profile")
+        }
     }
     
-    private var appInformationSection: some View {
-        Section("App Information") {
-                    if !dataManager.preferences.specialties.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Specialties")
-                                .font(.headline)
-                            ForEach(dataManager.preferences.specialties, id: \.self) { specialty in
-                                HStack {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundColor(.blue)
-                                    Text(specialty)
-                                }
-                                .font(.subheadline)
-                            }
-                        }
-                    } else {
-                        HStack {
-                            Text("Specialty")
-                            Spacer()
-                            Text(dataManager.preferences.specialty ?? "Not set")
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    
-                    Button(action: {
-                        showSpecialtyChange = true
-                    }) {
-                        Text(dataManager.preferences.specialties.isEmpty ? "Change Specialty" : "Edit Specialties")
+    private var preferencesSection: some View {
+        Section {
+            Button {
+                NotificationCenter.default.post(name: NSNotification.Name("ShowFeatureTour"), object: nil)
+            } label: {
+                Label("Replay Guided Tour", systemImage: "hand.point.up.left.fill")
+            }
+
+            Picker("Applying To", selection: Binding(
+                get: {
+                    ProgramTrainingLevelFilter(rawValue: dataManager.preferences.applyingTrack) ?? .residency
+                },
+                set: { newValue in
+                    dataManager.preferences.applyingTrack = newValue.rawValue
+                    dataManager.savePreferences()
+                }
+            )) {
+                ForEach(ProgramTrainingLevelFilter.allCases) { track in
+                    Text(track.rawValue).tag(track)
+                }
+            }
+            .pickerStyle(.menu)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Appearance")
+                    .font(.arial(size: 15))
+
+                Picker("Appearance", selection: Binding(
+                    get: { dataManager.preferences.appearanceMode },
+                    set: { dataManager.updateAppearanceMode($0) }
+                )) {
+                    ForEach(AppearanceMode.allCases) { mode in
+                        Text(mode.displayName).tag(mode)
                     }
                 }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            }
+            .padding(.vertical, 4)
+
+            if !dataManager.preferences.specialties.isEmpty {
+                ForEach(dataManager.preferences.specialties, id: \.self) { specialty in
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(AppColors.primaryBlue)
+                            .font(.subheadline)
+                        Text(specialty)
+                    }
+                }
+            } else {
+                HStack {
+                    Text("Specialty")
+                    Spacer()
+                    Text(dataManager.preferences.specialty ?? "Not set")
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Button(action: {
+                showSpecialtyChange = true
+            }) {
+                Text(dataManager.preferences.specialties.isEmpty ? "Change Specialty" : "Edit Specialties")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.glassProminent)
+            .tint(AppColors.primaryBlue)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden, edges: .bottom)
+
+            MatchlyCalendarSyncRow()
+                .listRowBackground(Color.clear)
+        } header: {
+            MatchlyFormSectionHeader(title: "Preferences")
+        }
     }
-    
+
     private var couplesMatchingSection: some View {
-        Section("Couples Matching") {
+        Section {
                     if let couple = dataManager.preferences.couple {
                         if couple.isLinked {
                             NavigationLink(destination: CouplesMatchingView()) {
@@ -187,9 +302,9 @@ struct SettingsView: View {
                                         .foregroundColor(.blue)
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text("Linked with \(couple.user2Name ?? "Partner")")
-                                            .font(.system(size: 15, weight: .medium))
+                                            .font(.arial(size: 15, weight: .medium))
                                         Text("Active")
-                                            .font(.system(size: 12))
+                                            .font(.arial(size: 12))
                                             .foregroundColor(.green)
                                     }
                                 }
@@ -201,9 +316,9 @@ struct SettingsView: View {
                                         .foregroundColor(.orange)
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text("Pending Link")
-                                            .font(.system(size: 15, weight: .medium))
+                                            .font(.arial(size: 15, weight: .medium))
                                         Text("Code: \(couple.coupleCode)")
-                                            .font(.system(size: 12))
+                                            .font(.arial(size: 12))
                                             .foregroundColor(.secondary)
                                     }
                                 }
@@ -218,83 +333,60 @@ struct SettingsView: View {
                             }
                         }
                     }
-                }
+        } header: {
+            MatchlyFormSectionHeader(title: "Couples Matching")
+        }
     }
     
     private var questionnaireSection: some View {
-        Section("Questionnaire") {
+        Section {
                     NavigationLink(destination: QuestionnaireCustomizationView()) {
                         Text("Customize Questionnaire")
                     }
-                    
-                    NavigationLink(destination: QuestionnaireWeightsView()) {
-                        HStack {
-                            Text("Set Section Weights")
-                            Spacer()
-                            if !dataManager.preferences.sectionWeights.isEmpty {
-                                Text("Custom")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            } else {
-                                Text("Equal")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
+
+                    NavigationLink(destination: SectionWeightsView()) {
+                        Text("Section Weights")
                     }
-                    
-                    Toggle(isOn: Binding(
-                        get: { dataManager.preferences.includeRedFlaggedProgramsInRankList },
+
+                    NavigationLink(destination: DefaultPrepQuestionsView()) {
+                        Text("Default Interview Prep Questions")
+                    }
+
+                    Picker("Preferred EMR", selection: Binding(
+                        get: { dataManager.preferences.preferredEMR ?? "" },
                         set: { newValue in
-                            dataManager.preferences.includeRedFlaggedProgramsInRankList = newValue
+                            dataManager.preferences.preferredEMR = newValue.isEmpty ? nil : newValue
                             dataManager.savePreferences()
+                            dataManager.recalculateAllScores()
                         }
                     )) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .foregroundColor(.red)
-                                Text("Include Red Flagged Programs in Rank List")
-                                    .font(.system(size: 17, weight: .medium))
-                            }
-                            Text("When enabled, programs with red flags will appear at the bottom of your rank list")
-                                .font(.system(size: 13))
-                                .foregroundColor(.secondary)
+                        Text("Not set").tag("")
+                        ForEach(EMRSystem.allCases) { system in
+                            Text(system.displayName).tag(system.rawValue)
                         }
                     }
-                }
-    }
-    
-    private var calendarSection: some View {
-        Section {
-                    Toggle(isOn: Binding(
-                        get: { dataManager.preferences.enableCalendarSync },
-                        set: { newValue in
-                            dataManager.preferences.enableCalendarSync = newValue
-                            dataManager.savePreferences()
-                        }
-                    )) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "calendar.badge.plus")
-                                    .foregroundColor(.blue)
-                                Text("Sync Interviews to Calendar")
-                                    .font(.system(size: 17, weight: .medium))
+                    .pickerStyle(.menu)
+                    
+                    SettingsLabeledToggle(
+                        title: "Include Red Flagged in Rank List",
+                        infoMessage: "When enabled, programs with red flags appear at the bottom of your rank list.",
+                        systemImage: "exclamationmark.triangle.fill",
+                        iconColor: .red,
+                        isOn: Binding(
+                            get: { dataManager.preferences.includeRedFlaggedProgramsInRankList },
+                            set: { newValue in
+                                dataManager.preferences.includeRedFlaggedProgramsInRankList = newValue
+                                dataManager.savePreferences()
                             }
-                            Text("Automatically add interview dates to your device calendar")
-                                .font(.system(size: 13))
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                } header: {
-                    Text("Calendar")
-                } footer: {
-                    Text("When enabled, your interview dates will be synced to a \"Matchly Interviews\" calendar in your device calendar app. You can sync interviews from the Interviews page.")
-                }
+                        )
+                    )
+        } header: {
+            MatchlyFormSectionHeader(title: "Scoring & Questionnaire")
+        }
     }
     
     private var dataManagementSection: some View {
-        Section("Data Management") {
+        Section {
                     NavigationLink(destination: DataBackupView()) {
                         HStack {
                             Image(systemName: "icloud.fill")
@@ -303,55 +395,54 @@ struct SettingsView: View {
                         }
                     }
                     
-                    Button(action: {
-                        showERASImport = true
-                    }) {
-                        HStack {
-                            Text("Import ERAS 2026 Data")
-                            Spacer()
-                            Image(systemName: "square.and.arrow.down")
-                                .foregroundColor(.blue)
-                        }
-                    }
                     
                     Button(role: .destructive, action: {
                         showResetAlert = true
                     }) {
                         Text("Reset All Data")
                     }
-                }
+                    .buttonStyle(.glass)
+        } header: {
+            MatchlyFormSectionHeader(title: "Data Management")
+        }
     }
     
     private var accountSection: some View {
-        Section("Account") {
+        Section {
+                    if BiometricAuthManager.shared.canAuthenticate {
+                        Toggle(isOn: biometricLoginBinding) {
+                            Label {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Use \(authManager.biometricDisplayName)")
+                                    Text("Unlock Matchly and sign in faster on this device.")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            } icon: {
+                                Image(systemName: BiometricAuthManager.shared.kind.systemImageName)
+                            }
+                        }
+                    }
+
                     if let user = authManager.currentUser {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Signed in as")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
-                            
-                            // Prioritize displayName if available, then email, then phone
-                            if let displayName = user.displayName, !displayName.isEmpty {
-                                Text(displayName)
-                                    .font(.system(size: 15, weight: .medium))
-                                if let email = user.email, !email.isEmpty {
-                                    Text(email)
-                                        .font(.system(size: 13))
-                                        .foregroundColor(.secondary)
-                                } else if let phone = user.phoneNumber {
-                                    Text(phone)
-                                        .font(.system(size: 13))
-                                        .foregroundColor(.secondary)
-                                }
-                            } else if let email = user.email, !email.isEmpty {
+
+                            Text(authManager.preferredDisplayName(profileName: dataManager.preferences.profile.name))
+                                .font(.arial(size: 15, weight: .medium))
+
+                            if let email = user.email, !email.isEmpty,
+                               authManager.preferredDisplayName(profileName: dataManager.preferences.profile.name) != email {
                                 Text(email)
-                                    .font(.system(size: 15, weight: .medium))
-                            } else if let phone = user.phoneNumber {
+                                    .font(.arial(size: 13))
+                                    .foregroundColor(.secondary)
+                            } else if let phone = user.phoneNumber,
+                                      authManager.preferredDisplayName(profileName: dataManager.preferences.profile.name) != phone {
                                 Text(phone)
-                                    .font(.system(size: 15, weight: .medium))
-                            } else {
-                                Text("User")
-                                    .font(.system(size: 15, weight: .medium))
+                                    .font(.arial(size: 13))
+                                    .foregroundColor(.secondary)
                             }
                             
                             Text("via \(user.provider.rawValue.capitalized)")
@@ -359,6 +450,20 @@ struct SettingsView: View {
                                 .foregroundColor(.secondary)
                         }
                         .padding(.vertical, 4)
+                    }
+
+                    if authManager.currentUser != nil {
+                        if authManager.hasPasswordProvider {
+                            Label("Email login enabled", systemImage: "checkmark.seal.fill")
+                                .foregroundColor(.secondary)
+                        } else {
+                            Button {
+                                showLinkEmailPassword = true
+                            } label: {
+                                Label("Add Email & Password", systemImage: "envelope.badge.shield.half.filled")
+                            }
+                            .buttonStyle(.glass)
+                        }
                     }
                     
                     Button(role: .destructive, action: {
@@ -369,33 +474,89 @@ struct SettingsView: View {
                             Text("Sign Out")
                         }
                     }
-                }
+                    .buttonStyle(.glass)
+
+                    if authManager.currentUser != nil {
+                        Button(role: .destructive, action: {
+                            showDeleteAccountAlert = true
+                        }) {
+                            HStack {
+                                if isDeletingAccount {
+                                    ProgressView()
+                                } else {
+                                    Image(systemName: "trash")
+                                }
+                                Text("Delete Account")
+                            }
+                        }
+                        .buttonStyle(.glass)
+                        .disabled(isDeletingAccount)
+                    }
+        } header: {
+            MatchlyFormSectionHeader(title: "Account")
+        }
     }
-    
-    private func handleERASImport(result: Result<[URL], Error>) {
-        switch result {
-        case .success(let urls):
-            guard let url = urls.first else { return }
-            
-            // Access the file
-            _ = url.startAccessingSecurityScopedResource()
-            defer { url.stopAccessingSecurityScopedResource() }
-            
-            do {
-                let data = try Data(contentsOf: url)
-                try ResidencyProgramDatabase.shared.replaceWithERASData(data: data)
-                showImportSuccess = true
-            } catch {
-                importErrorMessage = "Failed to import ERAS data: \(error.localizedDescription)"
-                showImportError = true
+
+    private var deleteAccountMessage: String {
+        let base = "This permanently deletes your account and all synced data. This cannot be undone."
+        switch authManager.currentUser?.provider {
+        case .apple:
+            return base + " You'll be asked to confirm with Sign in with Apple."
+        case .google:
+            return base + " You may be asked to confirm with your Google sign-in."
+        default:
+            return base
+        }
+    }
+
+    private var deleteAccountErrorBinding: Binding<Bool> {
+        Binding(
+            get: { deleteAccountError != nil },
+            set: { if !$0 { deleteAccountError = nil } }
+        )
+    }
+
+    private func deleteAccount(password: String?) {
+        isDeletingAccount = true
+        Task { @MainActor in
+            defer {
+                isDeletingAccount = false
+                deleteAccountPassword = ""
             }
-            
-        case .failure(let error):
-            importErrorMessage = "Failed to access file: \(error.localizedDescription)"
-            showImportError = true
+            do {
+                try await authManager.deleteAccount(password: password)
+            } catch AuthError.canceled {
+                // User dismissed the reauthentication prompt — keep the account.
+            } catch {
+                deleteAccountError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            }
         }
     }
     
+    private var biometricLoginBinding: Binding<Bool> {
+        Binding(
+            get: { authManager.isBiometricLoginEnabled },
+            set: { enabled in
+                if enabled {
+                    Task { @MainActor in
+                        do {
+                            let success = try await BiometricAuthManager.shared.authenticate(
+                                reason: "Enable \(authManager.biometricDisplayName) for Matchly"
+                            )
+                            if success {
+                                authManager.enableBiometricLogin()
+                            }
+                        } catch {
+                            authManager.disableBiometricLogin()
+                        }
+                    }
+                } else {
+                    authManager.disableBiometricLogin()
+                }
+            }
+        )
+    }
+
     private func resetAllData() {
         dataManager.programs = []
         dataManager.preferences = UserPreferences()

@@ -15,14 +15,17 @@ struct AuthenticationView: View {
     @ObservedObject private var authManager = AuthManager.shared
     @State private var showSignUp = false
     @State private var showEmailLogin = false
-    @State private var showPhoneLogin = false
     @State private var showError = false
     @State private var errorMessage = ""
+    @State private var isBiometricSigningIn = false
+
+    private var biometricKind: BiometricKind {
+        BiometricAuthManager.shared.kind
+    }
     
     var body: some View {
         ZStack {
-            // Background
-            Color(.systemBackground)
+            AppColors.dashboardCanvas
                 .ignoresSafeArea()
             
             ScrollView {
@@ -30,32 +33,50 @@ struct AuthenticationView: View {
                     Spacer()
                         .frame(height: 40)
                     
-                    // App Logo and Title
+                    // Brand lockup
                     VStack(spacing: 16) {
-                        // Matchly app icon
-                        Image("MatchlyIcon")
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(width: 100, height: 100)
-                            .cornerRadius(22) // iOS app icon corner radius
-                            .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
-                        
-                        Text("Matchly")
-                            .font(.arial(size: 32, weight: .bold))
-                            .foregroundColor(.primary)
-                        
-                        Text("Residency Match Management")
-                            .font(.arial(size: 14))
-                            .foregroundColor(.secondary)
+                        MatchlyBrandLockup(style: .auth)
                     }
-                    .padding(.bottom, 20)
+                    .padding(.bottom, 28)
                     
                     // Sign In Options
                     VStack(spacing: 16) {
-                        // v1 ships Apple Sign In ONLY. The email/phone entry points below are
-                        // hidden (not deleted) behind `AuthManager.allowsNonAppleProviders` so
-                        // they remain reversible. Couples Match requires iCloud, which Apple
-                        // Sign In + CloudKit provide.
+                        if authManager.canUseBiometricLogin {
+                            Button(action: signInWithBiometrics) {
+                                HStack {
+                                    Spacer()
+                                    Image(systemName: biometricKind.systemImageName)
+                                        .font(.arial(size: 16))
+                                        .frame(width: 24)
+                                    Text("Sign in with \(biometricKind.displayName)")
+                                        .font(.arial(size: 16, weight: .medium))
+                                    Spacer()
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 16)
+                            }
+                            .buttonStyle(.glassProminent)
+                            .tint(AppColors.primaryBlue)
+                            .disabled(isBiometricSigningIn)
+
+                            HStack(spacing: 14) {
+                                Rectangle()
+                                    .fill(AppColors.secondaryText.opacity(0.35))
+                                    .frame(height: 0.5)
+                                    .frame(maxWidth: .infinity)
+                                Text("OR")
+                                    .font(.arial(size: 11, weight: .regular))
+                                    .foregroundColor(.secondary)
+                                    .kerning(1.8)
+                                Rectangle()
+                                    .fill(AppColors.secondaryText.opacity(0.35))
+                                    .frame(height: 0.5)
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .padding(.vertical, 6)
+                        }
+
+                        // Email + Google when `allowsNonAppleProviders` is true; Apple always shown.
                         if AuthManager.allowsNonAppleProviders {
                             // Email/Password Sign In
                             Button(action: {
@@ -70,32 +91,46 @@ struct AuthenticationView: View {
                                         .font(.arial(size: 16, weight: .medium))
                                     Spacer()
                                 }
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 20)
+                                .frame(maxWidth: .infinity)
                                 .padding(.vertical, 16)
-                                .background(Color.blue)
-                                .cornerRadius(12)
                             }
+                            .buttonStyle(.glassProminent)
+                            .tint(.blue)
 
-                            // Phone Number Sign In
+                            // Google Sign In
                             Button(action: {
-                                showPhoneLogin = true
+                                Task { @MainActor in
+                                    do {
+                                        authViewLogger.info("Starting Google Sign In")
+                                        try await authManager.signInWithGoogle()
+                                        authViewLogger.info("Google Sign In completed successfully")
+                                    } catch AuthError.canceled {
+                                        return
+                                    } catch {
+                                        authViewLogger.error("Google Sign In error: \(error.localizedDescription, privacy: .public)")
+                                        if let authError = error as? AuthError {
+                                            errorMessage = authError.errorDescription ?? "Sign in failed"
+                                        } else {
+                                            errorMessage = error.localizedDescription
+                                        }
+                                        showError = true
+                                    }
+                                }
                             }) {
                                 HStack {
                                     Spacer()
-                                    Image(systemName: "phone.fill")
+                                    Image(systemName: "g.circle.fill")
                                         .font(.arial(size: 16))
                                         .frame(width: 24)
-                                    Text("Continue with Phone")
+                                    Text("Continue with Google")
                                         .font(.arial(size: 16, weight: .medium))
                                     Spacer()
                                 }
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 20)
+                                .frame(maxWidth: .infinity)
                                 .padding(.vertical, 16)
-                                .background(Color.green)
-                                .cornerRadius(12)
                             }
+                            .buttonStyle(.glassProminent)
+                            .tint(Color(red: 0.86, green: 0.28, blue: 0.22))
 
                             // Divider
                             HStack {
@@ -134,14 +169,14 @@ struct AuthenticationView: View {
                                         case .invalidResponse:
                                             errorMessage = "Invalid response from Apple. Please try again."
                                         case .notHandled:
-                                            errorMessage = "Apple Sign In not handled. Make sure the capability is enabled in Xcode."
+                                            errorMessage = "Apple Sign In couldn't be completed. Please try again."
                                         case .unknown:
                                             errorMessage = "Unknown error occurred. Please try again."
                                         default:
                                             errorMessage = "Apple Sign In failed: \(error.localizedDescription)"
                                         }
                                     } else {
-                                        errorMessage = "Apple Sign In failed: \(error.localizedDescription)\n\nMake sure:\n1. Sign in with Apple capability is enabled in Xcode\n2. You're signed in to an Apple ID on this device\n3. The app is properly configured in Apple Developer"
+                                        errorMessage = "Apple Sign In failed. Make sure you're signed in to an Apple ID on this device and try again."
                                     }
                                     showError = true
                                 }
@@ -156,12 +191,11 @@ struct AuthenticationView: View {
                                     .font(.arial(size: 16, weight: .medium))
                                 Spacer()
                             }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 20)
+                            .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
-                            .background(Color.black)
-                            .cornerRadius(12)
                         }
+                        .buttonStyle(.glassProminent)
+                        .tint(.black)
                     }
                     .padding(.horizontal, 24)
                     
@@ -181,7 +215,7 @@ struct AuthenticationView: View {
                         }
                         .padding(.top, 8)
                     } else {
-                        Text("Sign in with your Apple ID to get started.")
+                        Text("Sign in with Apple, Google, or email to get started.")
                             .font(.arial(size: 13))
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)
@@ -200,13 +234,31 @@ struct AuthenticationView: View {
         .sheet(isPresented: $showEmailLogin) {
             EmailLoginView()
         }
-        .sheet(isPresented: $showPhoneLogin) {
-            PhoneLoginView()
-        }
         .alert("Sign In Error", isPresented: $showError) {
             Button("OK", role: .cancel) { }
         } message: {
             Text(errorMessage)
+        }
+    }
+
+    private func signInWithBiometrics() {
+        guard !isBiometricSigningIn else { return }
+        isBiometricSigningIn = true
+
+        Task { @MainActor in
+            defer { isBiometricSigningIn = false }
+            do {
+                try await authManager.signInWithBiometrics()
+            } catch BiometricAuthError.canceled {
+                return
+            } catch {
+                if let authError = error as? LocalizedError, let description = authError.errorDescription {
+                    errorMessage = description
+                } else {
+                    errorMessage = error.localizedDescription
+                }
+                showError = true
+            }
         }
     }
 }
