@@ -49,21 +49,27 @@ struct SettingsLabeledToggle: View {
     @Binding var isOn: Bool
 
     var body: some View {
-        Toggle(isOn: $isOn) {
-            HStack(spacing: 4) {
+        HStack(alignment: .center, spacing: 12) {
+            HStack(alignment: .center, spacing: 6) {
                 if let systemImage {
-                    Label {
-                        Text(title)
-                    } icon: {
-                        Image(systemName: systemImage)
-                            .foregroundStyle(iconColor)
-                    }
-                } else {
-                    Text(title)
+                    Image(systemName: systemImage)
+                        .font(.body)
+                        .foregroundStyle(iconColor)
+                        .frame(width: 22, alignment: .center)
                 }
+
+                Text(title)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .multilineTextAlignment(.leading)
 
                 SettingsInfoButton(title: title, message: infoMessage)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Toggle("", isOn: $isOn)
+                .labelsHidden()
         }
     }
 }

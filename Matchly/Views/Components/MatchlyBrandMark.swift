@@ -254,10 +254,10 @@ struct MatchlyBrandLockup: View {
 
 private enum MatchlyBrandCopy {
     static let wordmark = "MATCHLY"
-    static let tagline = "RESIDENCY MATCH MANAGEMENT"
+    static let tagline = "RESIDENCY & FELLOWSHIP MATCH"
     static let lockSubtitle = "UNLOCK TO CONTINUE"
-    static let exportSubtitle = "Residency Rank List"
-    static let accessibilityLabel = "Matchly, Residency Match Management"
+    static let exportSubtitle = "Residency & Fellowship Rank List"
+    static let accessibilityLabel = "Matchly, Residency and Fellowship Match"
 }
 
 /// Compact horizontal brand mark for dashboard and nav chrome.

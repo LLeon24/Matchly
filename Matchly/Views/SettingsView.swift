@@ -25,10 +25,15 @@ struct SettingsView: View {
     var body: some View {
         MatchlyNavigationView {
             VStack(spacing: 0) {
+                MatchlyBrandInlineWordmark(glyphSize: .hero)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 14)
+                    .padding(.bottom, 20)
+
                 MatchlyListPageTitleRow(title: "Settings")
 
                 Form {
-                    aboutSection
                     profileSection
                     questionnaireSection
                     preferencesSection
@@ -40,7 +45,7 @@ struct SettingsView: View {
                     #if DEBUG
                     screenshotDemoSection
                     #endif
-                    versionSection
+                    aboutSection
                 }
                 .scrollContentBackground(.hidden)
             }
@@ -108,29 +113,11 @@ struct SettingsView: View {
     
     private var aboutSection: some View {
         Section {
-            VStack(spacing: 14) {
-                MatchlyBrandLockup(style: .about, showsTagline: false)
-
-                Text("Matchly helps medical students organize residency interview information and generate personalized rank lists.")
-                    .font(.arial(size: MatchlyEditorialTypography.captionSize, weight: .light))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(3)
-                    .frame(maxWidth: .infinity)
+            NavigationLink(destination: AboutMatchlyView()) {
+                Text("About Matchly")
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 8)
-        }
-    }
-
-    private var versionSection: some View {
-        Section {
-            HStack {
-                Text("Version")
-                Spacer()
-                Text(MatchlyBuildInfo.version)
-                    .foregroundColor(.secondary)
-            }
+        } header: {
+            MatchlyFormSectionHeader(title: "About")
         }
     }
 
@@ -376,19 +363,13 @@ struct SettingsView: View {
                     }
                     .pickerStyle(.menu)
                     
-                    SettingsLabeledToggle(
-                        title: "Include Red Flagged in Rank List",
-                        infoMessage: "When enabled, programs with red flags appear at the bottom of your rank list.",
-                        systemImage: "exclamationmark.triangle.fill",
-                        iconColor: .red,
-                        isOn: Binding(
-                            get: { dataManager.preferences.includeRedFlaggedProgramsInRankList },
-                            set: { newValue in
-                                dataManager.preferences.includeRedFlaggedProgramsInRankList = newValue
-                                dataManager.savePreferences()
-                            }
-                        )
-                    )
+                    Toggle("Red Flags in Rank List", isOn: Binding(
+                        get: { dataManager.preferences.includeRedFlaggedProgramsInRankList },
+                        set: { newValue in
+                            dataManager.preferences.includeRedFlaggedProgramsInRankList = newValue
+                            dataManager.savePreferences()
+                        }
+                    ))
         } header: {
             MatchlyFormSectionHeader(title: "Scoring & Questionnaire")
         }
