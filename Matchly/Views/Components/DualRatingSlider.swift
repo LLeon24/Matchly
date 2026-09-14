@@ -18,7 +18,15 @@ struct DualRatingSlider: View {
     
     @State private var showNotes: Bool = false
     @FocusState private var isNotesFocused: Bool
-    
+
+    private func setRating(_ value: Double) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            programRating = value
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top, spacing: 8) {
@@ -45,11 +53,7 @@ struct DualRatingSlider: View {
                 // Yes/No toggle for red flags (or positive questions)
                 HStack(spacing: 16) {
                     Button(action: {
-                        if programRating == 1 {
-                            programRating = 0
-                        } else {
-                            programRating = 1 // Yes
-                        }
+                        setRating(programRating == 1 ? 0 : 1)
                     }) {
                         HStack {
                             Image(systemName: programRating == 1 ? "checkmark.circle.fill" : "circle")
@@ -69,11 +73,7 @@ struct DualRatingSlider: View {
                     .buttonStyle(.plain)
                     
                     Button(action: {
-                        if programRating == 2 {
-                            programRating = 0
-                        } else {
-                            programRating = 2 // No
-                        }
+                        setRating(programRating == 2 ? 0 : 2)
                     }) {
                         HStack {
                             Image(systemName: programRating == 2 ? "checkmark.circle.fill" : "circle")
@@ -153,11 +153,7 @@ struct DualRatingSlider: View {
                     HStack(spacing: 6) {
                         ForEach(1...5, id: \.self) { rating in
                             Button(action: {
-                                if programRating == Double(rating) {
-                                    programRating = 0
-                                } else {
-                                    programRating = Double(rating)
-                                }
+                                setRating(programRating == Double(rating) ? 0 : Double(rating))
                             }) {
                                 let isSelected = programRating >= Double(rating) && programRating > 0 && programRating < 6
                                 let color = ratingColor(for: rating)
@@ -225,11 +221,7 @@ struct DualRatingSlider: View {
                         
                         // N/A button - same width as others
                         Button(action: {
-                            if programRating == 6 {
-                                programRating = 0
-                            } else {
-                                programRating = 6
-                            }
+                            setRating(programRating == 6 ? 0 : 6)
                         }) {
                             let isSelected = programRating == 6
                             
@@ -278,7 +270,8 @@ struct DualRatingSlider: View {
                         .buttonStyle(.plain)
                         .frame(maxWidth: .infinity)
                     }
-                    
+                    .animation(nil, value: programRating)
+
                     // Labels row - only shown on first question, properly aligned
                     if showLabels {
                         HStack(spacing: 6) {
@@ -369,6 +362,7 @@ struct DualRatingSlider: View {
                     .stroke(AppColors.pipelineNeedDate.opacity(0.5), lineWidth: 1.5)
             }
         }
+        .animation(nil, value: isUnanswered)
         .onAppear {
             // Auto-expand notes if they already have content
             if !notes.isEmpty {

@@ -15,9 +15,20 @@ struct FellowshipFilterOption: Identifiable, Hashable {
   var id: String { code }
 }
 
-private struct PARFellowshipIndex: Decodable, Sendable {
+private struct PARFellowshipIndex: Sendable {
   let fellowshipByCode: [String: String]
+
+  private enum CodingKeys: String, CodingKey {
+    case fellowshipByCode
+  }
+
+  nonisolated init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    fellowshipByCode = try container.decode([String: String].self, forKey: .fellowshipByCode)
+  }
 }
+
+extension PARFellowshipIndex: Decodable {}
 
 enum FellowshipFilterCatalog {
   private nonisolated static let fellowshipByCode: [String: String] = {

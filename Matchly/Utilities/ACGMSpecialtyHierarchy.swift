@@ -8,13 +8,32 @@
 
 import Foundation
 
-private struct ACGME_PARIndex: Decodable, Sendable {
+private struct ACGME_PARIndex: Sendable {
   let residencyByCode: [String: String]?
   let fellowshipByCode: [String: String]?
   let fellowshipParentByCode: [String: String]?
   let userSpecialtyResidencyCodes: [String: [String]]?
   let additionalFellowshipCodesByUserSpecialty: [String: [String]]?
+
+  private enum CodingKeys: String, CodingKey {
+    case residencyByCode
+    case fellowshipByCode
+    case fellowshipParentByCode
+    case userSpecialtyResidencyCodes
+    case additionalFellowshipCodesByUserSpecialty
+  }
+
+  nonisolated init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    residencyByCode = try container.decodeIfPresent([String: String].self, forKey: .residencyByCode)
+    fellowshipByCode = try container.decodeIfPresent([String: String].self, forKey: .fellowshipByCode)
+    fellowshipParentByCode = try container.decodeIfPresent([String: String].self, forKey: .fellowshipParentByCode)
+    userSpecialtyResidencyCodes = try container.decodeIfPresent([String: [String]].self, forKey: .userSpecialtyResidencyCodes)
+    additionalFellowshipCodesByUserSpecialty = try container.decodeIfPresent([String: [String]].self, forKey: .additionalFellowshipCodesByUserSpecialty)
+  }
 }
+
+extension ACGME_PARIndex: Decodable {}
 
 enum ACGMSpecialtyHierarchy {
   private nonisolated static let parIndex: ACGME_PARIndex? = {

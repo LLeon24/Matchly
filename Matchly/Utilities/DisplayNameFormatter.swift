@@ -8,10 +8,10 @@
 import Foundation
 
 enum DisplayNameFormatter {
-    private static let lowercaseWords: Set<String> = ["and", "of", "in", "the", "for", "or", "at", "by"]
+    private nonisolated static let lowercaseWords: Set<String> = ["and", "of", "in", "the", "for", "or", "at", "by"]
 
     /// Title-cases each word; keeps small words lowercase except at the start. Handles `/` segments.
-    static func titleCaseWords(_ text: String) -> String {
+    nonisolated static func titleCaseWords(_ text: String) -> String {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return trimmed }
 
@@ -30,7 +30,7 @@ enum DisplayNameFormatter {
     }
 
     /// Title-cases content inside each parenthetical segment.
-    static func titleCaseParentheticals(in text: String) -> String {
+    nonisolated static func titleCaseParentheticals(in text: String) -> String {
         guard let regex = try? NSRegularExpression(pattern: "\\(([^)]+)\\)") else { return text }
         let ns = text as NSString
         var result = text
@@ -44,7 +44,7 @@ enum DisplayNameFormatter {
         return result
     }
 
-    private static func titleCaseWord(_ word: String, atSentenceStart: Bool) -> String {
+    private nonisolated static func titleCaseWord(_ word: String, atSentenceStart: Bool) -> String {
         let lower = word.lowercased()
         if !atSentenceStart, lowercaseWords.contains(lower) {
             return lower

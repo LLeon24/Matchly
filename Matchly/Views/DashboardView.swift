@@ -550,15 +550,43 @@ struct DashboardView: View {
             } else {
                 VStack(spacing: 8) {
                     ForEach(Array(items.enumerated()), id: \.offset) { _, step in
-                        NavigationLink(destination: step.destination) {
-                            attentionRow(step)
-                        }
-                        .buttonStyle(.plain)
+                        nextStepRow(step)
                     }
                 }
             }
         }
         .dashboardCardStyle()
+    }
+
+    @ViewBuilder
+    private func nextStepRow(_ step: NextStep) -> some View {
+        switch step.action {
+        case .interviewPrep(let program):
+            NavigationLink(destination: InterviewPrepView(program: program)) {
+                attentionRow(step)
+            }
+            .buttonStyle(.plain)
+        default:
+            Button {
+                handleNextStepAction(step.action)
+            } label: {
+                attentionRow(step)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func handleNextStepAction(_ action: NextStepAction) {
+        switch action {
+        case .setInterviewDates:
+            deepLinkHandler.requestInterviewsListFocus(.needDate)
+            selectedTab = MainTabLayout.interviewsIndex
+        case .finishScoring:
+            deepLinkHandler.requestProgramsListFocus(.incomplete)
+            selectedTab = MainTabLayout.programsIndex
+        case .interviewPrep:
+            break
+        }
     }
 
     @ViewBuilder
@@ -1411,45 +1439,8 @@ struct DashboardView: View {
                 DashboardSectionHeader(title: "Next Steps", icon: "checklist", tint: AppColors.accentPurple)
                 
                 VStack(spacing: 8) {
-                    ForEach(Array(nextSteps.prefix(3).enumerated()), id: \.offset) { index, step in
-                        NavigationLink(destination: step.destination) {
-                            HStack(spacing: 12) {
-                                ZStack {
-                                    Circle()
-                                        .fill(step.color.opacity(0.15))
-                                        .frame(width: 44, height: 44)
-                                    
-                                    Image(systemName: step.icon)
-                                        .font(.arial(size: 18, weight: .semibold))
-                                        .foregroundColor(step.color)
-                                }
-                                
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(step.title)
-                                        .font(.arial(size: 15, weight: .semibold))
-                                        .foregroundColor(.primary)
-                                    
-                                    if !step.subtitle.isEmpty {
-                                        Text(step.subtitle)
-                                            .font(.arial(size: 13))
-                                            .foregroundColor(.secondary)
-                                    }
-                                }
-                                
-                                Spacer()
-                                
-                                Image(systemName: "chevron.right")
-                                    .font(.arial(size: 12))
-                                    .foregroundColor(.secondary.opacity(0.4))
-                            }
-                            .padding(.vertical, 12)
-                            .padding(.horizontal, 12)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(step.color.opacity(0.08))
-                            )
-                        }
-                        .buttonStyle(.plain)
+                    ForEach(Array(nextSteps.prefix(3).enumerated()), id: \.offset) { _, step in
+                        nextStepRow(step)
                     }
                 }
             }
@@ -1521,7 +1512,7 @@ struct DashboardView: View {
                 subtitle: "\(programsWithoutInterviews.count) invite\(programsWithoutInterviews.count == 1 ? "" : "s") missing a date",
                 icon: "calendar.badge.plus",
                 color: AppColors.accentOrange,
-                destination: AnyView(SetInterviewDatesView())
+                action: .setInterviewDates
             ))
         }
 
@@ -1532,7 +1523,7 @@ struct DashboardView: View {
                 subtitle: "Complete questionnaires after your visit",
                 icon: "list.star",
                 color: AppColors.primaryBlue,
-                destination: AnyView(ProgramsNeedingReviewView())
+                action: .finishScoring
             ))
         } else if programsNeedingScoringCount > 0 {
             steps.append(NextStep(
@@ -1540,7 +1531,7 @@ struct DashboardView: View {
                 subtitle: "Complete questionnaires for your rank list",
                 icon: "square.and.pencil",
                 color: AppColors.primaryBlue,
-                destination: AnyView(ProgramsNeedingReviewView())
+                action: .finishScoring
             ))
         }
 
@@ -1554,7 +1545,7 @@ struct DashboardView: View {
                 subtitle: "Interview \(Calendar.current.isDateInToday(date) ? "today" : "on \(formatter.string(from: date))")",
                 icon: "calendar.badge.clock",
                 color: AppColors.accentGreen,
-                destination: AnyView(InterviewPrepView(program: soon))
+                action: .interviewPrep(soon)
             ))
         }
 
@@ -1915,12 +1906,18 @@ extension DashboardView {
     }
 }
 
+enum NextStepAction {
+    case setInterviewDates
+    case finishScoring
+    case interviewPrep(Program)
+}
+
 struct NextStep {
     let title: String
     let subtitle: String
     let icon: String
     let color: Color
-    let destination: AnyView
+    let action: NextStepAction
 }
 
 struct QuickStatMini: View {

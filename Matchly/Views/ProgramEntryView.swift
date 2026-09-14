@@ -95,7 +95,7 @@ struct ProgramEntryView: View {
     // MARK: - Form Content (now using ScrollView for better scrolling)
     private var formContent: some View {
         ScrollView(.vertical) {
-            VStack(spacing: 16) {
+            LazyVStack(spacing: 16, pinnedViews: [.sectionHeaders]) {
                 // Basic Information Section (only show if hospital not selected)
                 if hospital.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
@@ -569,74 +569,67 @@ struct ProgramEntryView: View {
         ForEach(enabledStandardSections) { section in
             let enabledItems = questionnaire.enabledItems(for: section, preferences: dataManager.preferences)
             if !enabledItems.isEmpty {
-                let sectionId = section.id
-                let isExpanded = expandedSections.contains(sectionId)
+                Section {
+                    if expandedSections.contains(section.id) {
+                        questionnaireSectionBody {
+                            VStack(spacing: 10) {
+                                ForEach(Array(enabledItems.enumerated()), id: \.element.id) { index, item in
+                                    if let sectionIndex = questionnaire.sections.firstIndex(where: { $0.id == section.id }),
+                                       let itemIndex = questionnaire.sections[sectionIndex].items.firstIndex(where: { $0.id == item.id }) {
+                                        DualRatingSlider(
+                                            question: item.question,
+                                            programRating: Binding(
+                                                get: { questionnaire.sections[sectionIndex].items[itemIndex].programRating },
+                                                set: { newValue in
+                                                    let oldValue = questionnaire.sections[sectionIndex].items[itemIndex].programRating
+                                                    var transaction = Transaction()
+                                                    transaction.disablesAnimations = true
+                                                    withTransaction(transaction) {
+                                                        var updated = questionnaire
+                                                        updated.sections[sectionIndex].items[itemIndex].programRating = newValue
+                                                        questionnaire = updated
+                                                        checkAndExpandNextSection(currentSectionIndex: sectionIndex, currentItemIndex: itemIndex)
+                                                    }
 
-                whiteCardQuestionnaireSection(
-                    title: section.title,
-                    unansweredCount: sectionUnansweredCount(section),
-                    accentColor: questionnaireSectionColor(title: section.title, sectionId: section.id),
-                    isExpanded: Binding(
-                        get: { isExpanded },
-                        set: { newValue in
-                            if newValue {
-                                expandedSections.insert(sectionId)
-                            } else {
-                                expandedSections.remove(sectionId)
-                            }
-                        }
-                    )
-                ) {
-                    VStack(spacing: 10) {
-                        ForEach(Array(enabledItems.enumerated()), id: \.element.id) { index, item in
-                            // Find the item in the questionnaire (could be in standard sections or custom questions merged in)
-                            if let sectionIndex = questionnaire.sections.firstIndex(where: { $0.id == section.id }),
-                               let itemIndex = questionnaire.sections[sectionIndex].items.firstIndex(where: { $0.id == item.id }) {
-                                DualRatingSlider(
-                                    question: item.question,
-                                    programRating: Binding(
-                                        get: { questionnaire.sections[sectionIndex].items[itemIndex].programRating },
-                                        set: { newValue in
-                                            let oldValue = questionnaire.sections[sectionIndex].items[itemIndex].programRating
-                                            var updated = questionnaire
-                                            updated.sections[sectionIndex].items[itemIndex].programRating = newValue
-                                            questionnaire = updated
-
-                                            withAnimation(.easeInOut(duration: 0.2)) {
-                                                checkAndExpandNextSection(currentSectionIndex: sectionIndex, currentItemIndex: itemIndex)
-                                            }
-
-                                            if oldValue == 0 && newValue > 0 {
-                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                                    scrollToNextQuestion(currentSectionId: section.id, currentItemId: item.id)
+                                                    if oldValue == 0 && newValue > 0 {
+                                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                                            scrollToNextQuestion(currentSectionId: section.id, currentItemId: item.id)
+                                                        }
+                                                    }
                                                 }
-                                            }
-                                        }
-                                    ),
-                                    notes: Binding(
-                                        get: { questionnaire.sections[sectionIndex].items[itemIndex].notes },
-                                        set: { newValue in
-                                            var updated = questionnaire
-                                            updated.sections[sectionIndex].items[itemIndex].notes = newValue
-                                            questionnaire = updated
-                                        }
-                                    ),
-                                    isYesNo: section.title.contains("Red flags"),
-                                    isPositiveYesNo: item.question.contains("Do you feel you could see yourself living"),
-                                    showLabels: index == 0,
-                                    isUnanswered: item.programRating == 0
-                                )
-                                .id("\(section.id)-\(item.id)") // For scrolling
-                            }
-                        }
+                                            ),
+                                            notes: Binding(
+                                                get: { questionnaire.sections[sectionIndex].items[itemIndex].notes },
+                                                set: { newValue in
+                                                    var updated = questionnaire
+                                                    updated.sections[sectionIndex].items[itemIndex].notes = newValue
+                                                    questionnaire = updated
+                                                }
+                                            ),
+                                            isYesNo: section.title.contains("Red flags"),
+                                            isPositiveYesNo: item.question.contains("Do you feel you could see yourself living"),
+                                            showLabels: index == 0,
+                                            isUnanswered: item.programRating == 0
+                                        )
+                                        .id("\(section.id)-\(item.id)")
+                                    }
+                                }
 
-                        if section.id == SectionWeighting.sectionEId {
-                            sectionEEmrPicker
+                                if section.id == SectionWeighting.sectionEId {
+                                    sectionEEmrPicker
+                                }
+                            }
+                            .padding(.bottom, 4)
                         }
                     }
-                    .padding(.bottom, 4)
+                } header: {
+                    questionnaireSectionHeader(
+                        title: section.title,
+                        unansweredCount: sectionUnansweredCount(section),
+                        accentColor: questionnaireSectionColor(title: section.title, sectionId: section.id),
+                        isExpanded: sectionExpansionBinding(for: section.id)
+                    )
                 }
-                .padding(.horizontal, 20)
             }
         }
     }
@@ -646,64 +639,74 @@ struct ProgramEntryView: View {
         ForEach(enabledCustomSections) { customSection in
             let enabledItems = questionnaire.enabledItems(for: customSection, preferences: dataManager.preferences)
             if !enabledItems.isEmpty {
-                let sectionId = customSection.id
-                let isExpanded = expandedSections.contains(sectionId)
+                Section {
+                    if expandedSections.contains(customSection.id) {
+                        questionnaireSectionBody {
+                            VStack(spacing: 12) {
+                                ForEach(enabledItems) { item in
+                                    if let sectionIndex = questionnaire.customSections.firstIndex(where: { $0.id == customSection.id }),
+                                       let itemIndex = questionnaire.customSections[sectionIndex].items.firstIndex(where: { $0.id == item.id }) {
+                                        DualRatingSlider(
+                                            question: item.question,
+                                            programRating: Binding(
+                                                get: { questionnaire.customSections[sectionIndex].items[itemIndex].programRating },
+                                                set: { newValue in
+                                                    let oldValue = questionnaire.customSections[sectionIndex].items[itemIndex].programRating
+                                                    var transaction = Transaction()
+                                                    transaction.disablesAnimations = true
+                                                    withTransaction(transaction) {
+                                                        var updated = questionnaire
+                                                        updated.customSections[sectionIndex].items[itemIndex].programRating = newValue
+                                                        questionnaire = updated
+                                                    }
 
-                whiteCardQuestionnaireSection(
-                    title: customSection.title,
-                    unansweredCount: sectionUnansweredCount(customSection),
-                    accentColor: questionnaireSectionColor(title: customSection.title, sectionId: customSection.id),
-                    isExpanded: Binding(
-                        get: { isExpanded },
-                        set: { newValue in
-                            if newValue {
-                                expandedSections.insert(sectionId)
-                            } else {
-                                expandedSections.remove(sectionId)
-                            }
-                        }
-                    )
-                ) {
-                    VStack(spacing: 12) {
-                        ForEach(enabledItems) { item in
-                            if let sectionIndex = questionnaire.customSections.firstIndex(where: { $0.id == customSection.id }),
-                               let itemIndex = questionnaire.customSections[sectionIndex].items.firstIndex(where: { $0.id == item.id }) {
-                                DualRatingSlider(
-                                    question: item.question,
-                                    programRating: Binding(
-                                        get: { questionnaire.customSections[sectionIndex].items[itemIndex].programRating },
-                                        set: { newValue in
-                                            let oldValue = questionnaire.customSections[sectionIndex].items[itemIndex].programRating
-                                            var updated = questionnaire
-                                            updated.customSections[sectionIndex].items[itemIndex].programRating = newValue
-                                            questionnaire = updated
-
-                                            if oldValue == 0 && newValue > 0 {
-                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                                    scrollToNextQuestion(currentSectionId: customSection.id, currentItemId: item.id)
+                                                    if oldValue == 0 && newValue > 0 {
+                                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                                            scrollToNextQuestion(currentSectionId: customSection.id, currentItemId: item.id)
+                                                        }
+                                                    }
                                                 }
-                                            }
-                                        }
-                                    ),
-                                    notes: Binding(
-                                        get: { questionnaire.customSections[sectionIndex].items[itemIndex].notes },
-                                        set: { newValue in
-                                            var updated = questionnaire
-                                            updated.customSections[sectionIndex].items[itemIndex].notes = newValue
-                                            questionnaire = updated
-                                        }
-                                    ),
-                                    isYesNo: false,
-                                    isUnanswered: item.programRating == 0
-                                )
-                                .id("\(customSection.id)-\(item.id)") // For scrolling
+                                            ),
+                                            notes: Binding(
+                                                get: { questionnaire.customSections[sectionIndex].items[itemIndex].notes },
+                                                set: { newValue in
+                                                    var updated = questionnaire
+                                                    updated.customSections[sectionIndex].items[itemIndex].notes = newValue
+                                                    questionnaire = updated
+                                                }
+                                            ),
+                                            isYesNo: false,
+                                            isUnanswered: item.programRating == 0
+                                        )
+                                        .id("\(customSection.id)-\(item.id)")
+                                    }
+                                }
                             }
                         }
                     }
+                } header: {
+                    questionnaireSectionHeader(
+                        title: customSection.title,
+                        unansweredCount: sectionUnansweredCount(customSection),
+                        accentColor: questionnaireSectionColor(title: customSection.title, sectionId: customSection.id),
+                        isExpanded: sectionExpansionBinding(for: customSection.id)
+                    )
                 }
-                .padding(.horizontal, 20)
             }
         }
+    }
+
+    private func sectionExpansionBinding(for sectionId: String) -> Binding<Bool> {
+        Binding(
+            get: { expandedSections.contains(sectionId) },
+            set: { isExpanded in
+                if isExpanded {
+                    expandedSections.insert(sectionId)
+                } else {
+                    expandedSections.remove(sectionId)
+                }
+            }
+        )
     }
     
     var body: some View {
@@ -1400,11 +1403,7 @@ struct ProgramEntryView: View {
         let questionId = "\(sectionId)-\(itemId)"
 
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.questionScrollDelay) {
-            if let proxy = scrollProxy {
-                withAnimation(Self.questionScrollAnimation) {
-                    proxy.scrollTo(questionId, anchor: Self.nextQuestionScrollAnchor)
-                }
-            }
+            scrollProxy?.scrollTo(questionId, anchor: Self.nextQuestionScrollAnchor)
         }
     }
 
@@ -1905,65 +1904,65 @@ extension ProgramEntryView {
         QuestionnaireSectionAccent.color(for: sectionId, title: title)
     }
 
-    func whiteCardQuestionnaireSection<Content: View>(
+    func questionnaireSectionHeader(
         title: String,
         unansweredCount: Int = 0,
         accentColor: Color = AppColors.primaryBlue,
-        isExpanded: Binding<Bool>,
-        @ViewBuilder content: () -> Content
+        isExpanded: Binding<Bool>
     ) -> some View {
-        VStack(spacing: 0) {
-            // Header - tappable to expand/collapse
-            Button(action: {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    isExpanded.wrappedValue.toggle()
-                }
-            }) {
-                HStack(spacing: 12) {
-                    Text(title)
-                        .font(.arial(size: 16, weight: .semibold))
-                        .foregroundColor(.primary)
+        Button(action: {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                isExpanded.wrappedValue.toggle()
+            }
+        }) {
+            HStack(spacing: 12) {
+                Text(title)
+                    .font(.arial(size: 16, weight: .semibold))
+                    .foregroundColor(.primary)
+                    .multilineTextAlignment(.leading)
 
-                    if unansweredCount > 0 {
-                        Text("\(unansweredCount) left")
-                            .font(.arial(size: 11, weight: .semibold))
-                            .foregroundStyle(AppColors.pipelineNeedDate)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(
-                                Capsule()
-                                    .fill(AppColors.pipelineNeedDate.opacity(0.14))
-                            )
-                    }
-                    
-                    Spacer()
-                    
-                    Image(systemName: isExpanded.wrappedValue ? "chevron.up.circle.fill" : "chevron.down.circle.fill")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(accentColor)
+                if unansweredCount > 0 {
+                    Text("\(unansweredCount) left")
+                        .font(.arial(size: 11, weight: .semibold))
+                        .foregroundStyle(AppColors.pipelineNeedDate)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(
+                            Capsule()
+                                .fill(AppColors.pipelineNeedDate.opacity(0.14))
+                        )
                 }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: isExpanded.wrappedValue ? "chevron.up.circle.fill" : "chevron.down.circle.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(accentColor)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(AppColors.dashboardCanvas)
+        .padding(.horizontal, 20)
+    }
+
+    @ViewBuilder
+    func questionnaireSectionBody<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(spacing: 0) {
+            Divider()
                 .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            
-            // Content - expandable
-            if isExpanded.wrappedValue {
-                VStack(spacing: 0) {
-                    Divider()
-                        .padding(.horizontal, 16)
-                    
-                    content()
-                        .padding(.horizontal, 16)
-                        .padding(.top, 6)
-                        .padding(.bottom, 10)
-                }
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
+
+            content()
+                .padding(.horizontal, 16)
+                .padding(.top, 6)
+                .padding(.bottom, 10)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassEffect(.regular, in: .rect(cornerRadius: 16))
+        .padding(.horizontal, 20)
     }
 }
 

@@ -9,12 +9,29 @@
 import Foundation
 import OSLog
 
-private struct ERASPARSpecialtyIndex: Decodable, Sendable {
+private struct ERASPARSpecialtyIndex: Sendable {
   let residencyByCode: [String: String]
   let fellowshipByCode: [String: String]
   let acgmeSpecialtyByCode: [String: String]?
   let fellowshipParentByCode: [String: String]?
+
+  private enum CodingKeys: String, CodingKey {
+    case residencyByCode
+    case fellowshipByCode
+    case acgmeSpecialtyByCode
+    case fellowshipParentByCode
+  }
+
+  nonisolated init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    residencyByCode = try container.decode([String: String].self, forKey: .residencyByCode)
+    fellowshipByCode = try container.decode([String: String].self, forKey: .fellowshipByCode)
+    acgmeSpecialtyByCode = try container.decodeIfPresent([String: String].self, forKey: .acgmeSpecialtyByCode)
+    fellowshipParentByCode = try container.decodeIfPresent([String: String].self, forKey: .fellowshipParentByCode)
+  }
 }
+
+extension ERASPARSpecialtyIndex: Decodable {}
 
 enum ERASTrainingLevel {
   private nonisolated static let logger = Logger(subsystem: "com.matchly", category: "ERASTrainingLevel")
