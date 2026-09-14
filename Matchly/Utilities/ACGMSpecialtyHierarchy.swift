@@ -8,24 +8,24 @@
 
 import Foundation
 
-enum ACGMSpecialtyHierarchy {
-  private struct PARIndex: Decodable {
-    let residencyByCode: [String: String]?
-    let fellowshipByCode: [String: String]?
-    let fellowshipParentByCode: [String: String]?
-    let userSpecialtyResidencyCodes: [String: [String]]?
-    let additionalFellowshipCodesByUserSpecialty: [String: [String]]?
-  }
+private struct ACGME_PARIndex: Decodable, Sendable {
+  let residencyByCode: [String: String]?
+  let fellowshipByCode: [String: String]?
+  let fellowshipParentByCode: [String: String]?
+  let userSpecialtyResidencyCodes: [String: [String]]?
+  let additionalFellowshipCodesByUserSpecialty: [String: [String]]?
+}
 
-  private static let parIndex: PARIndex? = {
+enum ACGMSpecialtyHierarchy {
+  private nonisolated static let parIndex: ACGME_PARIndex? = {
     guard let url = Bundle.main.url(forResource: "ERAS_PAR_specialties", withExtension: "json"),
       let data = try? Data(contentsOf: url)
     else { return nil }
-    return try? JSONDecoder().decode(PARIndex.self, from: data)
+    return try? JSONDecoder().decode(ACGME_PARIndex.self, from: data)
   }()
 
   /// Core residency / combined-program specialty codes (3-digit).
-  static let residencySpecialtyCodes: Set<String> = [
+  nonisolated static let residencySpecialtyCodes: Set<String> = [
     "020", "040", "060", "080", "110", "120", "140", "130", "160", "180", "185", "200", "220", "240",
     "260", "275", "280", "300", "320", "340", "360", "362", "380", "382", "383", "400", "416", "420",
     "430", "440", "450", "451", "460", "461", "480", "999",
@@ -34,11 +34,11 @@ enum ACGMSpecialtyHierarchy {
   ]
 
   /// Fellowship code → parent residency code (loaded from bundled JSON).
-  static var fellowshipParentCode: [String: String] {
+  nonisolated static var fellowshipParentCode: [String: String] {
     parIndex?.fellowshipParentByCode ?? fallbackFellowshipParentCode
   }
 
-  static let residencyDisplayNames: [String: String] = [
+  nonisolated static let residencyDisplayNames: [String: String] = [
     "020": "Allergy and Immunology",
     "040": "Anesthesiology",
     "060": "Colon and Rectal Surgery",
@@ -77,12 +77,12 @@ enum ACGMSpecialtyHierarchy {
     "999": "Transitional Year",
   ]
 
-  private static var userSpecialtyResidencyCodes: [String: Set<String>] {
+  private nonisolated static var userSpecialtyResidencyCodes: [String: Set<String>] {
     guard let raw = parIndex?.userSpecialtyResidencyCodes else { return fallbackUserSpecialtyResidencyCodes }
     return raw.mapValues { Set($0) }
   }
 
-  private static var additionalFellowshipCodesByUserSpecialty: [String: Set<String>] {
+  private nonisolated static var additionalFellowshipCodesByUserSpecialty: [String: Set<String>] {
     guard let raw = parIndex?.additionalFellowshipCodesByUserSpecialty else {
       return fallbackAdditionalFellowshipCodes
     }
@@ -90,7 +90,7 @@ enum ACGMSpecialtyHierarchy {
   }
 
   /// Inverted map: parent residency code → fellowship specialty codes underneath it.
-  static var fellowshipCodesByParent: [String: Set<String>] {
+  nonisolated static var fellowshipCodesByParent: [String: Set<String>] {
     var result: [String: Set<String>] = [:]
     for (fellowshipCode, parentCode) in fellowshipParentCode {
       result[parentCode, default: []].insert(fellowshipCode)
@@ -99,7 +99,7 @@ enum ACGMSpecialtyHierarchy {
   }
 
   /// Parses the trailing `(###)` ACGME specialty code from catalog strings.
-  static func catalogSpecialtyCode(from specialty: String) -> String? {
+  nonisolated static func catalogSpecialtyCode(from specialty: String) -> String? {
     let trimmed = specialty.trimmingCharacters(in: .whitespacesAndNewlines)
     guard let open = trimmed.lastIndex(of: "("),
       let close = trimmed.lastIndex(of: ")"),
@@ -109,7 +109,7 @@ enum ACGMSpecialtyHierarchy {
     return code.count == 3 && code.allSatisfy(\.isNumber) ? code : nil
   }
 
-  static func trainingLevel(for program: ResidencyProgramInfo) -> ProgramTrainingLevel {
+  nonisolated static func trainingLevel(for program: ResidencyProgramInfo) -> ProgramTrainingLevel {
     if let erasLevel = ERASTrainingLevel.trainingLevel(for: program) {
       return erasLevel
     }
@@ -134,7 +134,7 @@ enum ACGMSpecialtyHierarchy {
     return .fellowship
   }
 
-  static func parentResidencyCode(for program: ResidencyProgramInfo) -> String? {
+  nonisolated static func parentResidencyCode(for program: ResidencyProgramInfo) -> String? {
     let code = ERASTrainingLevel.specialtyCode(for: program)
       ?? catalogSpecialtyCode(from: program.specialty)
     guard let code else { return nil }
@@ -142,18 +142,18 @@ enum ACGMSpecialtyHierarchy {
     return fellowshipParentCode[code]
   }
 
-  static func parentResidencyName(for program: ResidencyProgramInfo) -> String? {
+  nonisolated static func parentResidencyName(for program: ResidencyProgramInfo) -> String? {
     guard let parentCode = parentResidencyCode(for: program) else { return nil }
     return residencyDisplayNames[parentCode]
       ?? SpecialtyFormatter.normalizedCatalogName(program.specialty)
   }
 
-  static func residencyCodes(forUserSpecialty userSpecialty: String) -> Set<String> {
+  nonisolated static func residencyCodes(forUserSpecialty userSpecialty: String) -> Set<String> {
     let trimmed = userSpecialty.trimmingCharacters(in: .whitespacesAndNewlines)
     return userSpecialtyResidencyCodes[trimmed] ?? []
   }
 
-  static func fellowshipCodes(forUserSpecialty userSpecialty: String) -> Set<String> {
+  nonisolated static func fellowshipCodes(forUserSpecialty userSpecialty: String) -> Set<String> {
     let trimmed = userSpecialty.trimmingCharacters(in: .whitespacesAndNewlines)
     let parentCodes = residencyCodes(forUserSpecialty: trimmed)
     var codes = Set<String>()
@@ -170,7 +170,7 @@ enum ACGMSpecialtyHierarchy {
 
   // MARK: - Fallback maps (if JSON fails to load)
 
-  private static let fallbackFellowshipParentCode: [String: String] = [
+  private nonisolated static let fallbackFellowshipParentCode: [String: String] = [
     "041": "040", "042": "040", "043": "040", "044": "040", "045": "040", "046": "040", "047": "040",
     "081": "080", "082": "080", "100": "080",
     "111": "110", "112": "110", "114": "110", "116": "110", "118": "110", "119": "110",
@@ -199,7 +199,7 @@ enum ACGMSpecialtyHierarchy {
     "060": "440", "754": "220",
   ]
 
-  private static let fallbackUserSpecialtyResidencyCodes: [String: Set<String>] = [
+  private nonisolated static let fallbackUserSpecialtyResidencyCodes: [String: Set<String>] = [
     "Internal Medicine": ["140", "700", "705", "715", "740", "742", "745", "751", "766", "785"],
     "Family Medicine": ["120", "720", "752", "753", "795"],
     "Emergency Medicine": ["110", "705", "725", "795", "796", "797"],
@@ -232,7 +232,7 @@ enum ACGMSpecialtyHierarchy {
     "Osteopathic Neuromusculoskeletal Medicine": ["275", "753"],
   ]
 
-  private static let fallbackAdditionalFellowshipCodes: [String: Set<String>] = [
+  private nonisolated static let fallbackAdditionalFellowshipCodes: [String: Set<String>] = [
     "Emergency Medicine": ["404", "520", "540", "530"],
     "Family Medicine": ["404", "520", "540", "127"],
     "Internal Medicine": ["404", "520", "540", "530"],

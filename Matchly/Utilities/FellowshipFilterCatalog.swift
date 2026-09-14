@@ -15,12 +15,12 @@ struct FellowshipFilterOption: Identifiable, Hashable {
   var id: String { code }
 }
 
-enum FellowshipFilterCatalog {
-  private struct PARFellowshipIndex: Decodable {
-    let fellowshipByCode: [String: String]
-  }
+private struct PARFellowshipIndex: Decodable, Sendable {
+  let fellowshipByCode: [String: String]
+}
 
-  private static let fellowshipByCode: [String: String] = {
+enum FellowshipFilterCatalog {
+  private nonisolated static let fellowshipByCode: [String: String] = {
     guard let url = Bundle.main.url(forResource: "ERAS_PAR_specialties", withExtension: "json"),
       let data = try? Data(contentsOf: url),
       let decoded = try? JSONDecoder().decode(PARFellowshipIndex.self, from: data)
@@ -29,7 +29,7 @@ enum FellowshipFilterCatalog {
   }()
 
   /// Fellowship subspecialties the user can apply to, based on selected parent specialty(ies).
-  static func options(forUserSpecialties userSpecialties: [String]) -> [FellowshipFilterOption] {
+  nonisolated static func options(forUserSpecialties userSpecialties: [String]) -> [FellowshipFilterOption] {
     guard !userSpecialties.isEmpty else { return [] }
 
     var codes = Set<String>()
@@ -52,7 +52,7 @@ enum FellowshipFilterCatalog {
     }
   }
 
-  static func groupedOptions(forUserSpecialties userSpecialties: [String]) -> [(parent: String, options: [FellowshipFilterOption])] {
+  nonisolated static func groupedOptions(forUserSpecialties userSpecialties: [String]) -> [(parent: String, options: [FellowshipFilterOption])] {
     let options = options(forUserSpecialties: userSpecialties)
     let grouped = Dictionary(grouping: options) { $0.parentLabel }
     return grouped.keys.sorted().map { key in
@@ -60,7 +60,7 @@ enum FellowshipFilterCatalog {
     }
   }
 
-  static func displayName(forCode code: String) -> String? {
+  nonisolated static func displayName(forCode code: String) -> String? {
     fellowshipByCode[code]
   }
 }

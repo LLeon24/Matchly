@@ -13,14 +13,14 @@ struct ProgramSearchIndex {
 
 enum ProgramSearchMatcher {
     /// Avoid overly broad acronym matches (e.g. "st", "la").
-    static let minAcronymQueryLength = 3
+    nonisolated static let minAcronymQueryLength = 3
 
-    private static let stopWords: Set<String> = [
+    private nonisolated static let stopWords: Set<String> = [
         "a", "an", "and", "at", "for", "in", "of", "or", "the", "to", "with"
     ]
 
     /// Common nicknames and acronyms → substrings expected in program names.
-    private static let queryAliases: [String: [String]] = [
+    private nonisolated static let queryAliases: [String: [String]] = [
         "fsu": ["florida state"],
         "uf": ["university of florida"],
         "ucf": ["university of central florida", "central florida"],
@@ -104,10 +104,10 @@ enum ProgramSearchMatcher {
         "hca": ["hca"],
     ]
 
-    private static var cache: [String: ProgramSearchIndex] = [:]
-    private static let cacheLock = NSLock()
+    private nonisolated(unsafe) static var cache: [String: ProgramSearchIndex] = [:]
+    private nonisolated static let cacheLock = NSLock()
 
-    static func warmCache(for programs: [ResidencyProgramInfo]) {
+    nonisolated static func warmCache(for programs: [ResidencyProgramInfo]) {
         cacheLock.lock()
         defer { cacheLock.unlock() }
         cache.removeAll(keepingCapacity: true)
@@ -117,13 +117,13 @@ enum ProgramSearchMatcher {
         }
     }
 
-    static func clearCache() {
+    nonisolated static func clearCache() {
         cacheLock.lock()
         cache.removeAll()
         cacheLock.unlock()
     }
 
-    static func index(for program: ResidencyProgramInfo) -> ProgramSearchIndex {
+    nonisolated static func index(for program: ResidencyProgramInfo) -> ProgramSearchIndex {
         cacheLock.lock()
         if let cached = cache[program.id] {
             cacheLock.unlock()
@@ -138,7 +138,7 @@ enum ProgramSearchMatcher {
         return built
     }
 
-    static func matches(
+    nonisolated static func matches(
         query: String,
         program: ResidencyProgramInfo,
         stateToAbbrev: [String: String]
@@ -182,7 +182,7 @@ enum ProgramSearchMatcher {
         return false
     }
 
-    private static func buildIndex(for program: ResidencyProgramInfo) -> ProgramSearchIndex {
+    private nonisolated static func buildIndex(for program: ResidencyProgramInfo) -> ProgramSearchIndex {
         let coreHospital = coreInstitutionName(from: program.hospital)
         let acronymSource = nameForAcronym(from: program.hospital)
         let derivedHospitalAcronym = acronym(from: acronymSource)
@@ -218,7 +218,7 @@ enum ProgramSearchMatcher {
     }
 
     /// Primary sponsoring institution before slash-separated site names.
-    private static func coreInstitutionName(from hospital: String) -> String {
+    private nonisolated static func coreInstitutionName(from hospital: String) -> String {
         var name = hospital
         if let slash = name.firstIndex(of: "/") {
             name = String(name[..<slash])
@@ -234,7 +234,7 @@ enum ProgramSearchMatcher {
     }
 
     /// Institution text used for acronym derivation (no campus parenthetical or site suffix).
-    private static func nameForAcronym(from hospital: String) -> String {
+    private nonisolated static func nameForAcronym(from hospital: String) -> String {
         var core = coreInstitutionName(from: hospital)
         if let open = core.lastIndex(of: "("), core.hasSuffix(")") {
             core = String(core[..<open]).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -243,13 +243,13 @@ enum ProgramSearchMatcher {
     }
 
     /// Alias keys whose expansion phrases appear in this haystack (e.g. ucf for University of Central Florida).
-    private static func aliasKeysMatchingHaystack(_ haystack: String) -> [String] {
+    private nonisolated static func aliasKeysMatchingHaystack(_ haystack: String) -> [String] {
         queryAliases.compactMap { key, phrases in
             phrases.contains(where: { haystack.contains($0) }) ? key : nil
         }
     }
 
-    private static func tokens(from text: String) -> [String] {
+    private nonisolated static func tokens(from text: String) -> [String] {
         text.lowercased()
             .replacingOccurrences(of: "(", with: " ")
             .replacingOccurrences(of: ")", with: " ")
@@ -261,11 +261,11 @@ enum ProgramSearchMatcher {
             .filter { !$0.isEmpty && !stopWords.contains($0) }
     }
 
-    static func acronym(from text: String) -> String {
+    nonisolated static func acronym(from text: String) -> String {
         tokens(from: text).compactMap(\.first).map { String($0) }.joined()
     }
 
-    private static func matchesAcronym(_ query: String, searchIndex: ProgramSearchIndex) -> Bool {
+    private nonisolated static func matchesAcronym(_ query: String, searchIndex: ProgramSearchIndex) -> Bool {
         guard query.count >= minAcronymQueryLength else { return false }
         guard query.allSatisfy(\.isLetter) else { return false }
 
@@ -276,7 +276,7 @@ enum ProgramSearchMatcher {
         return false
     }
 
-    private static func matchesAlias(_ query: String, haystack: String) -> Bool {
+    private nonisolated static func matchesAlias(_ query: String, haystack: String) -> Bool {
         if let phrases = queryAliases[query] {
             if phrases.contains(where: { haystack.contains($0) }) {
                 return true
@@ -302,7 +302,7 @@ enum ProgramSearchMatcher {
         return false
     }
 
-    private static func phraseContainsQuery(_ phrase: String, _ query: String) -> Bool {
+    private nonisolated static func phraseContainsQuery(_ phrase: String, _ query: String) -> Bool {
         guard query.count >= minAcronymQueryLength else { return false }
         if phrase == query { return true }
         if phrase.hasPrefix("\(query) ") { return true }

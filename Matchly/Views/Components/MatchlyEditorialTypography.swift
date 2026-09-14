@@ -59,10 +59,11 @@ struct MatchlyPageTitleText: View {
 /// Settings / form section label — small tracked caps.
 struct MatchlySectionHeaderText: View {
     let title: String
+    var weight: Font.Weight = .regular
 
     var body: some View {
         Text(title.uppercased())
-            .font(.arial(size: MatchlyEditorialTypography.sectionHeaderSize, weight: .regular))
+            .font(.arial(size: MatchlyEditorialTypography.sectionHeaderSize, weight: weight))
             .foregroundStyle(AppColors.secondaryText)
             .kerning(MatchlyEditorialTypography.sectionHeaderKerning)
     }

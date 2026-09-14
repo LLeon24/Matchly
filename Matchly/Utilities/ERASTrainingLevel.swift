@@ -9,7 +9,7 @@
 import Foundation
 import OSLog
 
-private struct ERASPARSpecialtyIndex: Decodable {
+private struct ERASPARSpecialtyIndex: Decodable, Sendable {
   let residencyByCode: [String: String]
   let fellowshipByCode: [String: String]
   let acgmeSpecialtyByCode: [String: String]?
@@ -17,9 +17,9 @@ private struct ERASPARSpecialtyIndex: Decodable {
 }
 
 enum ERASTrainingLevel {
-  private static let logger = Logger(subsystem: "com.matchly", category: "ERASTrainingLevel")
+  private nonisolated static let logger = Logger(subsystem: "com.matchly", category: "ERASTrainingLevel")
 
-  private static let index: ERASPARSpecialtyIndex? = {
+  private nonisolated static let index: ERASPARSpecialtyIndex? = {
     guard let url = Bundle.main.url(forResource: "ERAS_PAR_specialties", withExtension: "json"),
       let data = try? Data(contentsOf: url),
       let decoded = try? JSONDecoder().decode(ERASPARSpecialtyIndex.self, from: data)
@@ -30,7 +30,7 @@ enum ERASTrainingLevel {
     return decoded
   }()
 
-  private static let residencyNameToCode: [String: String] = {
+  private nonisolated static let residencyNameToCode: [String: String] = {
     guard let index else { return [:] }
     var map: [String: String] = [:]
     for (code, name) in index.residencyByCode {
@@ -39,7 +39,7 @@ enum ERASTrainingLevel {
     return map
   }()
 
-  private static let fellowshipNameToCode: [String: String] = {
+  private nonisolated static let fellowshipNameToCode: [String: String] = {
     guard let index else { return [:] }
     var map: [String: String] = [:]
     for (code, name) in index.fellowshipByCode {
@@ -50,7 +50,7 @@ enum ERASTrainingLevel {
     return map
   }()
 
-  private static let parentAbbreviationMap: [String: String] = [
+  private nonisolated static let parentAbbreviationMap: [String: String] = [
     "obgyn": "OB/GYN",
     "obstetrics and gynecology": "OB/GYN",
     "internal medicine": "Internal Medicine",
@@ -72,21 +72,50 @@ enum ERASTrainingLevel {
     "emergency medicine": "Emergency Medicine",
   ]
 
-  private static let ambiguousParentPrefixes: Set<String> = [
+  private nonisolated static let ambiguousParentPrefixes: Set<String> = [
     "040", "110", "120", "140", "180", "220", "300", "320", "400", "420", "440",
   ]
 
-  static func specialtyCode(for program: ResidencyProgramInfo) -> String? {
-    if let code = ACGMSpecialtyHierarchy.catalogSpecialtyCode(from: program.specialty) {
-      return code
+  nonisolated static func specialtyCode(for program: ResidencyProgramInfo) -> String? {
+    let accreditationID = program.accreditationID ?? program.id
+    let prefix = accreditationID.count >= 3 ? String(accreditationID.prefix(3)) : nil
+    let suffix = ACGMSpecialtyHierarchy.catalogSpecialtyCode(from: program.specialty)
+
+    if let prefix, let suffix, prefix != suffix,
+      let reconciled = reconcileSpecialtyCode(prefix: prefix, suffix: suffix)
+    {
+      return reconciled
+    }
+
+    if let suffix {
+      return suffix
     }
     if let code = specialtyCode(forSpecialtyName: program.specialty) {
       return code
     }
-    return specialtyCode(fromAccreditationID: program.accreditationID ?? program.id, specialty: program.specialty)
+    return specialtyCode(fromAccreditationID: accreditationID, specialty: program.specialty)
   }
 
-  static func specialtyCode(forSpecialtyName specialty: String) -> String? {
+  /// When catalog `(###)` suffix disagrees with the accreditation ID prefix, pick the code
+  /// that matches ACGME's program identity (prefix wins for fellowship/fellowship conflicts;
+  /// suffix wins when prefix is a parent residency code).
+  private nonisolated static func reconcileSpecialtyCode(prefix: String, suffix: String) -> String? {
+    guard let index else { return nil }
+
+    let prefixIsFellowship = index.fellowshipByCode[prefix] != nil
+    let suffixIsFellowship = index.fellowshipByCode[suffix] != nil
+    let prefixIsResidency = index.residencyByCode[prefix] != nil
+
+    if prefixIsFellowship, suffixIsFellowship {
+      return prefix
+    }
+    if prefixIsResidency, suffixIsFellowship {
+      return suffix
+    }
+    return nil
+  }
+
+  nonisolated static func specialtyCode(forSpecialtyName specialty: String) -> String? {
     let normalized = normalizeSpecialtyName(specialty)
     if let code = residencyNameToCode[normalized] { return code }
     if let code = fellowshipNameToCode[normalized] { return code }
@@ -96,7 +125,7 @@ enum ERASTrainingLevel {
     return nil
   }
 
-  static func specialtyCode(fromAccreditationID accreditationID: String, specialty: String) -> String? {
+  nonisolated static func specialtyCode(fromAccreditationID accreditationID: String, specialty: String) -> String? {
     guard accreditationID.count >= 3 else { return nil }
     let prefix = String(accreditationID.prefix(3))
 
@@ -114,7 +143,7 @@ enum ERASTrainingLevel {
     return nil
   }
 
-  private static let fuzzyNameToCode: [String: String] = {
+  private nonisolated static let fuzzyNameToCode: [String: String] = {
     guard let index else { return [:] }
     var map: [String: String] = [:]
     let sources = [index.residencyByCode, index.fellowshipByCode, index.acgmeSpecialtyByCode ?? [:]]
@@ -127,28 +156,28 @@ enum ERASTrainingLevel {
     return map
   }()
 
-  private static func fuzzySpecialtyCode(for specialty: String) -> String? {
+  private nonisolated static func fuzzySpecialtyCode(for specialty: String) -> String? {
     fuzzyNameToCode[fuzzyKey(specialty)]
   }
 
-  private static func fuzzyKey(_ specialty: String) -> String {
+  private nonisolated static func fuzzyKey(_ specialty: String) -> String {
     normalizeSpecialtyName(specialty).unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }
       .map { String($0) }.joined()
   }
 
-  static func trainingLevel(for program: ResidencyProgramInfo) -> ProgramTrainingLevel? {
+  nonisolated static func trainingLevel(for program: ResidencyProgramInfo) -> ProgramTrainingLevel? {
     guard let code = specialtyCode(for: program) else { return nil }
     if index?.residencyByCode[code] != nil { return .residency }
     if index?.fellowshipByCode[code] != nil { return .fellowship }
     return nil
   }
 
-  static func erasSpecialtyName(for program: ResidencyProgramInfo) -> String? {
+  nonisolated static func erasSpecialtyName(for program: ResidencyProgramInfo) -> String? {
     guard let code = specialtyCode(for: program) else { return nil }
     return index?.residencyByCode[code] ?? index?.fellowshipByCode[code]
   }
 
-  private static func normalizeSpecialtyName(_ specialty: String) -> String {
+  private nonisolated static func normalizeSpecialtyName(_ specialty: String) -> String {
     var trimmed = specialty.trimmingCharacters(in: .whitespacesAndNewlines)
     if let open = trimmed.lastIndex(of: "("),
       let close = trimmed.lastIndex(of: ")"),
@@ -163,7 +192,7 @@ enum ERASTrainingLevel {
   }
 
   /// Parent residency label for ERAS-listed fellowships, parsed from PAR specialty name.
-  static func parentResidencyName(for program: ResidencyProgramInfo) -> String? {
+  nonisolated static func parentResidencyName(for program: ResidencyProgramInfo) -> String? {
     guard trainingLevel(for: program) == .fellowship,
       let code = specialtyCode(for: program),
       let fellowshipName = index?.fellowshipByCode[code]
@@ -175,7 +204,7 @@ enum ERASTrainingLevel {
     return ACGMSpecialtyHierarchy.parentResidencyName(for: program)
   }
 
-  static func parentLabel(fromERASName name: String) -> String? {
+  nonisolated static func parentLabel(fromERASName name: String) -> String? {
     // e.g. "Cardiovascular Disease (Internal Medicine)"
     guard let open = name.lastIndex(of: "("), let close = name.lastIndex(of: ")"), open < close else {
       return nil
@@ -196,7 +225,7 @@ enum ERASTrainingLevel {
   }
 
   /// Whether an ERAS fellowship name lists the given parent specialty in parentheses.
-  static func fellowshipNamesParent(_ parentUserSpecialty: String, program: ResidencyProgramInfo) -> Bool {
+  nonisolated static func fellowshipNamesParent(_ parentUserSpecialty: String, program: ResidencyProgramInfo) -> Bool {
     guard let code = specialtyCode(for: program),
       let fellowshipName = index?.fellowshipByCode[code],
       let parentLabel = parentLabel(fromERASName: fellowshipName)
@@ -205,7 +234,7 @@ enum ERASTrainingLevel {
       || SpecialtyFormatter.namesMatchExact(parentLabel, normalizedParentAlias(parentUserSpecialty))
   }
 
-  private static func normalizedParentAlias(_ userSpecialty: String) -> String {
+  private nonisolated static func normalizedParentAlias(_ userSpecialty: String) -> String {
     switch userSpecialty {
     case "OB/GYN": return "Obstetrics and Gynecology"
     case "General Surgery": return "Surgery"

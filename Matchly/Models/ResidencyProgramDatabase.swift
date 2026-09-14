@@ -9,7 +9,7 @@ import Foundation
 import Combine
 import OSLog
 
-struct ResidencyProgramInfo: Identifiable, Codable {
+struct ResidencyProgramInfo: Identifiable, Codable, Sendable {
     let id: String
     let name: String
     let hospital: String
@@ -49,7 +49,7 @@ struct ResidencyProgramInfo: Identifiable, Codable {
     }
     
     // Convenience initializer for backward compatibility
-    init(id: String, name: String, hospital: String, city: String, state: String, specialty: String, type: String = "", accreditationID: String? = nil, websiteURL: String? = nil, contactEmail: String? = nil, contactPhone: String? = nil, programCoordinator: String? = nil, programDirector: String? = nil, address: String? = nil, isIMGFriendly: Bool? = nil) {
+    nonisolated init(id: String, name: String, hospital: String, city: String, state: String, specialty: String, type: String = "", accreditationID: String? = nil, websiteURL: String? = nil, contactEmail: String? = nil, contactPhone: String? = nil, programCoordinator: String? = nil, programDirector: String? = nil, address: String? = nil, isIMGFriendly: Bool? = nil) {
         self.id = id
         self.name = name
         self.hospital = hospital
@@ -120,21 +120,31 @@ struct ProgramSearchResults {
     let isTruncated: Bool
 }
 
-final class ResidencyProgramDatabase: ObservableObject {
-    static let shared = ResidencyProgramDatabase()
-    private static let logger = Logger(subsystem: "com.matchly", category: "ResidencyProgramDatabase")
+final class ResidencyProgramDatabase: ObservableObject, @unchecked Sendable {
+    nonisolated static let shared = ResidencyProgramDatabase()
+    private nonisolated static let logger = Logger(subsystem: "com.matchly", category: "ResidencyProgramDatabase")
 
-    static let defaultResultLimit = 300
+    nonisolated static let defaultResultLimit = 300
+
+    /// ACGME catalog reuses this suffix on Clinical Informatics programs across parent fields.
+    private nonisolated static let genericClinicalInformaticsCatalogCode = "111"
 
     @Published private(set) var isReady = false
     @Published private(set) var programCount = 0
     @Published private(set) var residencyCount = 0
     @Published private(set) var fellowshipCount = 0
 
-    private var programs: [ResidencyProgramInfo] = []
-    private var residencyPrograms: [ResidencyProgramInfo] = []
-    private var fellowshipPrograms: [ResidencyProgramInfo] = []
-    private let lock = NSLock()
+    private nonisolated(unsafe) var programs: [ResidencyProgramInfo] = []
+    private nonisolated(unsafe) var residencyPrograms: [ResidencyProgramInfo] = []
+    private nonisolated(unsafe) var fellowshipPrograms: [ResidencyProgramInfo] = []
+    private nonisolated(unsafe) var programSpecialtyCodeByID: [String: String] = [:]
+    private nonisolated(unsafe) var programCatalogSuffixByID: [String: String] = [:]
+    private nonisolated(unsafe) var programHospitalSortKeyByID: [String: String] = [:]
+    private nonisolated(unsafe) var residencyProgramsBySpecialtyCode: [String: [ResidencyProgramInfo]] = [:]
+    private nonisolated(unsafe) var fellowshipProgramsBySpecialtyCode: [String: [ResidencyProgramInfo]] = [:]
+    private nonisolated(unsafe) var fellowshipProgramsByCatalogSuffix: [String: [ResidencyProgramInfo]] = [:]
+    private nonisolated(unsafe) var fellowshipProgramsByParentCode: [String: [ResidencyProgramInfo]] = [:]
+    private nonisolated let lock = NSLock()
 
     init() {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -142,14 +152,14 @@ final class ResidencyProgramDatabase: ObservableObject {
         }
     }
 
-    private func withPrograms<T>(_ work: () -> T) -> T {
+    private nonisolated func withPrograms<T>(_ work: () -> T) -> T {
         lock.lock()
         defer { lock.unlock() }
         return work()
     }
 
     // State name to abbreviation mapping
-    private let stateToAbbrev: [String: String] = [
+    private nonisolated static let stateToAbbrev: [String: String] = [
         "alabama": "AL", "alaska": "AK", "arizona": "AZ", "arkansas": "AR",
         "california": "CA", "colorado": "CO", "connecticut": "CT", "delaware": "DE",
         "florida": "FL", "georgia": "GA", "hawaii": "HI", "idaho": "ID",
@@ -165,7 +175,7 @@ final class ResidencyProgramDatabase: ObservableObject {
         "wisconsin": "WI", "wyoming": "WY", "district of columbia": "DC", "puerto rico": "PR"
     ]
     
-    func search(
+    nonisolated func search(
         query: String,
         specialty: String? = nil,
         specialties: [String]? = nil,
@@ -192,6 +202,39 @@ final class ResidencyProgramDatabase: ObservableObject {
                 imgFriendlyOnly: imgFriendlyOnly,
                 limit: limit
             )
+        }
+    }
+
+    nonisolated func searchAsync(
+        query: String,
+        specialty: String? = nil,
+        specialties: [String]? = nil,
+        fellowshipCodes: Set<String>? = nil,
+        stateFilter: String? = nil,
+        stateFilters: Set<String>? = nil,
+        programTypeFilter: String? = nil,
+        programTypes: [String]? = nil,
+        trainingLevel: ProgramTrainingLevel? = nil,
+        imgFriendlyOnly: Bool = false,
+        limit: Int = ResidencyProgramDatabase.defaultResultLimit
+    ) async -> ProgramSearchResults {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let results = self.search(
+                    query: query,
+                    specialty: specialty,
+                    specialties: specialties,
+                    fellowshipCodes: fellowshipCodes,
+                    stateFilter: stateFilter,
+                    stateFilters: stateFilters,
+                    programTypeFilter: programTypeFilter,
+                    programTypes: programTypes,
+                    trainingLevel: trainingLevel,
+                    imgFriendlyOnly: imgFriendlyOnly,
+                    limit: limit
+                )
+                continuation.resume(returning: results)
+            }
         }
     }
 
@@ -222,7 +265,7 @@ final class ResidencyProgramDatabase: ObservableObject {
         ).programs
     }
 
-    private func performSearch(
+    private nonisolated func performSearch(
         query: String,
         specialty: String?,
         specialties: [String]?,
@@ -236,28 +279,28 @@ final class ResidencyProgramDatabase: ObservableObject {
         limit: Int
     ) -> ProgramSearchResults {
         let lowerQuery = query.lowercased().trimmingCharacters(in: .whitespaces)
+        let hasFellowshipTypeFilter = fellowshipCodes.map { !$0.isEmpty } ?? false
 
-        let pool: [ResidencyProgramInfo]
-        switch trainingLevel {
-        case .residency:
-            pool = residencyPrograms
-        case .fellowship:
-            pool = fellowshipPrograms
-        case nil:
-            pool = programs
-        }
+        let poolSelection = searchCandidatePool(
+            trainingLevel: trainingLevel,
+            specialties: specialties,
+            fellowshipCodes: fellowshipCodes,
+            hasFellowshipTypeFilter: hasFellowshipTypeFilter
+        )
 
         var totalCount = 0
         var results: [ResidencyProgramInfo] = []
-        results.reserveCapacity(min(limit, pool.count))
+        results.reserveCapacity(min(limit, poolSelection.programs.count))
 
-        for program in pool {
+        for program in poolSelection.programs {
             guard matchesProgram(
                 program,
                 lowerQuery: lowerQuery,
                 specialty: specialty,
                 specialties: specialties,
                 fellowshipCodes: fellowshipCodes,
+                hasFellowshipTypeFilter: hasFellowshipTypeFilter,
+                skipSpecialtyMatching: poolSelection.skipSpecialtyMatching,
                 stateFilter: stateFilter,
                 stateFilters: stateFilters,
                 programTypeFilter: programTypeFilter,
@@ -278,20 +321,143 @@ final class ResidencyProgramDatabase: ObservableObject {
         )
     }
 
-    private func matchesProgram(
+    private struct SearchCandidatePool {
+        let programs: [ResidencyProgramInfo]
+        let skipSpecialtyMatching: Bool
+    }
+
+    private nonisolated func searchCandidatePool(
+        trainingLevel: ProgramTrainingLevel?,
+        specialties: [String]?,
+        fellowshipCodes: Set<String>?,
+        hasFellowshipTypeFilter: Bool
+    ) -> SearchCandidatePool {
+        if hasFellowshipTypeFilter, let fellowshipCodes {
+            return SearchCandidatePool(
+                programs: programsForFellowshipCodes(fellowshipCodes),
+                skipSpecialtyMatching: true
+            )
+        }
+
+        if let specialties, !specialties.isEmpty {
+            switch trainingLevel {
+            case .fellowship:
+                return SearchCandidatePool(
+                    programs: programsForFellowshipParentSpecialties(specialties),
+                    skipSpecialtyMatching: true
+                )
+            case .residency:
+                return SearchCandidatePool(
+                    programs: programsForResidencySpecialties(specialties),
+                    skipSpecialtyMatching: true
+                )
+            case nil:
+                break
+            }
+        }
+
+        switch trainingLevel {
+        case .residency:
+            return SearchCandidatePool(programs: residencyPrograms, skipSpecialtyMatching: false)
+        case .fellowship:
+            return SearchCandidatePool(programs: fellowshipPrograms, skipSpecialtyMatching: false)
+        case nil:
+            return SearchCandidatePool(programs: programs, skipSpecialtyMatching: false)
+        }
+    }
+
+    private nonisolated func programsForFellowshipCodes(_ codes: Set<String>) -> [ResidencyProgramInfo] {
+        var seen = Set<String>()
+        var merged: [ResidencyProgramInfo] = []
+        merged.reserveCapacity(256)
+
+        for code in codes {
+            appendUniquePrograms(fellowshipProgramsBySpecialtyCode[code], into: &merged, seen: &seen)
+            if code != Self.genericClinicalInformaticsCatalogCode {
+                appendUniquePrograms(fellowshipProgramsByCatalogSuffix[code], into: &merged, seen: &seen)
+            }
+        }
+
+        return merged
+    }
+
+    private nonisolated func programsForFellowshipParentSpecialties(_ userSpecialties: [String]) -> [ResidencyProgramInfo] {
+        var parentCodes = Set<String>()
+        for specialty in userSpecialties {
+            parentCodes.formUnion(ACGMSpecialtyHierarchy.residencyCodes(forUserSpecialty: specialty))
+        }
+
+        var seen = Set<String>()
+        var merged: [ResidencyProgramInfo] = []
+        merged.reserveCapacity(512)
+
+        for parentCode in parentCodes {
+            appendUniquePrograms(fellowshipProgramsByParentCode[parentCode], into: &merged, seen: &seen)
+        }
+
+        return merged
+    }
+
+    private nonisolated func programsForResidencySpecialties(_ userSpecialties: [String]) -> [ResidencyProgramInfo] {
+        var specialtyCodes = Set<String>()
+        for specialty in userSpecialties {
+            specialtyCodes.formUnion(ACGMSpecialtyHierarchy.residencyCodes(forUserSpecialty: specialty))
+        }
+
+        var seen = Set<String>()
+        var merged: [ResidencyProgramInfo] = []
+        merged.reserveCapacity(512)
+
+        for code in specialtyCodes {
+            appendUniquePrograms(residencyProgramsBySpecialtyCode[code], into: &merged, seen: &seen)
+        }
+
+        return merged
+    }
+
+    private nonisolated func appendUniquePrograms(
+        _ programs: [ResidencyProgramInfo]?,
+        into merged: inout [ResidencyProgramInfo],
+        seen: inout Set<String>
+    ) {
+        guard let programs else { return }
+        for program in programs where seen.insert(program.id).inserted {
+            merged.append(program)
+        }
+    }
+
+    private nonisolated func cachedSpecialtyCode(for program: ResidencyProgramInfo) -> String? {
+        programSpecialtyCodeByID[program.id]
+    }
+
+    private nonisolated func cachedCatalogSuffix(for program: ResidencyProgramInfo) -> String? {
+        programCatalogSuffixByID[program.id]
+    }
+
+    private nonisolated func hospitalSortKey(for program: ResidencyProgramInfo) -> String {
+        programHospitalSortKeyByID[program.id] ?? program.hospital.lowercased()
+    }
+
+    private nonisolated func matchesProgram(
         _ program: ResidencyProgramInfo,
         lowerQuery: String,
         specialty: String?,
         specialties: [String]?,
         fellowshipCodes: Set<String>?,
+        hasFellowshipTypeFilter: Bool,
+        skipSpecialtyMatching: Bool,
         stateFilter: String?,
         stateFilters: Set<String>?,
         programTypeFilter: String?,
         programTypes: [String]?,
         imgFriendlyOnly: Bool
     ) -> Bool {
+        // Specific fellowship ERAS codes are authoritative; parent specialty matching is redundant
+        // and breaks when catalog suffix codes disagree with accreditation IDs.
         let matchesSpecialty: Bool
-        if let specialties, !specialties.isEmpty {
+        if hasFellowshipTypeFilter || skipSpecialtyMatching {
+            matchesSpecialty = true
+        } else if let specialties, !specialties.isEmpty {
             matchesSpecialty = SpecialtyFormatter.matchesAny(userSpecialties: specialties, program: program)
         } else if let specialty {
             matchesSpecialty = program.specialty == specialty
@@ -301,9 +467,13 @@ final class ResidencyProgramDatabase: ObservableObject {
         }
 
         let matchesFellowshipType: Bool
-        if let fellowshipCodes, !fellowshipCodes.isEmpty {
-            let programCode = ProgramTrainingLevelClassifier.specialtyCode(for: program)
-            matchesFellowshipType = programCode.map { fellowshipCodes.contains($0) } ?? false
+        if hasFellowshipTypeFilter, let fellowshipCodes {
+            matchesFellowshipType = Self.matchesFellowshipTypeFilter(
+                program,
+                fellowshipCodes: fellowshipCodes,
+                specialtyCode: cachedSpecialtyCode(for: program),
+                catalogSuffix: cachedCatalogSuffix(for: program)
+            )
         } else {
             matchesFellowshipType = true
         }
@@ -314,10 +484,10 @@ final class ResidencyProgramDatabase: ObservableObject {
             matchesState = stateFilters.contains { filterState in
                 let filterUpper = filterState.uppercased()
                 if filterUpper == programStateUpper { return true }
-                if let abbrev = stateToAbbrev[filterState.lowercased()], abbrev.uppercased() == programStateUpper {
+                if let abbrev = Self.stateToAbbrev[filterState.lowercased()], abbrev.uppercased() == programStateUpper {
                     return true
                 }
-                if let programAbbrev = stateToAbbrev[program.state.lowercased()], programAbbrev.uppercased() == filterUpper {
+                if let programAbbrev = Self.stateToAbbrev[program.state.lowercased()], programAbbrev.uppercased() == filterUpper {
                     return true
                 }
                 return false
@@ -328,7 +498,7 @@ final class ResidencyProgramDatabase: ObservableObject {
 
             if lowerStateFilter == programStateLower {
                 matchesState = true
-            } else if let abbrev = stateToAbbrev[lowerStateFilter], abbrev.uppercased() == program.state.uppercased() {
+            } else if let abbrev = Self.stateToAbbrev[lowerStateFilter], abbrev.uppercased() == program.state.uppercased() {
                 matchesState = true
             } else if programStateLower.contains(lowerStateFilter) || lowerStateFilter.contains(programStateLower) {
                 matchesState = true
@@ -371,14 +541,37 @@ final class ResidencyProgramDatabase: ObservableObject {
             matchesQuery = ProgramSearchMatcher.matches(
                 query: lowerQuery,
                 program: program,
-                stateToAbbrev: stateToAbbrev
+                stateToAbbrev: Self.stateToAbbrev
             )
         }
 
         return matchesSpecialty && matchesFellowshipType && matchesState && matchesType && matchesIMG && matchesQuery
     }
 
-    func getAllPrograms(specialty: String? = nil, specialties: [String]? = nil, trainingLevel: ProgramTrainingLevel? = nil) -> [ResidencyProgramInfo] {
+    private nonisolated static func matchesFellowshipTypeFilter(
+        _ program: ResidencyProgramInfo,
+        fellowshipCodes: Set<String>,
+        specialtyCode: String?,
+        catalogSuffix: String?
+    ) -> Bool {
+        if let specialtyCode, fellowshipCodes.contains(specialtyCode) {
+            return true
+        }
+
+        guard let catalogSuffix, fellowshipCodes.contains(catalogSuffix) else {
+            return false
+        }
+
+        // ACGME reuses (111) on every Clinical Informatics program regardless of parent field.
+        if catalogSuffix == genericClinicalInformaticsCatalogCode {
+            return false
+        }
+
+        // Accept catalog suffix when it differs from the resolved accreditation ID code.
+        return catalogSuffix != specialtyCode
+    }
+
+    nonisolated func getAllPrograms(specialty: String? = nil, specialties: [String]? = nil, trainingLevel: ProgramTrainingLevel? = nil) -> [ResidencyProgramInfo] {
         withPrograms {
             let pool: [ResidencyProgramInfo]
             switch trainingLevel {
@@ -402,17 +595,21 @@ final class ResidencyProgramDatabase: ObservableObject {
         }
     }
 
-    private func publishCatalogCounts() {
+    private nonisolated func publishCatalogCounts() {
+        lock.lock()
+        let counts = (programs.count, residencyPrograms.count, fellowshipPrograms.count)
+        lock.unlock()
+
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            self.programCount = self.programs.count
-            self.residencyCount = self.residencyPrograms.count
-            self.fellowshipCount = self.fellowshipPrograms.count
+            self.programCount = counts.0
+            self.residencyCount = counts.1
+            self.fellowshipCount = counts.2
             self.isReady = true
         }
     }
 
-    func program(withAccreditationID accreditationID: String) -> ResidencyProgramInfo? {
+    nonisolated func program(withAccreditationID accreditationID: String) -> ResidencyProgramInfo? {
         let trimmed = accreditationID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         return withPrograms {
@@ -422,20 +619,94 @@ final class ResidencyProgramDatabase: ObservableObject {
         }
     }
 
-    private func indexLoadedPrograms(_ loaded: [ResidencyProgramInfo]) {
+    private nonisolated func indexLoadedPrograms(_ loaded: [ResidencyProgramInfo]) {
+        buildCatalogIndexes(from: loaded)
+        publishCatalogCounts()
+
+        DispatchQueue.global(qos: .utility).async {
+            ProgramSearchMatcher.warmCache(for: loaded)
+        }
+    }
+
+    private nonisolated func buildCatalogIndexes(from loaded: [ResidencyProgramInfo]) {
+        var residency: [ResidencyProgramInfo] = []
+        var fellowship: [ResidencyProgramInfo] = []
+        residency.reserveCapacity(loaded.count / 3)
+        fellowship.reserveCapacity(loaded.count * 2 / 3)
+
+        var specialtyCodeByID: [String: String] = [:]
+        var catalogSuffixByID: [String: String] = [:]
+        var hospitalSortKeyByID: [String: String] = [:]
+        var residencyByCode: [String: [ResidencyProgramInfo]] = [:]
+        var fellowshipByCode: [String: [ResidencyProgramInfo]] = [:]
+        var fellowshipBySuffix: [String: [ResidencyProgramInfo]] = [:]
+        var fellowshipByParent: [String: [ResidencyProgramInfo]] = [:]
+
+        specialtyCodeByID.reserveCapacity(loaded.count)
+        hospitalSortKeyByID.reserveCapacity(loaded.count)
+
+        for program in loaded {
+            let specialtyCode = ProgramTrainingLevelClassifier.specialtyCode(for: program)
+            let catalogSuffix = ACGMSpecialtyHierarchy.catalogSpecialtyCode(from: program.specialty)
+            let level = ProgramTrainingLevelClassifier.trainingLevel(for: program)
+            let sortKey = program.hospital.lowercased()
+
+            if let specialtyCode {
+                specialtyCodeByID[program.id] = specialtyCode
+            }
+            if let catalogSuffix {
+                catalogSuffixByID[program.id] = catalogSuffix
+            }
+            hospitalSortKeyByID[program.id] = sortKey
+
+            switch level {
+            case .residency:
+                residency.append(program)
+                if let specialtyCode {
+                    residencyByCode[specialtyCode, default: []].append(program)
+                }
+            case .fellowship:
+                fellowship.append(program)
+                if let specialtyCode {
+                    fellowshipByCode[specialtyCode, default: []].append(program)
+                    if let parentCode = ACGMSpecialtyHierarchy.fellowshipParentCode[specialtyCode] {
+                        fellowshipByParent[parentCode, default: []].append(program)
+                    }
+                }
+                if let catalogSuffix,
+                   catalogSuffix != specialtyCode,
+                   catalogSuffix != Self.genericClinicalInformaticsCatalogCode {
+                    fellowshipBySuffix[catalogSuffix, default: []].append(program)
+                }
+            }
+        }
+
+        let sort: (ResidencyProgramInfo, ResidencyProgramInfo) -> Bool = { lhs, rhs in
+            let left = hospitalSortKeyByID[lhs.id] ?? lhs.hospital.lowercased()
+            let right = hospitalSortKeyByID[rhs.id] ?? rhs.hospital.lowercased()
+            return left.localizedCaseInsensitiveCompare(right) == .orderedAscending
+        }
+        residency.sort(by: sort)
+        fellowship.sort(by: sort)
+
         lock.lock()
         programs = loaded
-        residencyPrograms = loaded.filter { $0.trainingLevel == .residency }
-        fellowshipPrograms = loaded.filter { $0.trainingLevel == .fellowship }
+        residencyPrograms = residency
+        fellowshipPrograms = fellowship
+        programSpecialtyCodeByID = specialtyCodeByID
+        programCatalogSuffixByID = catalogSuffixByID
+        programHospitalSortKeyByID = hospitalSortKeyByID
+        residencyProgramsBySpecialtyCode = residencyByCode
+        fellowshipProgramsBySpecialtyCode = fellowshipByCode
+        fellowshipProgramsByCatalogSuffix = fellowshipBySuffix
+        fellowshipProgramsByParentCode = fellowshipByParent
         lock.unlock()
-        ProgramSearchMatcher.warmCache(for: loaded)
-        publishCatalogCounts()
     }
     
     // MARK: - ERAS Data Loading
     
     /// Load programs from bundled JSON (ACGME or ERAS format).
-    func loadFromERASJSON(data: Data) throws {
+    nonisolated func loadFromERASJSON(data: Data) throws {
         let decoder = JSONDecoder()
         let loaded = try decoder.decode([ResidencyProgramInfo].self, from: data)
         let merged = withPrograms {
@@ -446,7 +717,7 @@ final class ResidencyProgramDatabase: ObservableObject {
     }
     
     /// Load programs from ERAS JSON file in the app bundle
-    func loadFromERASJSONFile(filename: String) {
+    nonisolated func loadFromERASJSONFile(filename: String) {
         guard let url = Bundle.main.url(forResource: filename, withExtension: "json"),
               let data = try? Data(contentsOf: url) else {
             Self.logger.warning("Could not load ERAS data file: \(filename).json")
@@ -462,19 +733,19 @@ final class ResidencyProgramDatabase: ObservableObject {
     }
     
     /// Load programs from ERAS JSON file at a specific URL (for user-imported files)
-    func loadFromERASJSONURL(url: URL) throws {
+    nonisolated func loadFromERASJSONURL(url: URL) throws {
         let data = try Data(contentsOf: url)
         try loadFromERASJSON(data: data)
     }
     
     /// Clear existing programs and load only from bundled JSON data.
-    func replaceWithERASData(data: Data) throws {
+    nonisolated func replaceWithERASData(data: Data) throws {
         let decoder = JSONDecoder()
         let loaded = try decoder.decode([ResidencyProgramInfo].self, from: data)
         indexLoadedPrograms(loaded)
     }
     
-    private func loadPrograms() {
+    private nonisolated func loadPrograms() {
         // Prefer ACGME catalog (full US accreditation list), then ERAS fallback.
         let possibleNames = ["ACGME_2026", "Data/ACGME_2026", "ERAS2026", "Data/ERAS2026"]
         
@@ -512,7 +783,7 @@ final class ResidencyProgramDatabase: ObservableObject {
         indexLoadedPrograms(withPrograms { programs })
     }
     
-    private func loadInternalMedicinePrograms() {
+    private nonisolated func loadInternalMedicinePrograms() {
         programs.append(contentsOf: [
             // Top Academic Programs
             ResidencyProgramInfo(id: "im_001", name: "Internal Medicine", hospital: "Johns Hopkins Hospital", city: "Baltimore", state: "MD", specialty: "Internal Medicine", type: "Academic"),
@@ -618,7 +889,7 @@ final class ResidencyProgramDatabase: ObservableObject {
         ])
     }
     
-    private func loadFamilyMedicinePrograms() {
+    private nonisolated func loadFamilyMedicinePrograms() {
         programs.append(contentsOf: [
             ResidencyProgramInfo(id: "fm_001", name: "Family Medicine", hospital: "University of Washington", city: "Seattle", state: "WA", specialty: "Family Medicine", type: "Academic"),
             ResidencyProgramInfo(id: "fm_002", name: "Family Medicine", hospital: "University of North Carolina", city: "Chapel Hill", state: "NC", specialty: "Family Medicine", type: "Academic"),
@@ -723,7 +994,7 @@ final class ResidencyProgramDatabase: ObservableObject {
         ])
     }
     
-    private func loadEmergencyMedicinePrograms() {
+    private nonisolated func loadEmergencyMedicinePrograms() {
         programs.append(contentsOf: [
             ResidencyProgramInfo(id: "em_001", name: "Emergency Medicine", hospital: "Denver Health", city: "Denver", state: "CO", specialty: "Emergency Medicine", type: "Academic"),
             ResidencyProgramInfo(id: "em_002", name: "Emergency Medicine", hospital: "Highland Hospital", city: "Oakland", state: "CA", specialty: "Emergency Medicine", type: "Academic"),
@@ -733,7 +1004,7 @@ final class ResidencyProgramDatabase: ObservableObject {
         ])
     }
     
-    private func loadPediatricsPrograms() {
+    private nonisolated func loadPediatricsPrograms() {
         programs.append(contentsOf: [
             ResidencyProgramInfo(id: "peds_001", name: "Pediatrics", hospital: "Boston Children's Hospital", city: "Boston", state: "MA", specialty: "Pediatrics", type: "Academic"),
             ResidencyProgramInfo(id: "peds_002", name: "Pediatrics", hospital: "Children's Hospital of Philadelphia", city: "Philadelphia", state: "PA", specialty: "Pediatrics", type: "Academic"),
@@ -743,7 +1014,7 @@ final class ResidencyProgramDatabase: ObservableObject {
         ])
     }
     
-    private func loadGeneralSurgeryPrograms() {
+    private nonisolated func loadGeneralSurgeryPrograms() {
         programs.append(contentsOf: [
             ResidencyProgramInfo(id: "surg_001", name: "General Surgery", hospital: "Massachusetts General Hospital", city: "Boston", state: "MA", specialty: "General Surgery", type: "Academic"),
             ResidencyProgramInfo(id: "surg_002", name: "General Surgery", hospital: "Johns Hopkins Hospital", city: "Baltimore", state: "MD", specialty: "General Surgery", type: "Academic"),
@@ -753,7 +1024,7 @@ final class ResidencyProgramDatabase: ObservableObject {
         ])
     }
     
-    private func loadPsychiatryPrograms() {
+    private nonisolated func loadPsychiatryPrograms() {
         programs.append(contentsOf: [
             ResidencyProgramInfo(id: "psych_001", name: "Psychiatry", hospital: "Massachusetts General Hospital", city: "Boston", state: "MA", specialty: "Psychiatry", type: "Academic"),
             ResidencyProgramInfo(id: "psych_002", name: "Psychiatry", hospital: "Yale-New Haven Hospital", city: "New Haven", state: "CT", specialty: "Psychiatry", type: "Academic"),
@@ -763,7 +1034,7 @@ final class ResidencyProgramDatabase: ObservableObject {
         ])
     }
     
-    private func loadOBGYNPrograms() {
+    private nonisolated func loadOBGYNPrograms() {
         programs.append(contentsOf: [
             ResidencyProgramInfo(id: "obgyn_001", name: "OB/GYN", hospital: "Brigham and Women's Hospital", city: "Boston", state: "MA", specialty: "OB/GYN", type: "Academic"),
             ResidencyProgramInfo(id: "obgyn_002", name: "OB/GYN", hospital: "Johns Hopkins Hospital", city: "Baltimore", state: "MD", specialty: "OB/GYN", type: "Academic"),
@@ -773,7 +1044,7 @@ final class ResidencyProgramDatabase: ObservableObject {
         ])
     }
     
-    private func loadAnesthesiologyPrograms() {
+    private nonisolated func loadAnesthesiologyPrograms() {
         programs.append(contentsOf: [
             ResidencyProgramInfo(id: "anes_001", name: "Anesthesiology", hospital: "Massachusetts General Hospital", city: "Boston", state: "MA", specialty: "Anesthesiology", type: "Academic"),
             ResidencyProgramInfo(id: "anes_002", name: "Anesthesiology", hospital: "Johns Hopkins Hospital", city: "Baltimore", state: "MD", specialty: "Anesthesiology", type: "Academic"),
@@ -783,7 +1054,7 @@ final class ResidencyProgramDatabase: ObservableObject {
         ])
     }
     
-    private func loadRadiologyPrograms() {
+    private nonisolated func loadRadiologyPrograms() {
         programs.append(contentsOf: [
             ResidencyProgramInfo(id: "rad_001", name: "Radiology", hospital: "Massachusetts General Hospital", city: "Boston", state: "MA", specialty: "Radiology", type: "Academic"),
             ResidencyProgramInfo(id: "rad_002", name: "Radiology", hospital: "Johns Hopkins Hospital", city: "Baltimore", state: "MD", specialty: "Radiology", type: "Academic"),
@@ -793,7 +1064,7 @@ final class ResidencyProgramDatabase: ObservableObject {
         ])
     }
     
-    private func loadNeurologyPrograms() {
+    private nonisolated func loadNeurologyPrograms() {
         programs.append(contentsOf: [
             ResidencyProgramInfo(id: "neuro_001", name: "Neurology", hospital: "Massachusetts General Hospital", city: "Boston", state: "MA", specialty: "Neurology", type: "Academic"),
             ResidencyProgramInfo(id: "neuro_002", name: "Neurology", hospital: "Johns Hopkins Hospital", city: "Baltimore", state: "MD", specialty: "Neurology", type: "Academic"),
@@ -803,43 +1074,43 @@ final class ResidencyProgramDatabase: ObservableObject {
         ])
     }
     
-    private func loadPathologyPrograms() {
+    private nonisolated func loadPathologyPrograms() {
         programs.append(contentsOf: [
             // Placeholder - add programs as needed
         ])
     }
     
-    private func loadOrthopedicsPrograms() {
+    private nonisolated func loadOrthopedicsPrograms() {
         programs.append(contentsOf: [
             // Placeholder - add programs as needed
         ])
     }
     
-    private func loadENTPrograms() {
+    private nonisolated func loadENTPrograms() {
         programs.append(contentsOf: [
             // Placeholder - add programs as needed
         ])
     }
     
-    private func loadUrologyPrograms() {
+    private nonisolated func loadUrologyPrograms() {
         programs.append(contentsOf: [
             // Placeholder - add programs as needed
         ])
     }
     
-    private func loadPMRPrograms() {
+    private nonisolated func loadPMRPrograms() {
         programs.append(contentsOf: [
             // Placeholder - add programs as needed
         ])
     }
     
-    private func loadDermatologyPrograms() {
+    private nonisolated func loadDermatologyPrograms() {
         programs.append(contentsOf: [
             // Placeholder - add programs as needed
         ])
     }
     
-    private func loadNeurosurgeryPrograms() {
+    private nonisolated func loadNeurosurgeryPrograms() {
         programs.append(contentsOf: [
             // Placeholder - add programs as needed
         ])

@@ -30,14 +30,14 @@ enum ProgramTrainingLevelFilter: String, CaseIterable, Identifiable {
 }
 
 enum ProgramTrainingLevelClassifier {
-  static func specialtyCode(for program: ResidencyProgramInfo) -> String? {
+  nonisolated static func specialtyCode(for program: ResidencyProgramInfo) -> String? {
     ERASTrainingLevel.specialtyCode(for: program)
       ?? ACGMSpecialtyHierarchy.catalogSpecialtyCode(from: program.specialty)
       ?? fellowshipCodeFromAccreditationID(program)
   }
 
   /// ERAS PAR is authoritative when a specialty code is listed there; otherwise ACGME hierarchy.
-  static func trainingLevel(for program: ResidencyProgramInfo) -> ProgramTrainingLevel {
+  nonisolated static func trainingLevel(for program: ResidencyProgramInfo) -> ProgramTrainingLevel {
     if let erasLevel = ERASTrainingLevel.trainingLevel(for: program) {
       return erasLevel
     }
@@ -45,7 +45,7 @@ enum ProgramTrainingLevelClassifier {
   }
 
   /// Fellowship codes are explicit in accreditation IDs (e.g. 156, 141). Parent codes (140) are ambiguous.
-  private static func fellowshipCodeFromAccreditationID(_ program: ResidencyProgramInfo) -> String? {
+  private nonisolated static func fellowshipCodeFromAccreditationID(_ program: ResidencyProgramInfo) -> String? {
     let id = program.accreditationID ?? program.id
     guard id.count >= 3 else { return nil }
     let prefix = String(id.prefix(3))
@@ -55,12 +55,12 @@ enum ProgramTrainingLevelClassifier {
 }
 
 extension ResidencyProgramInfo {
-  var trainingLevel: ProgramTrainingLevel {
+  nonisolated var trainingLevel: ProgramTrainingLevel {
     ProgramTrainingLevelClassifier.trainingLevel(for: self)
   }
 
   /// Parent residency specialty for fellowships (e.g. OB/GYN for urogynecology).
-  var parentResidencyName: String? {
+  nonisolated var parentResidencyName: String? {
     guard trainingLevel == .fellowship else { return nil }
     return ERASTrainingLevel.parentResidencyName(for: self)
       ?? ACGMSpecialtyHierarchy.parentResidencyName(for: self)

@@ -218,12 +218,6 @@ struct SettingsView: View {
     
     private var preferencesSection: some View {
         Section {
-            Button {
-                NotificationCenter.default.post(name: NSNotification.Name("ShowFeatureTour"), object: nil)
-            } label: {
-                Label("Replay Guided Tour", systemImage: "hand.point.up.left.fill")
-            }
-
             Picker("Applying To", selection: Binding(
                 get: {
                     ProgramTrainingLevelFilter(rawValue: dataManager.preferences.applyingTrack) ?? .residency
@@ -238,23 +232,6 @@ struct SettingsView: View {
                 }
             }
             .pickerStyle(.menu)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Appearance")
-                    .font(.arial(size: 15))
-
-                Picker("Appearance", selection: Binding(
-                    get: { dataManager.preferences.appearanceMode },
-                    set: { dataManager.updateAppearanceMode($0) }
-                )) {
-                    ForEach(AppearanceMode.allCases) { mode in
-                        Text(mode.displayName).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-            }
-            .padding(.vertical, 4)
 
             if !dataManager.preferences.specialties.isEmpty {
                 ForEach(dataManager.preferences.specialties, id: \.self) { specialty in
@@ -285,8 +262,40 @@ struct SettingsView: View {
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden, edges: .bottom)
 
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Appearance")
+                    .font(.arial(size: 15))
+
+                Picker("Appearance", selection: Binding(
+                    get: { dataManager.preferences.appearanceMode },
+                    set: { dataManager.updateAppearanceMode($0) }
+                )) {
+                    ForEach(AppearanceMode.allCases) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            }
+            .padding(.vertical, 4)
+
             MatchlyCalendarSyncRow()
                 .listRowBackground(Color.clear)
+
+            Button {
+                NotificationCenter.default.post(name: NSNotification.Name("ShowFeatureTour"), object: nil)
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "hand.point.up.left")
+                        .font(.subheadline)
+                    Text("Replay Guided Tour")
+                        .font(.arial(size: 15))
+                }
+                .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .listRowBackground(Color.clear)
         } header: {
             MatchlyFormSectionHeader(title: "Preferences")
         }

@@ -91,7 +91,7 @@ struct MatchlyFormSectionHeader: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            MatchlySectionHeaderText(title: title)
+            MatchlySectionHeaderText(title: title, weight: .semibold)
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

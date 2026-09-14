@@ -40,6 +40,8 @@ struct ProgramSearchView: View {
     @State private var isResultSetTruncated = false
     @State private var resultLimit = ResidencyProgramDatabase.defaultResultLimit
     @State private var hasRunSearch = false
+    @State private var isSearching = false
+    @State private var searchGeneration = 0
     @State private var searchRefreshTask: Task<Void, Never>?
     @State private var showManualEntry = false
     @State private var specialtyAddConfirmation: SpecialtyAddConfirmation?
@@ -171,6 +173,8 @@ struct ProgramSearchView: View {
             resultLimit = ResidencyProgramDatabase.defaultResultLimit
         }
         guard hasActiveFilters else {
+            searchGeneration += 1
+            isSearching = false
             searchResults = []
             sortedSearchResults = []
             totalMatchCount = 0
@@ -179,27 +183,43 @@ struct ProgramSearchView: View {
             return
         }
 
-        let results = database.search(
-            query: searchText,
-            specialty: nil,
-            specialties: specialtiesToUse,
-            fellowshipCodes: fellowshipCodesToUse,
-            stateFilter: nil,
-            stateFilters: stateFiltersToUse,
-            programTypeFilter: nil,
-            programTypes: nil,
-            trainingLevel: trainingLevelFilter.trainingLevel,
-            imgFriendlyOnly: false,
-            limit: resultLimit
-        )
+        searchGeneration += 1
+        let generation = searchGeneration
+        isSearching = true
 
-        searchResults = results.programs
-        sortedSearchResults = results.programs.sorted {
-            $0.formattedHospital.localizedCaseInsensitiveCompare($1.formattedHospital) == .orderedAscending
+        // Fellowship type codes already identify the subspecialty; skip parent specialty filter.
+        let specialtiesForSearch = fellowshipCodesToUse == nil ? specialtiesToUse : nil
+        let query = searchText
+        let fellowshipCodes = fellowshipCodesToUse
+        let stateFilters = stateFiltersToUse
+        let trainingLevel = trainingLevelFilter.trainingLevel
+        let limit = resultLimit
+
+        Task {
+            let results = await database.searchAsync(
+                query: query,
+                specialty: nil,
+                specialties: specialtiesForSearch,
+                fellowshipCodes: fellowshipCodes,
+                stateFilter: nil,
+                stateFilters: stateFilters,
+                programTypeFilter: nil,
+                programTypes: nil,
+                trainingLevel: trainingLevel,
+                imgFriendlyOnly: false,
+                limit: limit
+            )
+
+            await MainActor.run {
+                guard generation == searchGeneration else { return }
+                searchResults = results.programs
+                sortedSearchResults = results.programs
+                totalMatchCount = results.totalCount
+                isResultSetTruncated = results.isTruncated
+                hasRunSearch = true
+                isSearching = false
+            }
         }
-        totalMatchCount = results.totalCount
-        isResultSetTruncated = results.isTruncated
-        hasRunSearch = true
     }
 
     private func rebuildAddedCatalogIdentityKeys() {
@@ -675,6 +695,14 @@ struct ProgramSearchView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if !hasActiveFilters {
                 promptToSearchView
+            } else if isSearching && searchResults.isEmpty {
+                VStack(spacing: 16) {
+                    ProgressView()
+                    Text("Searching programs…")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if searchResults.isEmpty && hasRunSearch {
                 emptyResultsView
             } else {
@@ -933,22 +961,11 @@ struct ProgramSearchView: View {
     }
     
     private func alphabetScrollIndex(sortedKeys: [String], proxy: ScrollViewProxy) -> some View {
-        VStack(spacing: 2) {
-            ForEach(sortedKeys, id: \.self) { key in
-                Button(action: {
-                    withAnimation {
-                        proxy.scrollTo(key, anchor: .top)
-                    }
-                }) {
-                    Text(key)
-                        .font(.arial(size: 11, weight: .medium))
-                        .foregroundColor(.blue)
-                        .frame(width: 20)
-                }
+        AlphabetScrollIndex(sortedKeys: sortedKeys) { key in
+            withAnimation(.easeOut(duration: 0.15)) {
+                proxy.scrollTo(key, anchor: .top)
             }
         }
-        .padding(.trailing, 4)
-        .padding(.vertical, 8)
     }
     
     private func footerWithCount(displayed: Int) -> some View {
@@ -1014,6 +1031,71 @@ struct ProgramSearchView: View {
             .padding()
             .glassEffect(.regular, in: .rect(cornerRadius: 0))
         }
+    }
+}
+
+private struct AlphabetScrollIndex: View {
+    let sortedKeys: [String]
+    let onSelect: (String) -> Void
+
+    @State private var highlightedKey: String?
+    @State private var lastHapticKey: String?
+
+    var body: some View {
+        GeometryReader { geometry in
+            VStack(spacing: 2) {
+                ForEach(sortedKeys, id: \.self) { key in
+                    Text(key)
+                        .font(.arial(size: 11, weight: .medium))
+                        .foregroundColor(highlightedKey == key ? .white : .blue)
+                        .frame(width: 20, height: letterHeight(totalHeight: geometry.size.height))
+                        .background(
+                            Capsule()
+                                .fill(highlightedKey == key ? Color.blue : Color.clear)
+                        )
+                }
+            }
+            .frame(maxHeight: .infinity, alignment: .center)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                    .onChanged { value in
+                        selectKey(at: value.location.y, totalHeight: geometry.size.height)
+                    }
+                    .onEnded { _ in
+                        highlightedKey = nil
+                        lastHapticKey = nil
+                    }
+            )
+        }
+        .frame(width: 28)
+        .padding(.trailing, 4)
+        .padding(.vertical, 8)
+    }
+
+    private func letterHeight(totalHeight: CGFloat) -> CGFloat {
+        guard !sortedKeys.isEmpty else { return 14 }
+        let spacingTotal = 2 * CGFloat(max(sortedKeys.count - 1, 0))
+        return max(14, (totalHeight - spacingTotal) / CGFloat(sortedKeys.count))
+    }
+
+    private func selectKey(at y: CGFloat, totalHeight: CGFloat) {
+        guard !sortedKeys.isEmpty, totalHeight > 0 else { return }
+
+        let clampedY = min(max(y, 0), totalHeight - 0.001)
+        let index = min(
+            Int((clampedY / totalHeight) * CGFloat(sortedKeys.count)),
+            sortedKeys.count - 1
+        )
+        let key = sortedKeys[index]
+        guard highlightedKey != key else { return }
+
+        highlightedKey = key
+        if lastHapticKey != key {
+            lastHapticKey = key
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
+        onSelect(key)
     }
 }
 
