@@ -6,11 +6,11 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>com.lleonmd.Matchly</string>
+			<string>com.lestarlu.matchly</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>matchly</string>
-				<string>com.googleusercontent.apps.324333922109-tovm13nq35qr2503bu7obg59c1noud4d</string>
+				<string>com.googleusercontent.apps.735180718367-7tmrfjjh2i6v12lspmjmba7fa8lg7b6t</string>
 			</array>
 		</dict>
 	</array>

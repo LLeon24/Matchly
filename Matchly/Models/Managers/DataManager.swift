@@ -741,7 +741,7 @@ class DataManager: ObservableObject {
     // MARK: - Widget Snapshot
 
     /// Shared with MatchlyWidgetExtension via the App Group container.
-    static let widgetAppGroupID = "group.com.lleonmd.Matchly"
+    static let widgetAppGroupID = "group.com.lestarlu.matchly"
     static let widgetInterviewsKey = "widget_upcoming_interviews"
     static let widgetKind = "MatchlyWidget"
 

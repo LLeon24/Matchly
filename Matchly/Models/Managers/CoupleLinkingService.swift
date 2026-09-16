@@ -113,7 +113,7 @@ enum CoupleLinkingService {
             case .managedAccountRestricted:
                 return .cloudKitFailed("This iCloud account is restricted from using CloudKit.")
             case .badContainer, .missingEntitlement:
-                return .cloudKitFailed("CloudKit container misconfigured. Confirm iCloud.com.matchly.Matchly is enabled in Xcode Signing & Capabilities.")
+                return .cloudKitFailed("CloudKit container misconfigured. Confirm iCloud.com.lestarlu.matchly is enabled in Xcode Signing & Capabilities.")
             default:
                 return .cloudKitFailed("\(ckError.localizedDescription) (CK \(ckError.code.rawValue))")
             }

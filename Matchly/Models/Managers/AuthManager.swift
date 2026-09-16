@@ -90,10 +90,10 @@ class AuthManager: ObservableObject {
 
     /// The CloudKit container backing the couples feature. Must match the container selected
     /// in Xcode's Signing & Capabilities ▸ iCloud (see COUPLES_MATCH_SETUP_STEPS.md).
-    static let cloudKitContainerID = "iCloud.com.matchly.Matchly"
+    static let cloudKitContainerID = "iCloud.com.lestarlu.matchly"
 
     /// Keychain identifiers for the persisted Apple login id.
-    private static let keychainService = "com.matchly.auth"
+    private static let keychainService = "com.lestarlu.matchly.auth"
     private static let keychainAppleUserAccount = "apple_user_id"
     private static let keychainAppleDisplayNameAccount = "apple_display_name"
     private static let keychainCachedUserAccount = "cached_user_session"

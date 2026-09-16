@@ -13,7 +13,7 @@ import SwiftUI
 // MARK: - Shared data
 
 enum WidgetData {
-    static let appGroupID = "group.com.lleonmd.Matchly"
+    static let appGroupID = "group.com.lestarlu.matchly"
     static let interviewsKey = "widget_upcoming_interviews"
 
     struct Interview: Identifiable {
