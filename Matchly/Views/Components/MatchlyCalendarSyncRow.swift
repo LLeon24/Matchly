@@ -107,36 +107,6 @@ struct MatchlyCalendarSyncRow: View {
     private func createCalendarEvents(showSuccessAlert: Bool = true) async {
         guard !interviewPrograms.isEmpty else { return }
 
-        if calendarManager.authorizationStatus == .notDetermined {
-            let granted = await calendarManager.requestAccess()
-            if !granted {
-                await MainActor.run {
-                    dataManager.preferences.enableCalendarSync = false
-                    dataManager.savePreferences()
-                    showCalendarPermissionAlert = true
-                }
-                return
-            }
-        } else if calendarManager.authorizationStatus == .writeOnly {
-            // Upgrade from write-only to full access so we can create the Matchly calendar.
-            let granted = await calendarManager.requestAccess()
-            if !granted {
-                await MainActor.run {
-                    dataManager.preferences.enableCalendarSync = false
-                    dataManager.savePreferences()
-                    showCalendarPermissionAlert = true
-                }
-                return
-            }
-        } else if calendarManager.authorizationStatus != .fullAccess {
-            await MainActor.run {
-                dataManager.preferences.enableCalendarSync = false
-                dataManager.savePreferences()
-                showCalendarPermissionAlert = true
-            }
-            return
-        }
-
         await MainActor.run {
             isCreatingEvents = true
         }
@@ -144,19 +114,31 @@ struct MatchlyCalendarSyncRow: View {
         do {
             try await calendarManager.createEventsForInterviews(interviewPrograms)
             await MainActor.run {
+                calendarManager.checkAuthorizationStatus()
                 isCreatingEvents = false
                 eventsCreatedCount = interviewPrograms.count
                 if showSuccessAlert {
                     showCalendarSuccessAlert = true
                 }
             }
+        } catch CalendarError.notAuthorized {
+            await MainActor.run {
+                calendarManager.checkAuthorizationStatus()
+                isCreatingEvents = false
+                dataManager.preferences.enableCalendarSync = false
+                dataManager.savePreferences()
+                showCalendarPermissionAlert = true
+            }
         } catch {
             await MainActor.run {
+                calendarManager.checkAuthorizationStatus()
                 isCreatingEvents = false
                 calendarErrorMessage = error.localizedDescription
                 showCalendarErrorAlert = true
-                dataManager.preferences.enableCalendarSync = false
-                dataManager.savePreferences()
+                if error is CalendarError {
+                    dataManager.preferences.enableCalendarSync = false
+                    dataManager.savePreferences()
+                }
             }
         }
     }

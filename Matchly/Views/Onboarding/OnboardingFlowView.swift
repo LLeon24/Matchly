@@ -37,10 +37,9 @@ struct OnboardingFlowView: View {
         case applyingTrack = 1
         case specialties = 2
         case name = 3
-        case aamcID = 4
-        case photo = 5
-        case matchPreferences = 6
-        case calendarSync = 7
+        case photo = 4
+        case matchPreferences = 5
+        case calendarSync = 6
         
         var title: String {
             switch self {
@@ -48,7 +47,6 @@ struct OnboardingFlowView: View {
             case .applyingTrack: return "What Are You Applying To?"
             case .specialties: return "Select Your Specialties"
             case .name: return "What's your name?"
-            case .aamcID: return "AAMC ID (Optional)"
             case .photo: return "Add Your Photo (Optional)"
             case .matchPreferences: return "Match Preferences"
             case .calendarSync: return "Calendar Sync"
@@ -61,7 +59,6 @@ struct OnboardingFlowView: View {
             case .applyingTrack: return "Medical students apply to residency. After residency, physicians apply to fellowship. You can change this anytime in Settings."
             case .specialties: return "Choose the specialties you're applying to. You can select multiple if you're dual applying."
             case .name: return "We'll use this to personalize your experience"
-            case .aamcID: return "Your AAMC ID helps us provide better program matching"
             case .photo: return "Tap the circle to add a photo — you can move, zoom, and crop to center your face"
             case .matchPreferences: return "A few defaults to get your rank list and scoring right from the start."
             case .calendarSync: return "Would you like to sync your interviews to your device calendar? After you add programs, Interview Prep helps you build question lists for each visit."
@@ -89,8 +86,6 @@ struct OnboardingFlowView: View {
                         specialtiesStep
                     case .name:
                         nameStep
-                    case .aamcID:
-                        aamcIDStep
                     case .photo:
                         photoStep
                     case .matchPreferences:
@@ -248,7 +243,7 @@ struct OnboardingFlowView: View {
             },
             onNext: {
                 withAnimation {
-                    currentStep = .aamcID
+                    currentStep = .photo
                 }
             },
             canContinue: !profile.firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -261,52 +256,6 @@ struct OnboardingFlowView: View {
         .onAppear {
             loadProfileFromAuthAndPreferences()
         }
-    }
-    
-    // MARK: - AAMC ID Step
-    private var aamcIDStep: some View {
-        OnboardingStepView(
-            title: OnboardingStep.aamcID.title,
-            subtitle: OnboardingStep.aamcID.subtitle,
-            content: {
-                VStack(spacing: 24) {
-                    ClearableTextField("AAMC ID (Optional)", text: Binding(
-                        get: { profile.aamcID ?? "" },
-                        set: { profile.aamcID = $0.isEmpty ? nil : $0 }
-                    ))
-                    .font(.arial(size: 18))
-                    .padding()
-                    .glassEffect(.regular, in: .rect(cornerRadius: 12))
-                    .keyboardType(.default)
-                    .autocapitalization(.none)
-                    .disableAutocorrection(true)
-                    
-                    Text("You can skip this step if you don't have an AAMC ID")
-                        .font(.arial(size: 14))
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                    
-                    Spacer()
-                }
-            },
-            onNext: {
-                withAnimation {
-                    currentStep = .photo
-                }
-            },
-            canContinue: true,
-            showSkip: true,
-            onSkip: {
-                withAnimation {
-                    currentStep = .photo
-                }
-            },
-            onBack: {
-                withAnimation {
-                    currentStep = .name
-                }
-            }
-        )
     }
     
     // MARK: - Photo Step
@@ -347,7 +296,7 @@ struct OnboardingFlowView: View {
             buttonText: "Continue",
             onBack: {
                 withAnimation {
-                    currentStep = .aamcID
+                    currentStep = .name
                 }
             }
         )
@@ -967,9 +916,6 @@ struct OnboardingFlowView: View {
         if profile.photoData == nil, stored.photoData != nil {
             profile.photoData = stored.photoData
             profile.avatarPresetID = stored.avatarPresetID
-        }
-        if profile.aamcID == nil, stored.aamcID != nil {
-            profile.aamcID = stored.aamcID
         }
     }
 }

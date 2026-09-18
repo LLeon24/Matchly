@@ -10,11 +10,9 @@ import Foundation
 enum MatchlyBuildInfo {
     private static var bundle: Bundle { .main }
 
-    /// User-facing version in Settings, e.g. "1.0.0 (22)" — matches Xcode Archives.
+    /// User-facing marketing version in Settings → About, e.g. "1.0.0".
     static var version: String {
-        let short = bundle.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
-        let build = bundle.infoDictionary?["CFBundleVersion"] as? String ?? "0"
-        return "\(short) (\(build))"
+        bundle.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
     }
 
     /// Short baseline tag — visible in Settings → About to confirm Mac sync.

@@ -31,58 +31,96 @@ class CalendarManager: ObservableObject {
     
     func requestAccess() async -> Bool {
         do {
-            _ = try await eventStore.requestFullAccessToEvents()
-            return await MainActor.run {
-                authorizationStatus = EKEventStore.authorizationStatus(for: .event)
-                calendarAccessGranted = authorizationStatus == .fullAccess
-                if calendarAccessGranted {
-                    findOrCreateMatchlyCalendar()
-                }
-                return calendarAccessGranted
-            }
+            try await prepareForEventSync()
+            return true
         } catch {
             Self.logger.error("Calendar access request failed: \(error.localizedDescription, privacy: .public)")
-            await MainActor.run {
-                authorizationStatus = EKEventStore.authorizationStatus(for: .event)
-                calendarAccessGranted = false
-            }
             return false
         }
+    }
+
+    /// Ensures full calendar access and returns a writable calendar for Matchly interview events.
+    @MainActor
+    func prepareForEventSync() async throws -> EKCalendar {
+        refreshAuthorizationStatus()
+
+        switch authorizationStatus {
+        case .fullAccess:
+            calendarAccessGranted = true
+        case .notDetermined, .writeOnly:
+            do {
+                _ = try await eventStore.requestFullAccessToEvents()
+            } catch {
+                refreshAuthorizationStatus()
+                calendarAccessGranted = false
+                throw CalendarError.notAuthorized
+            }
+            refreshAuthorizationStatus()
+            guard authorizationStatus == .fullAccess else {
+                calendarAccessGranted = false
+                throw CalendarError.notAuthorized
+            }
+            calendarAccessGranted = true
+        default:
+            calendarAccessGranted = false
+            throw CalendarError.notAuthorized
+        }
+
+        if let calendar = resolveWritableCalendar() {
+            matchlyCalendar = calendar
+            return calendar
+        }
+
+        calendarAccessGranted = false
+        throw CalendarError.calendarNotFound
     }
     
     @MainActor
     func checkAuthorizationStatus() {
-        authorizationStatus = EKEventStore.authorizationStatus(for: .event)
-        // Creating a dedicated calendar requires full read/write access (not write-only).
+        refreshAuthorizationStatus()
         calendarAccessGranted = authorizationStatus == .fullAccess
-        
+
         if calendarAccessGranted {
-            findOrCreateMatchlyCalendar()
+            matchlyCalendar = resolveWritableCalendar()
         } else {
             matchlyCalendar = nil
         }
     }
-    
+
     @MainActor
-    func findOrCreateMatchlyCalendar() {
+    private func refreshAuthorizationStatus() {
+        authorizationStatus = EKEventStore.authorizationStatus(for: .event)
+    }
+
+    /// Returns the dedicated Matchly calendar when possible, otherwise a writable default calendar.
+    @MainActor
+    private func resolveWritableCalendar() -> EKCalendar? {
         if let storedIdentifier = UserDefaults.standard.string(forKey: Self.calendarIdentifierKey),
            let storedCalendar = eventStore.calendar(withIdentifier: storedIdentifier),
            storedCalendar.allowsContentModifications {
-            matchlyCalendar = storedCalendar
-            return
+            return storedCalendar
         }
-        
+
         let calendars = eventStore.calendars(for: .event)
         if let existing = calendars.first(where: { $0.title == calendarTitle && $0.allowsContentModifications }) {
-            matchlyCalendar = existing
             UserDefaults.standard.set(existing.calendarIdentifier, forKey: Self.calendarIdentifierKey)
-            return
+            return existing
         }
-        
-        matchlyCalendar = createMatchlyCalendar()
-        if let matchlyCalendar {
-            UserDefaults.standard.set(matchlyCalendar.calendarIdentifier, forKey: Self.calendarIdentifierKey)
+
+        if let dedicated = createMatchlyCalendar() {
+            UserDefaults.standard.set(dedicated.calendarIdentifier, forKey: Self.calendarIdentifierKey)
+            return dedicated
         }
+
+        if let defaultCalendar = eventStore.defaultCalendarForNewEvents,
+           defaultCalendar.allowsContentModifications {
+            Self.logger.warning(
+                "Using default calendar for interview events: \(defaultCalendar.title, privacy: .public)"
+            )
+            return defaultCalendar
+        }
+
+        return nil
     }
     
     static let calendarIdentifierDefaultsKey = "MatchlyCalendarIdentifier"
@@ -161,20 +199,7 @@ class CalendarManager: ObservableObject {
     // MARK: - Calendar Events
     
     func createEventsForInterviews(_ programs: [Program]) async throws {
-        guard calendarAccessGranted else {
-            throw CalendarError.notAuthorized
-        }
-
-        if matchlyCalendar == nil {
-            await MainActor.run {
-                findOrCreateMatchlyCalendar()
-            }
-        }
-
-        let calendar = await MainActor.run { matchlyCalendar }
-        guard let calendar else {
-            throw CalendarError.calendarNotFound
-        }
+        let calendar = try await prepareForEventSync()
         
         var createdCount = 0
         var updatedCount = 0

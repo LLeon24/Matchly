@@ -1469,45 +1469,27 @@ struct ProgramEntryView: View {
         
         Task {
             do {
-                let calendarManager = CalendarManager.shared
-                
-                // Request access if not already granted
-                if calendarManager.authorizationStatus == .notDetermined {
-                    let granted = await calendarManager.requestAccess()
-                    if !granted {
-                        programEntryLogger.warning("Calendar access denied")
-                        return
-                    }
-                } else {
-                    calendarManager.checkAuthorizationStatus()
-                }
-                
-                if calendarManager.calendarAccessGranted {
-                    // Create program with current data for calendar event
-                    let finalSpecialty = specialty.isEmpty ? (program?.specialty ?? dataManager.preferences.specialties.first ?? "Unknown") : specialty
-                    let tempProgram = Program(
-                        id: program?.id ?? UUID().uuidString,
-                        specialty: finalSpecialty,
-                        name: name,
-                        hospital: hospital,
-                        city: city,
-                        state: state,
-                        address: address.isEmpty ? nil : address,
-                        type: type,
-                        accreditationID: accreditationID,
-                        interviewDate: date,
-                        websiteURL: websiteURL.isEmpty ? nil : websiteURL,
-                        contactEmail: contactEmail.isEmpty ? nil : contactEmail,
-                        contactPhone: contactPhone.isEmpty ? nil : contactPhone,
-                        programCoordinator: programCoordinator.isEmpty ? nil : programCoordinator,
-                        programDirector: programDirector.isEmpty ? nil : programDirector
-                    )
-                    
-                    try await calendarManager.createEventsForInterviews([tempProgram])
-                    programEntryLogger.info("Successfully created calendar event for interview")
-                } else {
-                    programEntryLogger.warning("Calendar access not granted")
-                }
+                let finalSpecialty = specialty.isEmpty ? (program?.specialty ?? dataManager.preferences.specialties.first ?? "Unknown") : specialty
+                let tempProgram = Program(
+                    id: program?.id ?? UUID().uuidString,
+                    specialty: finalSpecialty,
+                    name: name,
+                    hospital: hospital,
+                    city: city,
+                    state: state,
+                    address: address.isEmpty ? nil : address,
+                    type: type,
+                    accreditationID: accreditationID,
+                    interviewDate: date,
+                    websiteURL: websiteURL.isEmpty ? nil : websiteURL,
+                    contactEmail: contactEmail.isEmpty ? nil : contactEmail,
+                    contactPhone: contactPhone.isEmpty ? nil : contactPhone,
+                    programCoordinator: programCoordinator.isEmpty ? nil : programCoordinator,
+                    programDirector: programDirector.isEmpty ? nil : programDirector
+                )
+
+                try await CalendarManager.shared.createEventsForInterviews([tempProgram])
+                programEntryLogger.info("Successfully created calendar event for interview")
             } catch {
                 programEntryLogger.error("Failed to create calendar event: \(error.localizedDescription, privacy: .public)")
             }

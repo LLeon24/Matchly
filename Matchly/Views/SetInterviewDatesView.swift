@@ -220,19 +220,9 @@ struct SetInterviewDateSheet: View {
     private func addCalendarEvent(for date: Date) {
         Task {
             do {
-                let calendarManager = CalendarManager.shared
-                if calendarManager.authorizationStatus == .notDetermined {
-                    let granted = await calendarManager.requestAccess()
-                    guard granted else { return }
-                } else {
-                    calendarManager.checkAuthorizationStatus()
-                }
-
-                guard calendarManager.calendarAccessGranted else { return }
-
                 var calendarProgram = program
                 calendarProgram.interviewDate = date
-                try await calendarManager.createEventsForInterviews([calendarProgram])
+                try await CalendarManager.shared.createEventsForInterviews([calendarProgram])
                 setInterviewLogger.info("Created calendar event for interview date")
             } catch {
                 setInterviewLogger.error("Failed to create calendar event: \(error.localizedDescription, privacy: .public)")
