@@ -31,7 +31,7 @@ class CalendarManager: ObservableObject {
     
     func requestAccess() async -> Bool {
         do {
-            try await prepareForEventSync()
+            _ = try await prepareForEventSync()
             return true
         } catch {
             Self.logger.error("Calendar access request failed: \(error.localizedDescription, privacy: .public)")

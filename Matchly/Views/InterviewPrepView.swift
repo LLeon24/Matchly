@@ -171,12 +171,15 @@ struct InterviewPrepView: View {
             InterviewPrepQuestionnairePickerSheet(
                 accentColor: SpecialtyFormatter.color(for: liveProgram.specialty),
                 availablePrompts: availablePrompts,
-                alreadyAddedIds: Set(prepState.questionListOrder),
-                onAdd: { ids in
-                    for id in ids where !prepState.questionListOrder.contains(id) {
-                        prepState.selectedQuestionIds.insert(id)
-                        prepState.questionListOrder.append(id)
-                    }
+                selectedIds: prepState.selectedQuestionIds,
+                onDone: { ids in
+                    var state = prepState
+                    InterviewPrepQuestionnairePickerSheet.applySelection(
+                        ids,
+                        questionnaireIds: Set(availablePrompts.map(\.id)),
+                        to: &state
+                    )
+                    prepState = state
                     persistPrepState()
                 }
             )
@@ -1155,17 +1158,26 @@ struct InterviewPrepQuestionnairePickerSheet: View {
 
     let accentColor: Color
     let availablePrompts: [(id: String, sectionTitle: String, question: String)]
-    let alreadyAddedIds: Set<String>
-    let onAdd: (Set<String>) -> Void
+    let selectedIds: Set<String>
+    let onDone: (Set<String>) -> Void
 
-    @State private var pendingSelection: Set<String> = []
+    @State private var pendingSelection: Set<String>
 
-    private var addablePrompts: [(id: String, sectionTitle: String, question: String)] {
-        availablePrompts.filter { !alreadyAddedIds.contains($0.id) }
+    init(
+        accentColor: Color,
+        availablePrompts: [(id: String, sectionTitle: String, question: String)],
+        selectedIds: Set<String>,
+        onDone: @escaping (Set<String>) -> Void
+    ) {
+        self.accentColor = accentColor
+        self.availablePrompts = availablePrompts
+        self.selectedIds = selectedIds
+        self.onDone = onDone
+        _pendingSelection = State(initialValue: selectedIds)
     }
 
     private var groupedPrompts: [(sectionTitle: String, prompts: [(id: String, sectionTitle: String, question: String)])] {
-        let grouped = Dictionary(grouping: addablePrompts, by: \.sectionTitle)
+        let grouped = Dictionary(grouping: availablePrompts, by: \.sectionTitle)
         return grouped.keys.sorted().compactMap { title in
             let prompts = grouped[title] ?? []
             guard !prompts.isEmpty else { return nil }
@@ -1173,52 +1185,84 @@ struct InterviewPrepQuestionnairePickerSheet: View {
         }
     }
 
+    /// Adds newly checked questionnaire IDs and removes unchecked ones from the prep list.
+    static func applySelection(
+        _ selectedIds: Set<String>,
+        questionnaireIds: Set<String>,
+        to state: inout InterviewPrepState
+    ) {
+        applySelection(
+            selectedIds,
+            questionnaireIds: questionnaireIds,
+            selectedQuestionIds: &state.selectedQuestionIds,
+            questionListOrder: &state.questionListOrder,
+            priorityQuestionIds: &state.priorityQuestionIds
+        )
+    }
+
+    static func applySelection(
+        _ selectedIds: Set<String>,
+        questionnaireIds: Set<String>,
+        to defaults: inout InterviewPrepDefaultQuestions
+    ) {
+        applySelection(
+            selectedIds,
+            questionnaireIds: questionnaireIds,
+            selectedQuestionIds: &defaults.selectedQuestionIds,
+            questionListOrder: &defaults.questionListOrder,
+            priorityQuestionIds: &defaults.priorityQuestionIds
+        )
+    }
+
+    private static func applySelection(
+        _ selectedIds: Set<String>,
+        questionnaireIds: Set<String>,
+        selectedQuestionIds: inout Set<String>,
+        questionListOrder: inout [String],
+        priorityQuestionIds: inout [String]
+    ) {
+        let previouslySelected = selectedQuestionIds.intersection(questionnaireIds)
+        for id in previouslySelected.subtracting(selectedIds) {
+            selectedQuestionIds.remove(id)
+            questionListOrder.removeAll { $0 == id }
+            priorityQuestionIds.removeAll { $0 == id }
+        }
+        for id in selectedIds where !questionListOrder.contains(id) {
+            selectedQuestionIds.insert(id)
+            questionListOrder.append(id)
+        }
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text(
-                        addablePrompts.isEmpty
-                            ? "Every questionnaire question is already on your list."
-                            : "Pick questions to add to your list."
-                    )
+                    Text("Check questions to include on your list. Uncheck any you want to remove.")
                         .font(.arial(size: 13))
                         .foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.horizontal, 16)
                         .padding(.top, 8)
 
-                    if groupedPrompts.isEmpty {
-                        Text("Remove questions from Your List if you want to browse and re-add them here.")
-                            .font(.arial(size: 13))
-                            .foregroundColor(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(12)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.primary.opacity(0.04))
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            .padding(.horizontal, 16)
-                    } else {
-                        VStack(alignment: .leading, spacing: 14) {
-                            ForEach(groupedPrompts, id: \.sectionTitle) { group in
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text(shortSectionTitle(group.sectionTitle))
-                                        .font(.arial(size: 11, weight: .semibold))
-                                        .foregroundColor(accentColor)
-                                        .textCase(.uppercase)
-                                        .padding(.horizontal, 16)
-
-                                    VStack(spacing: 8) {
-                                        ForEach(group.prompts, id: \.id) { prompt in
-                                            pickerRow(prompt)
-                                        }
-                                    }
+                    VStack(alignment: .leading, spacing: 14) {
+                        ForEach(groupedPrompts, id: \.sectionTitle) { group in
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(shortSectionTitle(group.sectionTitle))
+                                    .font(.arial(size: 11, weight: .semibold))
+                                    .foregroundColor(accentColor)
+                                    .textCase(.uppercase)
                                     .padding(.horizontal, 16)
+
+                                VStack(spacing: 8) {
+                                    ForEach(group.prompts, id: \.id) { prompt in
+                                        pickerRow(prompt)
+                                    }
                                 }
+                                .padding(.horizontal, 16)
                             }
                         }
-                        .padding(.bottom, 24)
                     }
+                    .padding(.bottom, 24)
                 }
             }
             .appCanvasBackground()
@@ -1231,12 +1275,11 @@ struct InterviewPrepQuestionnairePickerSheet: View {
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Add") {
-                        onAdd(pendingSelection)
+                    Button("Done") {
+                        onDone(pendingSelection)
                         dismiss()
                     }
                     .font(.arial(size: 16, weight: .semibold))
-                    .disabled(pendingSelection.isEmpty)
                 }
             }
         }

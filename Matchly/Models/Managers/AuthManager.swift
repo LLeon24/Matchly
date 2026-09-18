@@ -470,7 +470,7 @@ class AuthManager: ObservableObject {
             do {
                 try CloudSyncManager.shared.clearAllUserData()
             } catch let error as CloudSyncError {
-                throw AuthError.operationFailed(error.localizedDescription ?? "Could not clear iCloud backup.")
+                throw AuthError.operationFailed(error.errorDescription ?? "Could not clear iCloud backup.")
             }
 
             if providerIDs.contains("google.com") {

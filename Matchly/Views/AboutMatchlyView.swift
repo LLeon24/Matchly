@@ -33,6 +33,20 @@ struct AboutMatchlyView: View {
                         .foregroundColor(.secondary)
                 }
             }
+
+            Section {
+                Link(destination: MatchlyLegalURLs.privacyPolicy) {
+                    Label("Privacy Policy", systemImage: "hand.raised")
+                }
+                Link(destination: MatchlyLegalURLs.termsOfService) {
+                    Label("Terms of Service", systemImage: "doc.text")
+                }
+                Link(destination: MatchlyLegalURLs.support) {
+                    Label("Support", systemImage: "questionmark.circle")
+                }
+            } header: {
+                Text("Legal & Support")
+            }
         }
         .scrollContentBackground(.hidden)
         .navigationTitle("About")

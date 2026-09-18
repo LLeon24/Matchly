@@ -96,13 +96,14 @@ struct DefaultPrepQuestionsView: View {
             InterviewPrepQuestionnairePickerSheet(
                 accentColor: AppColors.primaryBlue,
                 availablePrompts: availablePrompts,
-                alreadyAddedIds: Set(defaults.questionListOrder),
-                onAdd: { ids in
+                selectedIds: defaults.selectedQuestionIds,
+                onDone: { ids in
                     updateDefaults { current in
-                        for id in ids where !current.questionListOrder.contains(id) {
-                            current.selectedQuestionIds.insert(id)
-                            current.questionListOrder.append(id)
-                        }
+                        InterviewPrepQuestionnairePickerSheet.applySelection(
+                            ids,
+                            questionnaireIds: Set(availablePrompts.map(\.id)),
+                            to: &current
+                        )
                     }
                 }
             )
