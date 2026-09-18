@@ -101,7 +101,25 @@ struct InterviewsProvider: TimelineProvider {
             title: "Mount Sinai Hospital",
             subtitle: "EM • New York, NY",
             date: Calendar.current.date(byAdding: .day, value: 9, to: Date()) ?? Date()
-        )
+        ),
+        .init(
+            id: "sample-3",
+            title: "University of Michigan Health",
+            subtitle: "IM • Ann Arbor, MI",
+            date: Calendar.current.date(byAdding: .day, value: 14, to: Date()) ?? Date()
+        ),
+        .init(
+            id: "sample-4",
+            title: "UCSF Medical Center",
+            subtitle: "FM • San Francisco, CA",
+            date: Calendar.current.date(byAdding: .day, value: 21, to: Date()) ?? Date()
+        ),
+        .init(
+            id: "sample-5",
+            title: "Mayo Clinic",
+            subtitle: "IM • Rochester, MN",
+            date: Calendar.current.date(byAdding: .day, value: 28, to: Date()) ?? Date()
+        ),
     ]
 }
 
@@ -141,6 +159,10 @@ struct InterviewsWidgetEntryView: View {
             switch family {
             case .accessoryRectangular:
                 accessoryRectangular
+            case .systemExtraLarge:
+                extraLarge
+            case .systemLarge:
+                large
             case .systemMedium:
                 medium
             default:
@@ -182,35 +204,117 @@ struct InterviewsWidgetEntryView: View {
                 Spacer()
             } else {
                 ForEach(entry.interviews.prefix(3)) { interview in
-                    HStack(alignment: .top, spacing: 8) {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(interview.title)
-                                .font(.system(size: 12, weight: .semibold))
-                                .lineLimit(2)
-                                .minimumScaleFactor(0.85)
-                                .fixedSize(horizontal: false, vertical: true)
-                            if !interview.subtitle.isEmpty {
-                                Text(interview.subtitle)
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                        }
-                        Spacer(minLength: 8)
-                        VStack(alignment: .trailing, spacing: 1) {
-                            Text(WidgetStyle.countdownText(to: interview.date, from: entry.date))
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundStyle(WidgetStyle.brandBlue)
-                            Text(WidgetStyle.shortDate(interview.date))
-                                .font(.system(size: 10))
-                                .foregroundStyle(.secondary)
-                        }
+                    interviewRow(interview, titleSize: 12, metaSize: 10)
+                }
+                Spacer(minLength: 0)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var large: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            header
+            if entry.interviews.isEmpty {
+                Spacer()
+                emptyState
+                Spacer()
+            } else if let next = entry.interviews.first {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(WidgetStyle.countdownText(to: next.date, from: entry.date))
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundStyle(WidgetStyle.brandBlue)
+                        .minimumScaleFactor(0.75)
+                    Text(next.title)
+                        .font(.system(size: 16, weight: .semibold))
+                        .lineLimit(2)
+                    if !next.subtitle.isEmpty {
+                        Text(next.subtitle)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    Text(WidgetStyle.shortDate(next.date))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+
+                if entry.interviews.count > 1 {
+                    Divider().opacity(0.35)
+                    ForEach(entry.interviews.dropFirst().prefix(3)) { interview in
+                        interviewRow(interview, titleSize: 13, metaSize: 11)
                     }
                 }
                 Spacer(minLength: 0)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var extraLarge: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            header
+            if entry.interviews.isEmpty {
+                Spacer()
+                emptyState
+                Spacer()
+            } else if let next = entry.interviews.first {
+                HStack(alignment: .top, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(WidgetStyle.countdownText(to: next.date, from: entry.date))
+                            .font(.system(size: 32, weight: .bold))
+                            .foregroundStyle(WidgetStyle.brandBlue)
+                        Text(next.title)
+                            .font(.system(size: 18, weight: .semibold))
+                            .lineLimit(2)
+                        if !next.subtitle.isEmpty {
+                            Text(next.subtitle)
+                                .font(.system(size: 13))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                    Text(WidgetStyle.shortDate(next.date))
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+
+                Divider().opacity(0.35)
+
+                ForEach(entry.interviews.dropFirst().prefix(7)) { interview in
+                    interviewRow(interview, titleSize: 14, metaSize: 12)
+                }
+                Spacer(minLength: 0)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func interviewRow(_ interview: WidgetData.Interview, titleSize: CGFloat, metaSize: CGFloat) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(interview.title)
+                    .font(.system(size: titleSize, weight: .semibold))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !interview.subtitle.isEmpty {
+                    Text(interview.subtitle)
+                        .font(.system(size: metaSize))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(WidgetStyle.countdownText(to: interview.date, from: entry.date))
+                    .font(.system(size: metaSize + 1, weight: .bold))
+                    .foregroundStyle(WidgetStyle.brandBlue)
+                Text(WidgetStyle.shortDate(interview.date))
+                    .font(.system(size: metaSize))
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 
     private var accessoryRectangular: some View {
@@ -268,7 +372,13 @@ struct MatchlyWidget: Widget {
         }
         .configurationDisplayName("Upcoming Interviews")
         .description("See your next residency interviews at a glance.")
-        .supportedFamilies([.systemSmall, .systemMedium, .accessoryRectangular])
+        .supportedFamilies([
+            .systemSmall,
+            .systemMedium,
+            .systemLarge,
+            .systemExtraLarge,
+            .accessoryRectangular,
+        ])
     }
 }
 
@@ -279,6 +389,18 @@ struct MatchlyWidget: Widget {
 }
 
 #Preview(as: .systemMedium) {
+    MatchlyWidget()
+} timeline: {
+    InterviewsEntry(date: .now, interviews: InterviewsProvider.sampleInterviews)
+}
+
+#Preview(as: .systemLarge) {
+    MatchlyWidget()
+} timeline: {
+    InterviewsEntry(date: .now, interviews: InterviewsProvider.sampleInterviews)
+}
+
+#Preview(as: .systemExtraLarge) {
     MatchlyWidget()
 } timeline: {
     InterviewsEntry(date: .now, interviews: InterviewsProvider.sampleInterviews)
