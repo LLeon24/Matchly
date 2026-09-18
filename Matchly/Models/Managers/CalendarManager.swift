@@ -85,7 +85,8 @@ class CalendarManager: ObservableObject {
         }
     }
     
-    private static let calendarIdentifierKey = "MatchlyCalendarIdentifier"
+    static let calendarIdentifierDefaultsKey = "MatchlyCalendarIdentifier"
+    private static let calendarIdentifierKey = calendarIdentifierDefaultsKey
     
     /// Sources ordered by likelihood of supporting new calendar creation.
     private func orderedSourcesForCalendarCreation() -> [EKSource] {

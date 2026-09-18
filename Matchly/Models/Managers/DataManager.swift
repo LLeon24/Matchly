@@ -586,7 +586,7 @@ class DataManager: ObservableObject {
         defer { isApplyingRemoteCloudSnapshot = false }
 
         if pulledPrograms, let cloudPrograms = cloud.programs {
-            programs = cloudPrograms
+            programs = ProgramCloudSyncCodec.mergingLocalVoiceMemos(into: cloudPrograms, from: programs)
             persistProgramsToDisk()
             setLocalProgramsTimestamp(cloudProgramsAt == .distantPast ? Date() : cloudProgramsAt)
             deduplicateProgramsByID()
@@ -632,7 +632,7 @@ class DataManager: ObservableObject {
     private func pushAccountCloudBackup() async {
         guard accountCloudSync.isSignedIn, !isApplyingAccountCloudSnapshot else { return }
 
-        let programsJSON = try? JSONEncoder().encode(programs)
+        let programsJSON = try? ProgramCloudSyncCodec.encodeProgramsForCloudSync(programs)
         let preferencesJSON = try? JSONEncoder().encode(preferences)
         let manualRankOrder = UserDefaults.standard.array(forKey: manualRankOrderKey) as? [String]
 
@@ -666,7 +666,10 @@ class DataManager: ObservableObject {
         }
 
         if let programsJSON = backup.programsJSON,
-           let remotePrograms = try? JSONDecoder().decode([Program].self, from: programsJSON) {
+           let remotePrograms = try? ProgramCloudSyncCodec.decodeProgramsFromCloudSync(
+               programsJSON,
+               preservingLocalVoiceMemosFrom: await MainActor.run { self.programs }
+           ) {
             if await MainActor.run(body: { self.programs.isEmpty }) || remoteProgramsAt > localProgramsAt {
                 await MainActor.run {
                     self.programs = remotePrograms
@@ -730,6 +733,42 @@ class DataManager: ObservableObject {
         }
 
         return pulledSomething || shouldPush
+    }
+
+    /// Permanently removes all locally stored Matchly user content after account deletion.
+    @MainActor
+    func wipeAllLocalUserData() {
+        accountCloudPushWorkItem?.cancel()
+        cloudMergeWorkItem?.cancel()
+        accountCloudPushWorkItem = nil
+        cloudMergeWorkItem = nil
+        lastCloudMergeAt = nil
+        lastAccountCloudMergeAt = nil
+        isApplyingRemoteCloudSnapshot = false
+        isApplyingAccountCloudSnapshot = false
+
+        programs = []
+        preferences = UserPreferences()
+        clearScoreCache()
+
+        UserDefaults.standard.removeObject(forKey: programsKey)
+        UserDefaults.standard.removeObject(forKey: preferencesKey)
+        UserDefaults.standard.removeObject(forKey: localProgramsUpdatedAtKey)
+        UserDefaults.standard.removeObject(forKey: localPreferencesUpdatedAtKey)
+        UserDefaults.standard.removeObject(forKey: manualRankOrderKey)
+        UserDefaults.standard.removeObject(forKey: CalendarManager.calendarIdentifierDefaultsKey)
+
+        VoiceMemoStorage.deleteAllMemos()
+        clearWidgetSnapshot()
+        objectWillChange.send()
+        Self.logger.info("Wiped all local Matchly user data")
+    }
+
+    /// Clears widget/App Group interview snapshot data.
+    func clearWidgetSnapshot() {
+        guard let shared = UserDefaults(suiteName: Self.widgetAppGroupID) else { return }
+        shared.removeObject(forKey: Self.widgetInterviewsKey)
+        WidgetCenter.shared.reloadTimelines(ofKind: Self.widgetKind)
     }
 
     private func persistProgramsToDisk() {

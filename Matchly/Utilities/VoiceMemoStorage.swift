@@ -100,6 +100,13 @@ enum VoiceMemoStorage {
         deleteTranscript(forProgramId: id)
     }
 
+    /// Removes every voice memo audio file and transcript from Application Support.
+    static func deleteAllMemos() {
+        let directory = baseDirectory()
+        try? FileManager.default.removeItem(at: directory)
+        UserDefaults.standard.removeObject(forKey: playbackRateDefaultsKey)
+    }
+
     static func invalidateTranscript(forProgramId id: String) {
         deleteTranscript(forProgramId: id)
     }

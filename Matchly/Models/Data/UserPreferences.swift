@@ -27,7 +27,6 @@ struct UserPreferences: Codable, Hashable {
     
     // User account
     var userID: String = UUID().uuidString // Unique identifier for this user
-    var nrmpID: String? // NRMP ID for couples matching
     
     // Couples matching
     var couple: Couple? // Current couple relationship
@@ -336,6 +335,10 @@ struct DashboardLayout: Codable, Hashable {
 // property initializers above) so decoding never throws. Defined in extensions
 // to preserve the synthesized memberwise initializers and `encode(to:)`.
 
+private enum LegacyUserPreferencesKeys: String, CodingKey {
+    case nrmpID
+}
+
 extension UserPreferences {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -353,7 +356,10 @@ extension UserPreferences {
         }
         self.profile = try container.decodeIfPresent(UserProfile.self, forKey: .profile) ?? UserProfile()
         self.userID = try container.decodeIfPresent(String.self, forKey: .userID) ?? UUID().uuidString
-        self.nrmpID = try container.decodeIfPresent(String.self, forKey: .nrmpID)
+        // Legacy: ignore obsolete nrmpID from older backups (never re-encoded).
+        if let legacy = try? decoder.container(keyedBy: LegacyUserPreferencesKeys.self) {
+            _ = try legacy.decodeIfPresent(String.self, forKey: .nrmpID)
+        }
         self.couple = try container.decodeIfPresent(Couple.self, forKey: .couple)
         if let completedCoupleTour = try container.decodeIfPresent(Bool.self, forKey: .hasCompletedCoupleFeatureTour) {
             self.hasCompletedCoupleFeatureTour = completedCoupleTour

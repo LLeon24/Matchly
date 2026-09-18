@@ -465,8 +465,17 @@ class AuthManager: ObservableObject {
                 throw AuthError.deletionRequiresRecentLogin
             }
 
-            // Remove cloud data while still authenticated — security rules require it.
+            // Remove remote Matchly data while still authenticated.
             try await AccountCloudSyncManager.shared.deleteBackup()
+            do {
+                try CloudSyncManager.shared.clearAllUserData()
+            } catch let error as CloudSyncError {
+                throw AuthError.operationFailed(error.localizedDescription ?? "Could not clear iCloud backup.")
+            }
+
+            if providerIDs.contains("google.com") {
+                await Self.revokeGoogleAuthorizationIfPossible()
+            }
 
             try await firebaseUser.delete()
             Self.logger.notice("Account deleted")
@@ -482,19 +491,29 @@ class AuthManager: ObservableObject {
             throw mapFirebaseAuthError(error)
         }
 
-        // Wipe local data only after the account is gone, so a failed deletion loses nothing.
-        DataManager.shared.programs = []
-        DataManager.shared.preferences = UserPreferences()
-        DataManager.shared.savePrograms()
-        DataManager.shared.savePreferences()
-
-        disableBiometricLogin()
-        UserDefaults.standard.removeObject(forKey: Self.biometricOfferDeclinedKey)
-        Self.keychainDelete(account: Self.keychainAppleUserAccount)
-        Self.keychainDelete(account: Self.keychainAppleDisplayNameAccount)
-        Self.keychainDelete(account: Self.keychainCachedUserAccount)
+        // Wipe local data only after remote account deletion succeeds.
+        await MainActor.run {
+            DataManager.shared.wipeAllLocalUserData()
+            disableBiometricLogin()
+            UserDefaults.standard.removeObject(forKey: Self.biometricOfferDeclinedKey)
+            Self.keychainDelete(account: Self.keychainAppleUserAccount)
+            Self.keychainDelete(account: Self.keychainAppleDisplayNameAccount)
+            Self.keychainDelete(account: Self.keychainCachedUserAccount)
+        }
 
         signOut()
+    }
+
+    /// Revokes Google OAuth grants for this app. Best-effort during account deletion only.
+    private static func revokeGoogleAuthorizationIfPossible() async {
+        do {
+            try await GIDSignIn.sharedInstance.disconnect()
+            logger.info("Disconnected Google authorization during account deletion")
+        } catch {
+            logger.error(
+                "Google disconnect failed during account deletion (continuing): \(error.localizedDescription, privacy: .public)"
+            )
+        }
     }
 
     /// Runs a bare Sign in with Apple authorization (no name/email scopes) for

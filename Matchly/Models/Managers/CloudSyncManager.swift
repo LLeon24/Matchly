@@ -41,6 +41,12 @@ class CloudSyncManager: ObservableObject {
     private let preferencesKey = "cloud_preferences"
     private let programsUpdatedAtKey = "cloud_programs_updated_at"
     private let preferencesUpdatedAtKey = "cloud_preferences_updated_at"
+
+    /// Every Matchly-owned key written to `NSUbiquitousKeyValueStore`.
+    private var matchlyUserDataKeys: [String] {
+        [programsKey, preferencesKey, programsUpdatedAtKey, preferencesUpdatedAtKey]
+    }
+
     private static let logger = Logger(subsystem: "com.matchly", category: "CloudSyncManager")
     
     private init() {
@@ -128,7 +134,7 @@ class CloudSyncManager: ObservableObject {
         }
         
         do {
-            let programsData = try JSONEncoder().encode(programs)
+            let programsData = try ProgramCloudSyncCodec.encodeProgramsForCloudSync(programs)
             let preferencesData = try JSONEncoder().encode(preferences)
             
             // Check data sizes (NSUbiquitousKeyValueStore has 1MB limit per key)
@@ -249,7 +255,10 @@ class CloudSyncManager: ObservableObject {
 
     private func decodePrograms(from data: Data?) -> [Program]? {
         guard let data else { return nil }
-        return try? JSONDecoder().decode([Program].self, from: data)
+        guard let decoded = try? ProgramCloudSyncCodec.decodeProgramsFromCloudSync(data, preservingLocalVoiceMemosFrom: []) else {
+            return nil
+        }
+        return decoded
     }
 
     private func decodePreferences(from data: Data?) -> UserPreferences? {
@@ -306,6 +315,43 @@ class CloudSyncManager: ObservableObject {
         }
         return available
     }
+
+    /// Removes all Matchly user content from iCloud Key-Value storage.
+    /// Always clears local ubiquitous-store keys, even when iCloud is signed out.
+    func clearAllUserData() throws {
+        let hadActiveICloudAccount = FileManager.default.ubiquityIdentityToken != nil
+
+        for key in matchlyUserDataKeys {
+            store.removeObject(forKey: key)
+        }
+
+        let syncSucceeded = store.synchronize()
+
+        let remainingKeys = matchlyUserDataKeys.filter { store.object(forKey: $0) != nil }
+        if !remainingKeys.isEmpty {
+            Self.logger.error(
+                "iCloud KVS clear incomplete; keys remain locally: \(remainingKeys.joined(separator: ", "), privacy: .public)"
+            )
+            throw CloudSyncError.clearFailed
+        }
+
+        if hadActiveICloudAccount && !syncSucceeded {
+            Self.logger.error("iCloud KVS synchronize failed while signed in to iCloud")
+            throw CloudSyncError.clearFailed
+        }
+
+        if !syncSucceeded {
+            Self.logger.warning(
+                "iCloud KVS local keys cleared; synchronize returned false without an active iCloud account"
+            )
+        }
+
+        DispatchQueue.main.async { [weak self] in
+            self?.lastSyncDate = nil
+            self?.syncError = nil
+        }
+        Self.logger.info("Cleared Matchly iCloud KVS backup")
+    }
     
     // Diagnostic function to check iCloud status
     func checkCloudStatus() -> String {
@@ -361,6 +407,17 @@ class CloudSyncManager: ObservableObject {
         }
         
         return status
+    }
+}
+
+enum CloudSyncError: LocalizedError {
+    case clearFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .clearFailed:
+            return "Could not clear your iCloud backup. Check your connection and try again."
+        }
     }
 }
 

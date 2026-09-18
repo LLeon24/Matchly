@@ -11,6 +11,7 @@ import Speech
 enum VoiceMemoTranscriberError: LocalizedError {
     case notAuthorized
     case recognizerUnavailable
+    case onDeviceRecognitionUnavailable
     case emptyResult
 
     var errorDescription: String? {
@@ -19,6 +20,8 @@ enum VoiceMemoTranscriberError: LocalizedError {
             return "Speech recognition access is required to create a transcript."
         case .recognizerUnavailable:
             return "Speech recognition is unavailable right now. Try again later."
+        case .onDeviceRecognitionUnavailable:
+            return "On-device transcription isn't available on this device. Your voice memo is still saved locally—you can play it back anytime."
         case .emptyResult:
             return "No speech was detected in this recording."
         }
@@ -26,6 +29,12 @@ enum VoiceMemoTranscriberError: LocalizedError {
 }
 
 enum VoiceMemoTranscriber {
+    /// Whether Matchly can transcribe using on-device speech recognition only.
+    static var isOnDeviceTranscriptionAvailable: Bool {
+        guard let recognizer = SFSpeechRecognizer(locale: Locale.current) else { return false }
+        return recognizer.isAvailable && recognizer.supportsOnDeviceRecognition
+    }
+
     static func authorizationStatus() -> SFSpeechRecognizerAuthorizationStatus {
         SFSpeechRecognizer.authorizationStatus()
     }
@@ -49,14 +58,16 @@ enum VoiceMemoTranscriber {
             throw VoiceMemoTranscriberError.recognizerUnavailable
         }
 
+        guard recognizer.supportsOnDeviceRecognition else {
+            throw VoiceMemoTranscriberError.onDeviceRecognitionUnavailable
+        }
+
         return try await withCheckedThrowingContinuation { continuation in
             var hasResumed = false
 
             let request = SFSpeechURLRecognitionRequest(url: url)
             request.shouldReportPartialResults = false
-            if recognizer.supportsOnDeviceRecognition {
-                request.requiresOnDeviceRecognition = true
-            }
+            request.requiresOnDeviceRecognition = true
 
             recognizer.recognitionTask(with: request) { result, error in
                 if hasResumed { return }

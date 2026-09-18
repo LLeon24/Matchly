@@ -354,6 +354,7 @@ struct ProgramVoiceMemoCard: View {
     @State private var transcriptText: String?
     @State private var isTranscribing = false
     @State private var transcriptError: String?
+    @State private var transcriptionBlockedOnDevice = false
 
     private var memoURL: URL {
         VoiceMemoStorage.fileURL(forProgramId: programId)
@@ -477,12 +478,14 @@ struct ProgramVoiceMemoCard: View {
                 } else if let transcriptError {
                     Text(transcriptError)
                         .font(.arial(size: 13))
-                        .foregroundColor(.red)
+                        .foregroundColor(transcriptionBlockedOnDevice ? .secondary : .red)
 
-                    Button("Try Again") {
-                        Task { await generateTranscript(force: true) }
+                    if !transcriptionBlockedOnDevice {
+                        Button("Try Again") {
+                            Task { await generateTranscript(force: true) }
+                        }
+                        .font(.arial(size: 13, weight: .medium))
                     }
-                    .font(.arial(size: 13, weight: .medium))
                 } else if let transcriptText, !transcriptText.isEmpty {
                     Text(transcriptText)
                         .font(.arial(size: 14))
@@ -696,6 +699,7 @@ struct ProgramVoiceMemoCard: View {
         showTranscript = false
         transcriptText = nil
         transcriptError = nil
+        transcriptionBlockedOnDevice = false
         isTranscribing = false
     }
 
@@ -728,9 +732,13 @@ struct ProgramVoiceMemoCard: View {
             let text = try await VoiceMemoTranscriber.transcribe(audioAt: memoURL)
             try VoiceMemoStorage.saveTranscript(text, forProgramId: programId)
             transcriptText = text
+            transcriptionBlockedOnDevice = false
         } catch VoiceMemoTranscriberError.notAuthorized {
             showSpeechPermissionAlert = true
             transcriptError = VoiceMemoTranscriberError.notAuthorized.errorDescription
+        } catch VoiceMemoTranscriberError.onDeviceRecognitionUnavailable {
+            transcriptionBlockedOnDevice = true
+            transcriptError = VoiceMemoTranscriberError.onDeviceRecognitionUnavailable.errorDescription
         } catch {
             transcriptError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
