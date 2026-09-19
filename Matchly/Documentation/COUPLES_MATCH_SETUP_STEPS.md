@@ -7,8 +7,8 @@ Phase 1 of the Couples Match feature: **real Sign in with Apple login** and the
 You do **not** need to write any code — the code is already done. These steps just turn on
 the *capabilities* (permissions) the code depends on. Follow them **in order**.
 
-> **Container we are using:** `iCloud.com.matchly.Matchly`
-> **App bundle id (for reference):** `com.lleonmd.Matchly`
+> **Container we are using:** `iCloud.com.lestarlu.matchly`
+> **App bundle id (for reference):** `com.lestarlu.matchly`
 > (The CloudKit container id and the bundle id do **not** have to match — that's normal.)
 
 If you skip these steps the app still launches and works; it will simply show an
@@ -79,18 +79,18 @@ couples feature uses to tell partners apart.
    **exactly**:
 
    ```
-   iCloud.com.matchly.Matchly
+   iCloud.com.lestarlu.matchly
    ```
 
    Click **OK**. The container appears in the list with a **checkmark** next to it —
    make sure it is **checked**.
 
-   > If `iCloud.com.matchly.Matchly` already exists in the list, just **check it** instead
+   > If `iCloud.com.lestarlu.matchly` already exists in the list, just **check it** instead
    > of creating a new one.
 
 **What this writes (verify in `Matchly/Matchly.entitlements`):**
 - `com.apple.developer.icloud-container-identifiers` → an array containing
-  `iCloud.com.matchly.Matchly`
+  `iCloud.com.lestarlu.matchly`
 - `com.apple.developer.icloud-services` → an array containing `CloudKit`
 
 Both of those are **already filled in** in the repo's entitlements file, so after you check
@@ -128,7 +128,7 @@ entitlements file. Nothing in the Phase 1 code reads this yet — it's purely pr
 | Setting | Lives in | Set by |
 | --- | --- | --- |
 | `com.apple.developer.applesignin` | `Matchly/Matchly.entitlements` | Step 1 |
-| `com.apple.developer.icloud-container-identifiers` (= `iCloud.com.matchly.Matchly`) | `Matchly/Matchly.entitlements` | Step 2 |
+| `com.apple.developer.icloud-container-identifiers` (= `iCloud.com.lestarlu.matchly`) | `Matchly/Matchly.entitlements` | Step 2 |
 | `com.apple.developer.icloud-services` (= `CloudKit`) | `Matchly/Matchly.entitlements` | Step 2 |
 | `com.apple.developer.ubiquity-kvstore-identifier` | `Matchly/Matchly.entitlements` | already present (key‑value storage) |
 | `UIBackgroundModes` (= `remote-notification`) | **Info.plist** (generated → `INFOPLIST_KEY_…`) | Step 3 (later phase) |
@@ -142,7 +142,7 @@ the keys above. The expected contents after setup are:
 <key>com.apple.developer.applesignin</key>
 <array><string>Default</string></array>
 <key>com.apple.developer.icloud-container-identifiers</key>
-<array><string>iCloud.com.matchly.Matchly</string></array>
+<array><string>iCloud.com.lestarlu.matchly</string></array>
 <key>com.apple.developer.icloud-services</key>
 <array><string>CloudKit</string></array>
 <key>com.apple.developer.ubiquity-kvstore-identifier</key>
@@ -156,11 +156,11 @@ the keys above. The expected contents after setup are:
 Automatic signing usually does this for you, but to verify:
 
 1. Go to <https://developer.apple.com/account> ▸ **Certificates, Identifiers & Profiles**.
-2. Click **Identifiers**, then click your App ID (**`com.lleonmd.Matchly`**).
+2. Click **Identifiers**, then click your App ID (**`com.lestarlu.matchly`**).
 3. Confirm these capabilities are **checked**:
    - **Sign in with Apple**
    - **iCloud** (and that **CloudKit** is enabled). Click **Edit/Configure** next to iCloud
-     and confirm the container **`iCloud.com.matchly.Matchly`** is associated.
+     and confirm the container **`iCloud.com.lestarlu.matchly`** is associated.
    - **Push Notifications** can stay **off** for now (later phase).
 4. If you change anything here, go back to Xcode's **Signing & Capabilities** tab; with
    **Automatically manage signing** on, Xcode will regenerate the profile. If it doesn't,
@@ -203,9 +203,44 @@ When all five pass, Phase 1 setup is complete.
   and **Step 1** must be done.
 - **Couples area says iCloud is required:** the device must be signed into **iCloud**
   (Settings ▸ [your name] ▸ iCloud) and **Step 2** must be complete with the
-  `iCloud.com.matchly.Matchly` container checked.
+  `iCloud.com.lestarlu.matchly` container checked.
 - **Entitlements file shows unexpected changes:** the target values are listed in the table
   above — as long as it ends up containing those keys/values you're fine.
+- **Couples link always says "No partner found with that code":**
+  1. On the **inviting** phone, open Couples Matching and wait for **"Invite ready for your partner"** (green check). If you see an orange error, tap **Retry Publishing Invite** after confirming iCloud is signed in.
+  2. Both phones must use the **same CloudKit environment**: two Xcode debug builds, or two TestFlight/App Store builds. A debug build from Xcode and a TestFlight build **cannot** see each other's invite codes.
+  3. **CloudKit schema + security (required for publish/link errors)** — in [CloudKit Dashboard](https://icloud.developer.apple.com/):
+     - Container **`iCloud.com.lestarlu.matchly`** → **Development** (for Xcode builds).
+     - **Schema → Record Types → `CoupleCodeInvite`**: every field must be type **String**:
+       `code`, `coupleID`, `inviterRecordName`, `inviterName`, `inviterEmail`, `status`, `createdAt`, `partnerRecordName`, `partnerName`, `partnerEmail`, `linkedAt`.
+       Error **12** usually means `createdAt` (or another field) is **Date/Time** instead of **String** — fix the type and Save.
+     - **Schema → Security Roles**: `_icloud` → Create + Read + Write on `CoupleCodeInvite`; `_world` → Read.
+     - On the phone: **Generate New Code** → **Retry Publishing Invite** → confirm green **Invite ready**.
+  4. Before TestFlight: **Schema → Deploy Schema Changes…** Development → Production.
+- **Partner chat fails to send or load:**
+  1. Chat uses record type **`CoupleMessageThread`** (one record per couple, fetched by ID — **no indexes required**).
+  2. In [CloudKit Dashboard](https://icloud.developer.apple.com/) → **`iCloud.com.lestarlu.matchly`** → **Development** → **Schema → Record Types → +**:
+     - Name: **`CoupleMessageThread`**
+     - Fields:
+       - `coupleID` — **String**
+       - `messagesData` — **Bytes**
+       - `updatedAt` — **String**
+     - No queryable indexes needed for chat to work.
+  3. **Schema → Security Roles → `_icloud`**: Create, Read, Write on **`CoupleMessageThread`**.
+  4. For TestFlight: **Deploy Schema Changes…** Development → Production.
+  5. You can ignore the older **`CoupleMessage`** record type (one-record-per-message design); it is no longer used.
+  6. Both partners must use the same CloudKit environment (both Xcode debug or both TestFlight).
+- **Partner programs don't appear on Couples Rank List:**
+  1. Add record type **`CoupleProgramBundle`** in CloudKit Dashboard (Development + Production):
+     - `coupleID` — **String**
+     - `ownerRecordName` — **String**
+     - `programsData` — **Bytes**
+     - `updatedAt` — **String** (optional metadata)
+     - No query indexes required (fetched by record ID).
+  2. Also add **`CoupleRankList`** (`coupleID` String, `pairsData` Bytes, `lastEditorRecordName` String, `updatedAt` String) and **`CoupleSharedPreferences`** (`coupleID` String, `preferencesData` Bytes, `lastEditorRecordName` String, `updatedAt` String) for full couples sync.
+  3. **Security Roles → `_icloud`**: Create, Read, Write on all three types.
+  4. **Both partners** must open Matchly (Couple tab), have programs in **My Programs**, and be on the same build type (Xcode or TestFlight).
+  5. Pull to refresh on the Couples Rank List page.
 
 ---
 

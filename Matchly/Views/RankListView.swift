@@ -14,7 +14,6 @@ struct RankListView: View {
     @State private var manualOrder: [String] = [] // Store program IDs in manual order
     @State private var isEditing = false
     @State private var sortOption: SortOption = .score
-    @State private var showInterviewFilter = false
     @State private var filterInterviewed = false
     @State private var selectedSpecialties: Set<String> = []
     @State private var showAllSpecialties: Bool = true
@@ -26,29 +25,55 @@ struct RankListView: View {
         case interviewDate = "Interview Date"
     }
     
-    // Cache ranked programs to avoid expensive recalculations
-    @State private var cachedRankedPrograms: [Program] = []
-    @State private var lastCacheKey: String = ""
+    /// Sort programs by final score (highest first), then hospital name.
+    private func sortedByScore(_ programs: [Program]) -> [Program] {
+        programs.sorted {
+            if $0.finalScore != $1.finalScore {
+                return $0.finalScore > $1.finalScore
+            }
+            return HospitalNameFormatter.format($0.hospital) < HospitalNameFormatter.format($1.hospital)
+        }
+    }
+
+    private func applySortOption(_ programs: [Program]) -> [Program] {
+        switch sortOption {
+        case .score:
+            return sortedByScore(programs)
+        case .name:
+            return programs.sorted {
+                HospitalNameFormatter.format($0.hospital) < HospitalNameFormatter.format($1.hospital)
+            }
+        case .location:
+            return programs.sorted {
+                if $0.state != $1.state {
+                    return $0.state < $1.state
+                }
+                return $0.city < $1.city
+            }
+        case .interviewDate:
+            return programs.sorted {
+                guard let date1 = $0.interviewDate, let date2 = $1.interviewDate else {
+                    if $0.interviewDate != nil { return true }
+                    if $1.interviewDate != nil { return false }
+                    return $0.finalScore > $1.finalScore
+                }
+                return date1 < date2
+            }
+        }
+    }
     
     var rankedPrograms: [Program] {
-        // Create cache key from all dependencies
-        let specialtiesKey = selectedSpecialties.sorted().joined(separator: ",")
         let includeRedFlags = dataManager.preferences.includeRedFlaggedProgramsInRankList
-        let cacheKey = "\(manualOrder.count)-\(showAllSpecialties)-\(specialtiesKey)-\(filterInterviewed)-\(sortOption.rawValue)-\(dataManager.programs.count)-\(includeRedFlags)"
-        
-        // Return cached result if nothing changed
-        if cacheKey == lastCacheKey && !cachedRankedPrograms.isEmpty && cachedRankedPrograms.count == dataManager.programs.count {
-            return cachedRankedPrograms
-        }
-        
         var programs: [Program]
         
         if manualOrder.isEmpty {
-            // Start with all programs, sorted by score (highest first)
-            programs = dataManager.programs.sorted { $0.finalScore > $1.finalScore }
+            programs = applySortOption(dataManager.programs)
         } else {
             // Use manual order if available - optimize with dictionary lookup (O(1) instead of O(n))
-            let programsById = Dictionary(uniqueKeysWithValues: dataManager.programs.map { ($0.id, $0) })
+            let programsById = Dictionary(
+                dataManager.programs.map { ($0.id, $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
             var ordered: [Program] = []
             for id in manualOrder {
                 if let program = programsById[id] {
@@ -57,11 +82,8 @@ struct RankListView: View {
             }
             // Add any programs not in manual order (newly added)
             let manualIds = Set(manualOrder)
-            let sortedByScore = dataManager.programs.sorted(by: { $0.finalScore > $1.finalScore })
-            for program in sortedByScore {
-                if !manualIds.contains(program.id) {
-                    ordered.append(program)
-                }
+            for program in applySortOption(dataManager.programs) where !manualIds.contains(program.id) {
+                ordered.append(program)
             }
             programs = ordered
         }
@@ -70,339 +92,418 @@ struct RankListView: View {
         if !showAllSpecialties && !selectedSpecialties.isEmpty {
             programs = programs.filter { selectedSpecialties.contains($0.specialty) }
         }
-        // If showAllSpecialties is true OR selectedSpecialties is empty, show all programs
         
         // Apply interview filter
         if filterInterviewed {
             programs = programs.filter { $0.interviewDate != nil }
         }
         
-        // Filter out red flagged programs from main list (they'll be shown separately at bottom if enabled)
-        if includeRedFlags {
-            // Filter out red flagged programs from main list - they'll be shown at bottom
-            programs = programs.filter { !$0.hasRedFlags() }
-        } else {
-            // Filter out red flagged programs completely
+        // Red flagged programs are kept in the list when enabled (separated later for display),
+        // and filtered out entirely when the setting is disabled.
+        if !includeRedFlags {
             programs = programs.filter { !$0.hasRedFlags() }
         }
         
         // Apply sorting (only if not using manual order)
         if manualOrder.isEmpty {
-            switch sortOption {
-            case .score:
-                programs = programs.sorted { $0.finalScore > $1.finalScore }
-            case .name:
-                programs = programs.sorted { HospitalNameFormatter.format($0.hospital) < HospitalNameFormatter.format($1.hospital) }
-            case .location:
-                programs = programs.sorted { 
-                    if $0.state != $1.state {
-                        return $0.state < $1.state
-                    }
-                    return $0.city < $1.city
-                }
-            case .interviewDate:
-                programs = programs.sorted {
-                    guard let date1 = $0.interviewDate, let date2 = $1.interviewDate else {
-                        if $0.interviewDate != nil { return true }
-                        if $1.interviewDate != nil { return false }
-                        return $0.finalScore > $1.finalScore
-                    }
-                    return date1 < date2
-                }
-            }
-        }
-        
-        // Cache the result asynchronously
-        DispatchQueue.main.async {
-            cachedRankedPrograms = programs
-            lastCacheKey = cacheKey
+            programs = applySortOption(programs)
         }
         
         return programs
     }
-    
-    // Get red flagged programs separately (for bottom section)
-    private var redFlaggedPrograms: [Program] {
-        var programs = dataManager.programs.filter { $0.hasRedFlags() }
-        
-        // Apply specialty filter
-        if !showAllSpecialties && !selectedSpecialties.isEmpty {
-            programs = programs.filter { selectedSpecialties.contains($0.specialty) }
+
+    /// Scored programs with a completed questionnaire — eligible for numbered rank positions.
+    private var scoredRankedPrograms: [Program] {
+        rankedPrograms.filter {
+            !$0.needsScoring(preferences: dataManager.preferences) && $0.finalScore > 0
         }
-        
-        // Apply interview filter
-        if filterInterviewed {
-            programs = programs.filter { $0.interviewDate != nil }
+    }
+
+    /// Questionnaires still in progress — shown at the bottom for completion.
+    private var incompleteQuestionnairePrograms: [Program] {
+        rankedPrograms.filter { $0.needsScoring(preferences: dataManager.preferences) }
+    }
+
+    /// Tracked programs that are complete but not scored yet — shown below incomplete questionnaires.
+    private var unrankedPrograms: [Program] {
+        rankedPrograms.filter {
+            !$0.needsScoring(preferences: dataManager.preferences) && $0.finalScore <= 0
         }
-        
-        // Sort by score (highest first)
-        return programs.sorted { $0.finalScore > $1.finalScore }
+    }
+
+    private func unrankedReason(for program: Program) -> String {
+        let prefs = dataManager.preferences
+        if program.interviewDate == nil {
+            return "Add an interview date to start scoring"
+        }
+        if program.needsScoring(preferences: prefs) {
+            return "Complete the questionnaire to rank this program"
+        }
+        return "Score this program to add it to your rank list"
     }
     
     private var allSpecialties: [String] {
         Array(Set(dataManager.programs.map { $0.specialty })).sorted()
     }
     
+    // Computed properties to break up complex expressions
+    /// Scored programs in display order — red-flag block stays at the bottom until manually reordered.
+    private var orderedScoredPrograms: [Program] {
+        let scored = scoredRankedPrograms
+        if !manualOrder.isEmpty {
+            return scored
+        }
+        guard dataManager.preferences.includeRedFlaggedProgramsInRankList else {
+            return scored.filter { !$0.hasRedFlags() }
+        }
+        return scored.filter { !$0.hasRedFlags() } + scored.filter { $0.hasRedFlags() }
+    }
+
+    private func shouldShowRedFlaggedBanner(at index: Int) -> Bool {
+        let programs = orderedScoredPrograms
+        guard index < programs.count else { return false }
+        guard programs[index].hasRedFlags() else { return false }
+        guard index > 0 else { return false }
+        guard !programs[index - 1].hasRedFlags() else { return false }
+        return programs[index...].allSatisfy { $0.hasRedFlags() }
+    }
+
+    private func elevatedRedFlag(at index: Int) -> Bool {
+        let programs = orderedScoredPrograms
+        guard index < programs.count else { return false }
+        guard programs[index].hasRedFlags() else { return false }
+        return programs[(index + 1)...].contains { !$0.hasRedFlags() }
+    }
+    
     var body: some View {
-        NavigationView {
+        MatchlyNavigationView {
             Group {
-                if rankedPrograms.isEmpty {
+                if dataManager.programs.isEmpty {
                     EmptyRankListView()
+                        .matchlyRootContentFrame()
                 } else {
                     VStack(spacing: 0) {
-                        // Sort and filter options
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 12) {
-                                // Specialty filter
-                                Menu {
-                                    if !allSpecialties.isEmpty {
-                                        Section("Specialties") {
-                                            ForEach(allSpecialties, id: \.self) { specialty in
-                                        Button(action: {
-                                            showAllSpecialties = false
-                                            if selectedSpecialties.contains(specialty) {
-                                                selectedSpecialties.remove(specialty)
-                                            } else {
-                                                selectedSpecialties.insert(specialty)
-                                            }
-                                        }) {
-                                            HStack {
-                                                Text(SpecialtyFormatter.displayNameWithAbbreviation(specialty))
-                                                Spacer()
-                                                if selectedSpecialties.contains(specialty) {
-                                                    Image(systemName: "checkmark")
-                                                        .foregroundColor(.blue)
-                                                }
-                                            }
-                                        }
-                                            }
-                                        }
-                                        
-                                        Divider()
-                                        
-                                        Button(action: {
-                                            selectedSpecialties.removeAll()
-                                            showAllSpecialties = true
-                                        }) {
-                                            HStack {
-                                                Image(systemName: "square.grid.2x2")
-                                                Text("All Specialties")
-                                            }
-                                        }
-                                    }
-                                } label: {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "stethoscope")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.blue)
-                                        Text(showAllSpecialties ? "All" : "\(selectedSpecialties.count)")
-                                            .font(.system(size: 12, weight: .medium))
-                                        Image(systemName: "chevron.down")
-                                            .font(.system(size: 9))
-                                            .foregroundColor(.secondary)
-                                    }
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                                    .background(!showAllSpecialties && !selectedSpecialties.isEmpty ? Color.blue.opacity(0.15) : Color(.systemGray5))
-                                    .cornerRadius(8)
-                                }
-                                
-                                Menu {
-                                    ForEach(SortOption.allCases, id: \.self) { option in
-                                        Button(action: {
-                                            sortOption = option
-                                        }) {
-                                            HStack {
-                                                Text(option.rawValue)
-                                                Spacer()
-                                                if sortOption == option {
-                                                    Image(systemName: "checkmark")
-                                                        .foregroundColor(.blue)
-                                                }
-                                            }
-                                        }
-                                    }
-                                } label: {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "arrow.up.arrow.down")
-                                            .font(.system(size: 11))
-                                        Text("Sort: \(sortOption.rawValue)")
-                                            .font(.system(size: 12, weight: .medium))
-                                        Image(systemName: "chevron.down")
-                                            .font(.system(size: 9))
-                                            .foregroundColor(.secondary)
-                                    }
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                                    .background(Color(.systemGray5))
-                                    .cornerRadius(8)
-                                }
-                                
-                                Spacer()
-                                
-                                Text("\(rankedPrograms.count) programs")
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundColor(.secondary)
-                            }
-                            .padding(.horizontal, 4)
-                        }
-                        .padding()
-                        .background(Color(.systemGray6))
-                        
-                        // Separate regular and red flagged programs
-                        let regularPrograms = rankedPrograms.filter { !$0.hasRedFlags() }
-                        let redFlagged = dataManager.preferences.includeRedFlaggedProgramsInRankList ? redFlaggedPrograms : []
-                        
-                        // Group regular programs by specialty
-                        let groupedPrograms = Dictionary(grouping: regularPrograms) { $0.specialty }
-                        let sortedSpecialties = groupedPrograms.keys.sorted()
-                        
-                        // Group red flagged programs by specialty
-                        let groupedRedFlagged = Dictionary(grouping: redFlagged) { $0.specialty }
-                        let sortedRedFlaggedSpecialties = groupedRedFlagged.keys.sorted()
-                        
-                    List {
-                            // Regular programs by specialty
-                            ForEach(sortedSpecialties, id: \.self) { specialty in
-                                Section(header: 
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "stethoscope")
-                                            .font(.system(size: 12))
-                                            .foregroundColor(SpecialtyFormatter.color(for: specialty))
-                                        Text("\(specialty) (\(SpecialtyFormatter.abbreviation(for: specialty)))")
-                                            .font(.system(size: 13, weight: .semibold))
-                                    }
-                                    .foregroundColor(.secondary)
-                                ) {
-                                    ForEach(Array(groupedPrograms[specialty] ?? []), id: \.id) { program in
-                                        NavigationLink(destination: ProgramEntryView(program: program)) {
-                            RankListItemView(
-                                                rank: (regularPrograms.firstIndex(where: { $0.id == program.id }) ?? 0) + 1,
-                                program: program
-                            )
-                                        }
-                                    }
-                                    .onMove { source, destination in
-                                        // Handle move within specialty
-                                        moveProgramsInSpecialty(specialty, from: source, to: destination, in: groupedPrograms[specialty] ?? [])
-                                    }
-                                }
-                            }
-                            
-                            // Red Flagged Programs section at bottom (if enabled and there are any)
-                            if !redFlagged.isEmpty {
-                                Section(header:
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "exclamationmark.triangle.fill")
-                                            .font(.system(size: 12))
-                                            .foregroundColor(.red)
-                                        Text("Red Flagged Programs")
-                                            .font(.system(size: 13, weight: .semibold))
-                                            .foregroundColor(.red)
-                                    }
-                                ) {
-                                    ForEach(sortedRedFlaggedSpecialties, id: \.self) { specialty in
-                                        ForEach(Array(groupedRedFlagged[specialty] ?? []), id: \.id) { program in
-                                            NavigationLink(destination: ProgramEntryView(program: program)) {
-                                                RankListItemView(
-                                                    rank: regularPrograms.count + (redFlagged.firstIndex(where: { $0.id == program.id }) ?? 0) + 1,
-                                                    program: program
-                                                )
-                                            }
-                                        }
-                                    }
+                        MatchlyListPageTitleRow(title: "Rank List") {
+                            if !scoredRankedPrograms.isEmpty {
+                                MatchlyToolbarExportPDFButton {
+                                    showExportSheet = true
                                 }
                             }
                         }
-                        .listStyle(.insetGrouped)
-                        .padding(.bottom, 90) // Space for custom tab bar
-                        .environment(\.editMode, isEditing ? .constant(.active) : .constant(.inactive))
+
+                        filterToolbar
+
+                        if !scoredRankedPrograms.isEmpty {
+                            rankListSectionDivider
+                            rankListSecondaryActionRow
+                        }
+
+                        rankListSectionDivider
+                            .padding(.bottom, 4)
+
+                        programListContent
                     }
                 }
             }
-            .navigationTitle("Rank List")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    if !rankedPrograms.isEmpty {
-                        HStack {
-                            Button(action: {
-                                isEditing.toggle()
-                            }) {
-                                Text(isEditing ? "Done" : "Edit")
-                            }
-                            
-                            if !manualOrder.isEmpty {
-                                Button(action: {
-                                    // Reset to score-based ordering
-                                    manualOrder = []
-                                    saveManualOrder()
-                                }) {
-                                    Text("Reset")
-                                        .font(.caption)
-                                }
-                            }
-                        }
-                    }
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    if !rankedPrograms.isEmpty {
-                        HStack(spacing: 16) {
-                            NavigationLink(destination: ProgramComparisonView()) {
-                                Image(systemName: "square.grid.2x2")
-                            }
-                            
-                        Button(action: {
-                            showExportSheet = true
-                        }) {
-                            Image(systemName: "square.and.arrow.up")
-                            }
-                        }
-                    }
-                }
-            }
+            .matchlyRootContentFrame()
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $showExportSheet) {
-                ExportView(programs: rankedPrograms)
+                ExportView(orderedRankedPrograms: orderedScoredPrograms)
+                    .environmentObject(dataManager)
             }
             .onAppear {
                 loadManualOrder()
-                // Show all programs by default - don't filter by specialty preferences
-                // User can manually filter if they want
                 showAllSpecialties = true
                 selectedSpecialties = []
             }
+            .appCanvasBackground()
         }
     }
     
-    private func movePrograms(from source: IndexSet, to destination: Int) {
-        var programs = rankedPrograms
-        programs.move(fromOffsets: source, toOffset: destination)
-        manualOrder = programs.map { $0.id }
-        saveManualOrder()
+    // MARK: - View Components
+
+    private var rankListSectionDivider: some View {
+        MatchlyBrandHairline(fullWidth: true, color: AppColors.secondaryText.opacity(0.22))
+            .padding(.horizontal, 16)
+    }
+
+    private var rankListSecondaryActionRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                if dataManager.programs.count >= 2 {
+                    NavigationLink(destination: ProgramComparisonView()) {
+                        MatchlyActionChipLabel(
+                            icon: "square.grid.2x2",
+                            text: "Compare",
+                            tint: AppColors.accentTeal,
+                            isFilled: true
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isEditing.toggle()
+                    }
+                } label: {
+                    MatchlyActionChipLabel(
+                        icon: isEditing ? "checkmark" : "line.3.horizontal",
+                        text: isEditing ? "Done" : "Reorder",
+                        tint: AppColors.primaryBlue,
+                        isFilled: isEditing
+                    )
+                }
+                .buttonStyle(.plain)
+
+                if !manualOrder.isEmpty {
+                    Button {
+                        manualOrder = []
+                        saveManualOrder()
+                        isEditing = false
+                    } label: {
+                        MatchlyActionChipLabel(
+                            icon: "arrow.counterclockwise",
+                            text: "Reset",
+                            tint: .secondary,
+                            isFilled: false
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+        .padding(.vertical, 10)
     }
     
-    private func moveProgramsInSpecialty(_ specialty: String, from source: IndexSet, to destination: Int, in specialtyPrograms: [Program]) {
-        // Get all programs in order
-        let allPrograms = rankedPrograms
-        // Find the specialty section
-        _ = allPrograms.firstIndex(where: { $0.specialty == specialty }) ?? 0
-        // Move within specialty
-        var specialtyList = specialtyPrograms
-        specialtyList.move(fromOffsets: source, toOffset: destination)
-        // Rebuild full list
-        var newOrder: [Program] = []
-        var specialtyIndex = 0
-        for (_, program) in allPrograms.enumerated() {
-            if program.specialty == specialty {
-                if specialtyIndex < specialtyList.count {
-                    newOrder.append(specialtyList[specialtyIndex])
-                    specialtyIndex += 1
-                }
-            } else {
-                newOrder.append(program)
+    private var filterToolbar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                specialtyFilterMenu
+                sortMenu
+                    .disabled(isEditing)
+
+                Spacer(minLength: 0)
+
+                Text("\(scoredRankedPrograms.count) ranked")
+                    .font(.arial(size: 12, weight: .medium))
+                    .foregroundColor(.secondary)
             }
         }
-        manualOrder = newOrder.map { $0.id }
+        .padding(.horizontal, 16)
+        .padding(.top, 4)
+        .padding(.bottom, 10)
+    }
+    
+    private var specialtyFilterMenu: some View {
+        Menu {
+            if !allSpecialties.isEmpty {
+                Section("Specialties") {
+                    ForEach(allSpecialties, id: \.self) { specialty in
+                        Button(action: {
+                            showAllSpecialties = false
+                            if selectedSpecialties.contains(specialty) {
+                                selectedSpecialties.remove(specialty)
+                            } else {
+                                selectedSpecialties.insert(specialty)
+                            }
+                        }) {
+                            HStack {
+                                Text(SpecialtyFormatter.displayNameWithAbbreviation(specialty))
+                                Spacer()
+                                if selectedSpecialties.contains(specialty) {
+                                    Image(systemName: "checkmark")
+                                        .foregroundColor(.blue)
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                Divider()
+                
+                Button(action: {
+                    selectedSpecialties.removeAll()
+                    showAllSpecialties = true
+                }) {
+                    HStack {
+                        Image(systemName: "square.grid.2x2")
+                        Text("All Specialties")
+                    }
+                }
+            }
+        } label: {
+            MatchlyFilterChipLabel(
+                icon: "stethoscope",
+                iconColor: AppColors.primaryBlue,
+                text: showAllSpecialties ? "All" : "\(selectedSpecialties.count)",
+                isActive: !showAllSpecialties && !selectedSpecialties.isEmpty
+            )
+        }
+    }
+    
+    private var sortMenu: some View {
+        Menu {
+            ForEach(SortOption.allCases, id: \.self) { option in
+                Button(action: {
+                    sortOption = option
+                    manualOrder = []
+                    saveManualOrder()
+                }) {
+                    HStack {
+                        Text(option.rawValue)
+                        Spacer()
+                        if sortOption == option {
+                            Image(systemName: "checkmark")
+                                .foregroundColor(.blue)
+                        }
+                    }
+                }
+            }
+        } label: {
+            MatchlyFilterChipLabel(
+                icon: "arrow.up.arrow.down",
+                text: "Sort: \(sortOption.rawValue)"
+            )
+        }
+    }
+    
+    private var programListContent: some View {
+        List {
+            if scoredRankedPrograms.isEmpty && (!unrankedPrograms.isEmpty || !incompleteQuestionnairePrograms.isEmpty) {
+                Section {
+                    Text("Complete questionnaires and score your visits to build a ranked list.")
+                        .font(.arial(size: 14))
+                        .foregroundColor(.secondary)
+                        .padding(.vertical, 4)
+                }
+            }
+
+            rankedProgramsSection
+            incompleteQuestionnaireSection
+            unrankedSection
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .listSectionSpacing(16)
+        .matchlyReadableWidth()
+        .matchlyScrollTabBarClearance()
+        .environment(\.editMode, isEditing ? .constant(.active) : .constant(.inactive))
+    }
+
+    private var rankListRowInsets: EdgeInsets {
+        EdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12)
+    }
+    
+    private var rankedProgramsSection: some View {
+        Section {
+            ForEach(Array(orderedScoredPrograms.enumerated()), id: \.element.id) { index, program in
+                rankedProgramRow(at: index, program: program)
+            }
+            .onMove(perform: moveScoredProgramsWhenEditing)
+        } header: {
+            if isEditing {
+                Text("Drag using the handles to set your match order")
+                    .font(.arial(size: 12, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .textCase(nil)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func rankedProgramRow(at index: Int, program: Program) -> some View {
+        let row = RankListProgramRow(
+            rank: index + 1,
+            program: program,
+            showsRedFlaggedSectionBanner: shouldShowRedFlaggedBanner(at: index),
+            showsElevatedRedFlag: elevatedRedFlag(at: index)
+        )
+        .listRowInsets(rankListRowInsets)
+
+        if isEditing {
+            row
+        } else {
+            NavigationLink(destination: ProgramEntryView(program: program)) {
+                row
+            }
+            .listRowInsets(rankListRowInsets)
+        }
+    }
+    
+    private func moveScoredProgramsWhenEditing(from source: IndexSet, to destination: Int) {
+        guard isEditing else { return }
+        moveScoredPrograms(from: source, to: destination)
+    }
+    
+    private func moveScoredPrograms(from source: IndexSet, to destination: Int) {
+        var ordered = orderedScoredPrograms
+        ordered.move(fromOffsets: source, toOffset: destination)
+
+        let scoredIds = Set(ordered.map(\.id))
+        var newManualOrder = ordered.map(\.id)
+        for program in rankedPrograms where !scoredIds.contains(program.id) {
+            newManualOrder.append(program.id)
+        }
+
+        manualOrder = newManualOrder
         saveManualOrder()
+    }
+    
+    @ViewBuilder
+    private var incompleteQuestionnaireSection: some View {
+        if !incompleteQuestionnairePrograms.isEmpty {
+            Section(header: incompleteQuestionnaireHeader) {
+                ForEach(incompleteQuestionnairePrograms) { program in
+                    NavigationLink(
+                        destination: ProgramEntryView(program: program, scrollToFirstMissing: true)
+                    ) {
+                        IncompleteQuestionnaireRow(program: program)
+                    }
+                    .listRowInsets(rankListRowInsets)
+                }
+            }
+        }
+    }
+
+    private var incompleteQuestionnaireHeader: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "circle.lefthalf.filled")
+                .font(.arial(size: 12))
+                .foregroundColor(AppColors.pipelineToReview)
+            Text("Incomplete Questionnaires (\(incompleteQuestionnairePrograms.count))")
+                .font(.arial(size: 13, weight: .semibold))
+                .foregroundColor(AppColors.pipelineToReview)
+        }
+    }
+
+    @ViewBuilder
+    private var unrankedSection: some View {
+        if !unrankedPrograms.isEmpty {
+            Section(header: unrankedHeader) {
+                ForEach(unrankedPrograms) { program in
+                    NavigationLink(
+                        destination: ProgramEntryView(program: program)
+                    ) {
+                        UnrankedProgramRow(program: program, reason: unrankedReason(for: program))
+                    }
+                    .listRowInsets(rankListRowInsets)
+                }
+            }
+        }
+    }
+
+    private var unrankedHeader: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "list.bullet.clipboard")
+                .font(.arial(size: 12))
+                .foregroundColor(AppColors.pipelineToReview)
+            Text("Not Ranked Yet (\(unrankedPrograms.count))")
+                .font(.arial(size: 13, weight: .semibold))
+                .foregroundColor(AppColors.pipelineToReview)
+        }
     }
     
     private func saveManualOrder() {
@@ -411,157 +512,217 @@ struct RankListView: View {
     
     private func loadManualOrder() {
         if let saved = UserDefaults.standard.array(forKey: "manual_rank_order") as? [String] {
-            manualOrder = saved
+            manualOrder = Self.uniquePreservingOrder(saved)
         }
+    }
+
+    private static func uniquePreservingOrder(_ ids: [String]) -> [String] {
+        var seen = Set<String>()
+        return ids.filter { seen.insert($0).inserted }
+    }
+}
+
+struct RankListProgramRow: View {
+    let rank: Int
+    let program: Program
+    var showsRedFlaggedSectionBanner: Bool = false
+    var showsElevatedRedFlag: Bool = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if showsRedFlaggedSectionBanner {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.arial(size: 12))
+                        .foregroundColor(.red)
+                    Text("Red Flagged Programs")
+                        .font(.arial(size: 13, weight: .semibold))
+                        .foregroundColor(.red)
+                }
+            }
+
+            RankListItemView(
+                rank: rank,
+                program: program,
+                showsElevatedRedFlag: showsElevatedRedFlag
+            )
+        }
+    }
+}
+
+struct IncompleteQuestionnaireRow: View {
+    @EnvironmentObject private var dataManager: DataManager
+    let program: Program
+
+    private var completionPercent: Int {
+        Int((program.questionnaireCompletionRatio(preferences: dataManager.preferences) * 100).rounded())
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(HospitalNameFormatter.format(
+                program.hospital.isEmpty
+                    ? (program.name.isEmpty ? "Unnamed Program" : program.name)
+                    : program.hospital
+            ))
+            .font(.arial(size: 15, weight: .semibold))
+            .foregroundColor(.primary)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
+
+            if !program.specialty.isEmpty {
+                MatchlyProgramSpecialtyBadge(specialty: program.specialty)
+            }
+
+            MatchlyProgramLocationAndIDRow(program: program)
+
+            Text(completionPercent == 0 ? "Questionnaire not started" : "Questionnaire \(completionPercent)% complete")
+                .font(.arial(size: 12, weight: .semibold))
+                .foregroundColor(AppColors.pipelineToReview)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+struct UnrankedProgramRow: View {
+    let program: Program
+    let reason: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(HospitalNameFormatter.format(
+                program.hospital.isEmpty
+                    ? (program.name.isEmpty ? "Unnamed Program" : program.name)
+                    : program.hospital
+            ))
+            .font(.arial(size: 15, weight: .semibold))
+            .foregroundColor(.primary)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
+
+            if !program.specialty.isEmpty {
+                MatchlyProgramSpecialtyBadge(specialty: program.specialty)
+            }
+
+            MatchlyProgramLocationAndIDRow(program: program)
+
+            Text(reason)
+                .font(.arial(size: 12, weight: .medium))
+                .foregroundColor(AppColors.pipelineToReview)
+        }
+        .padding(.vertical, 4)
     }
 }
 
 struct RankListItemView: View {
     let rank: Int
     let program: Program
-    
+    var showsElevatedRedFlag: Bool = false
+
+    private var formattedScore: String {
+        String(format: "%.1f", program.finalScore)
+    }
+
     var body: some View {
-        HStack(spacing: 12) {
-            // Rank number with icon - smaller
-            ZStack {
-                Circle()
-                    .fill(rankColor(rank).opacity(0.15))
-                    .frame(width: 40, height: 40)
-                
-                VStack(spacing: 0) {
-                    Image(systemName: rank <= 3 ? "trophy.fill" : "star.fill")
-                        .font(.system(size: 10))
-                        .foregroundColor(rankColor(rank))
-                Text("\(rank)")
-                        .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(rankColor(rank))
-                }
-            }
-            
-            // Program info - more compact, similar to ProgramsListView
-            VStack(alignment: .leading, spacing: 4) {
-                // Hospital name with signal indicator and red flag - single line, no wrapping
-                HStack(spacing: 6) {
-                    Text(HospitalNameFormatter.format(program.hospital.isEmpty ? (program.name.isEmpty ? "Unnamed Program" : program.name) : program.hospital))
-                        .font(.system(size: 15, weight: .semibold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                    
-                    // Red flag indicator
-                    if program.hasRedFlags() {
+        HStack(alignment: .center, spacing: 14) {
+            rankScoreRail
+
+            VStack(alignment: .leading, spacing: 6) {
+                if showsElevatedRedFlag {
+                    HStack(spacing: 5) {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 12))
-                            .foregroundColor(.red)
+                            .font(.arial(size: 9))
+                        Text("Flagged program")
+                            .font(.arial(size: 11, weight: .semibold))
                     }
-                    
-                    // Signal indicator - subtle
+                    .foregroundColor(.red.opacity(0.88))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.red.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                }
+
+                Text(HospitalNameFormatter.format(program.hospital.isEmpty ? (program.name.isEmpty ? "Unnamed Program" : program.name) : program.hospital))
+                    .font(.arial(size: 15, weight: .semibold))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if !program.specialty.isEmpty {
+                    MatchlyProgramSpecialtyBadge(specialty: program.specialty)
+                }
+
+                MatchlyProgramLocationAndIDRow(program: program)
+
+                SavedProgramIMGBadge(program: program, iconSize: 9, textSize: 11)
+
+                HStack(spacing: 10) {
                     if program.signalType != .none {
-                        Image(systemName: program.signalType == .gold ? "star.fill" : "star")
-                            .font(.system(size: 11))
-                            .foregroundColor(program.signalType == .gold ? .yellow : .gray)
-                    }
-                }
-                
-                // Metadata - wrap properly
-                VStack(alignment: .leading, spacing: 3) {
-                    // First row: Location and Type
-                    HStack(spacing: 8) {
-                if !program.city.isEmpty && !program.state.isEmpty {
-                            HStack(spacing: 3) {
-                                Image(systemName: "mappin.circle.fill")
-                                    .font(.system(size: 9))
-                    Text("\(program.city), \(program.state)")
-                                    .font(.system(size: 11))
-                            }
-                        .foregroundColor(.secondary)
-                            .lineLimit(1)
-                        }
-                        
-                        if !program.type.isEmpty {
-                            HStack(spacing: 3) {
-                                Image(systemName: programTypeIcon(program.type))
-                                    .font(.system(size: 8))
-                                Text(program.type)
-                                    .font(.system(size: 10, weight: .medium))
-                            }
-                            .foregroundColor(programTypeColor(program.type))
-                            .lineLimit(1)
-                        }
-                    }
-                    
-                    // Second row: Interview date (if exists) or Signal
-                    if let interviewDate = program.interviewDate {
+                        let isTiered = SignalLimits.isTiered(for: program.specialty)
+                        let signalText = isTiered
+                            ? (program.signalType == .gold ? "Gold Signal" : "Silver Signal")
+                            : "Signal"
+                        let signalColor = isTiered
+                            ? (program.signalType == .gold ? Color.yellow : Color(white: 0.6))
+                            : Color.blue
+
                         HStack(spacing: 3) {
-                            Image(systemName: "calendar.badge.clock")
-                                .font(.system(size: 9))
-                            Text(interviewDate, style: .date)
-                                .font(.system(size: 11, weight: .medium))
+                            Image(systemName: program.signalType == .gold ? "star.fill" : "star")
+                                .font(.arial(size: 9))
+                            Text(signalText)
+                                .font(.arial(size: 11, weight: .medium))
                         }
-                        .foregroundColor(.blue)
-                        .lineLimit(1)
-                    } else if program.signalType != .none {
-                        HStack(spacing: 3) {
-                            Image(systemName: program.signalType.icon)
-                                .font(.system(size: 9))
-                            Text(program.signalType == .gold ? "Gold Signal" : "Silver Signal")
-                                .font(.system(size: 11, weight: .medium))
-                        }
-                        .foregroundColor(program.signalType == .gold ? .yellow : .gray)
-                        .lineLimit(1)
+                        .foregroundColor(signalColor)
                     }
+
+                    if program.hasRedFlags() {
+                        HStack(spacing: 3) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.arial(size: 9))
+                            Text("Red Flag")
+                                .font(.arial(size: 11, weight: .medium))
+                        }
+                        .foregroundColor(.red)
+                    }
+
+                    ProgramVoiceMemoBadge(program: program, iconSize: 9, textSize: 11)
                 }
             }
-            
-            Spacer(minLength: 8)
-            
-            // Score with icon - smaller
-            VStack(alignment: .trailing, spacing: 2) {
-                HStack(spacing: 3) {
-                    Image(systemName: "star.fill")
-                        .font(.system(size: 10))
-                        .foregroundColor(scoreColor(program.finalScore))
-                Text(String(format: "%.1f", program.finalScore))
-                        .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(scoreColor(program.finalScore))
-                }
-                
-                Text("pts")
-                    .font(.system(size: 9))
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.vertical, 10)
+        .overlay(alignment: .leading) {
+            if showsElevatedRedFlag {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(Color.red.opacity(0.75))
+                    .frame(width: 3)
+                    .padding(.vertical, 8)
+            }
+        }
+    }
+
+    private var rankScoreRail: some View {
+        let tint = scoreColor(program.finalScore)
+
+        return VStack(spacing: 6) {
+            Text("\(rank)")
+                .font(.arial(size: 26, weight: .bold))
+                .foregroundColor(rankColor(rank))
+                .monospacedDigit()
+
+            VStack(spacing: 1) {
+                Text("Score")
+                    .font(.arial(size: 9, weight: .semibold))
                     .foregroundColor(.secondary)
+                Text(formattedScore)
+                    .font(.arial(size: 15, weight: .bold))
+                    .foregroundColor(tint)
+                    .monospacedDigit()
             }
         }
-        .padding(.vertical, 8)
-    }
-    
-    private func rankColor(_ rank: Int) -> Color {
-        if rank <= 3 { return .green }
-        if rank <= 10 { return .blue }
-        return .gray
-    }
-    
-    private func scoreColor(_ score: Double) -> Color {
-        if score >= 80 { return .green }
-        if score >= 60 { return .blue }
-        if score >= 40 { return .orange }
-        return .red
-    }
-    
-    private func programTypeColor(_ type: String) -> Color {
-        switch type {
-        case "Academic": return .blue
-        case "Community": return .green
-        case "Hybrid": return .orange
-        default: return .secondary
-        }
-    }
-    
-    private func programTypeIcon(_ type: String) -> String {
-        switch type {
-        case "Academic": return "graduationcap.fill"
-        case "Community": return "house.fill"
-        case "Hybrid": return "square.stack.3d.up.fill"
-        default: return "building.2.fill"
-        }
+        .frame(width: 54)
+        .multilineTextAlignment(.center)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Rank \(rank), score \(formattedScore)")
     }
 }
 
@@ -580,7 +741,7 @@ struct EmptyRankListView: View {
                     .frame(width: 120, height: 120)
                 
                 Image(systemName: "chart.bar.xaxis")
-                .font(.system(size: 60))
+                .font(.arial(size: 60))
                     .foregroundStyle(
                         LinearGradient(
                             colors: [.blue, .purple],
@@ -592,7 +753,7 @@ struct EmptyRankListView: View {
             
             VStack(spacing: 8) {
             Text("No Programs to Rank")
-                    .font(.system(size: 24, weight: .bold))
+                    .font(.arial(size: 24, weight: .bold))
             
             Text("Add programs to see your rank list")
                 .font(.subheadline)
@@ -606,71 +767,154 @@ struct EmptyRankListView: View {
 
 struct ExportView: View {
     @Environment(\.dismiss) var dismiss
-    let programs: [Program]
-    @State private var showShareSheet = false
+    @EnvironmentObject var dataManager: DataManager
+    let orderedRankedPrograms: [Program]
+    @State private var sharePayload: SharePayload?
+    @State private var exportError: String?
+
+    init(orderedRankedPrograms: [Program]) {
+        self.orderedRankedPrograms = orderedRankedPrograms
+    }
+
+    private var applicantName: String {
+        dataManager.preferences.profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var applicantAAMCID: String? {
+        let trimmed = dataManager.preferences.profile.aamcID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private struct SharePayload: Identifiable {
+        let id = UUID()
+        let items: [Any]
+    }
+
+    private var allPrograms: [Program] {
+        orderedRankedPrograms
+    }
+
+    private func shouldShowRedFlaggedBanner(at index: Int) -> Bool {
+        guard orderedRankedPrograms[index].hasRedFlags() else { return false }
+        guard index > 0 else { return false }
+        guard !orderedRankedPrograms[index - 1].hasRedFlags() else { return false }
+        return orderedRankedPrograms[index...].allSatisfy { $0.hasRedFlags() }
+    }
+
+    private func elevatedRedFlag(at index: Int) -> Bool {
+        guard orderedRankedPrograms[index].hasRedFlags() else { return false }
+        return orderedRankedPrograms[(index + 1)...].contains { !$0.hasRedFlags() }
+    }
     
     var rankListText: String {
-        var text = "My Residency Rank List\n\n"
-        for (index, program) in programs.enumerated() {
-            text += "\(index + 1). \(program.name.isEmpty ? "Unnamed Program" : program.name)"
-            if !program.city.isEmpty && !program.state.isEmpty {
-                text += " - \(program.city), \(program.state)"
+        var text = "My Residency Rank List"
+        if !applicantName.isEmpty {
+            text += "\n\(applicantName)"
+        }
+        if let aamcID = applicantAAMCID {
+            text += "\nAAMC ID: \(aamcID)"
+        }
+        text += "\n\n"
+        for (index, program) in allPrograms.enumerated() {
+            let hospitalName = HospitalNameFormatter.format(program.hospital.isEmpty ? program.name : program.hospital)
+            text += "\(index + 1). \(hospitalName)"
+            if let acgmeID = program.accreditationID, !acgmeID.isEmpty {
+                text += " (ID: \(acgmeID))"
+            }
+            if program.hasDisplayLocation {
+                text += " - \(program.displayCityState)"
+            }
+            if !program.specialty.isEmpty {
+                text += " - \(program.specialty)"
             }
             text += " (Score: \(String(format: "%.1f", program.finalScore)))\n"
         }
         return text
     }
-    
+
+    private var pdfConfiguration: RankListPDFExporter.Configuration {
+        RankListPDFExporter.Configuration(
+            orderedPrograms: orderedRankedPrograms,
+            applicantName: applicantName.isEmpty ? nil : applicantName,
+            aamcID: applicantAAMCID
+        )
+    }
     var body: some View {
-        NavigationView {
-            VStack(spacing: 30) {
-                Text("Export Rank List")
-                    .font(.system(size: 24, weight: .bold))
-                    .padding(.top)
-                
+        MatchlyNavigationView {
+            VStack(spacing: 24) {
+                VStack(spacing: 6) {
+                    Text("Share Rank List")
+                        .font(.arial(size: 24, weight: .bold))
+                    Text("Export a polished PDF for mentors, advisors, or your own records.")
+                        .font(.arial(size: 14))
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                }
+                .padding(.top)
+
+                exportPreviewHeader
+
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        ForEach(Array(programs.enumerated()), id: \.element.id) { index, program in
-                            HStack {
-                                Text("\(index + 1).")
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .frame(width: 40)
-                                
-                                Text(program.name.isEmpty ? "Unnamed Program" : program.name)
-                                    .font(.system(size: 16))
-                                
-                                Spacer()
-                                
-                                Text(String(format: "%.1f", program.finalScore))
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundColor(.secondary)
+                        ForEach(Array(orderedRankedPrograms.enumerated()), id: \.element.id) { index, program in
+                            if shouldShowRedFlaggedBanner(at: index) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .font(.arial(size: 12))
+                                        .foregroundColor(.red)
+                                    Text("Red Flagged Programs")
+                                        .font(.arial(size: 13, weight: .semibold))
+                                        .foregroundColor(.red)
+                                }
+                                .padding(.top, 4)
                             }
-                            .padding(.vertical, 4)
+
+                            RankListItemView(
+                                rank: index + 1,
+                                program: program,
+                                showsElevatedRedFlag: elevatedRedFlag(at: index)
+                            )
                         }
                     }
                     .padding()
-                    .background(Color(.systemGray6))
-                    .cornerRadius(12)
+                    .glassEffect(.regular, in: .rect(cornerRadius: 12))
                     .padding(.horizontal)
                 }
+
+                if let exportError {
+                    Text(exportError)
+                        .font(.arial(size: 13))
+                        .foregroundColor(.red)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                }
                 
-                Button(action: {
-                    showShareSheet = true
-                }) {
-                    Text("Share Rank List")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.blue)
-                        .cornerRadius(12)
+                VStack(spacing: 12) {
+                    Button(action: sharePDF) {
+                        Label("Share as PDF", systemImage: "doc.richtext")
+                            .font(.arial(size: 18, weight: .semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                    }
+                    .buttonStyle(.glassProminent)
+                    .tint(AppColors.primaryBlue)
+
+                    Button(action: sharePlainText) {
+                        Label("Share as Text", systemImage: "text.alignleft")
+                            .font(.arial(size: 16, weight: .medium))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.glass)
                 }
                 .padding(.horizontal)
-                .sheet(isPresented: $showShareSheet) {
-                    ShareSheet(activityItems: [rankListText])
+                .sheet(item: $sharePayload) { payload in
+                    ShareSheet(activityItems: payload.items)
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
+            .appCanvasBackground()
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
@@ -679,6 +923,57 @@ struct ExportView: View {
                 }
             }
         }
+    }
+
+    private var exportPreviewHeader: some View {
+        HStack(alignment: .center, spacing: 14) {
+            MatchlyBrandLockup(style: .exportHeader, palette: .canvas)
+
+            Spacer(minLength: 12)
+
+            VStack(alignment: .trailing, spacing: 3) {
+                if !applicantName.isEmpty {
+                    Text(applicantName)
+                        .font(.arial(size: 13, weight: .medium))
+                        .foregroundColor(AppColors.primaryText)
+                }
+                if let aamcID = applicantAAMCID {
+                    Text("AAMC ID \(aamcID)")
+                        .font(.arial(size: 10, weight: .regular))
+                        .foregroundColor(AppColors.secondaryText)
+                        .kerning(0.8)
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(.clear)
+                .glassEffect(.regular, in: .rect(cornerRadius: 14))
+                .overlay(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .fill(AppColors.primaryBlue)
+                        .frame(width: 3)
+                        .padding(.vertical, 12)
+                        .padding(.leading, 10)
+                }
+        }
+        .padding(.horizontal)
+    }
+
+    private func sharePDF() {
+        exportError = nil
+        guard let url = RankListPDFExporter.generatePDF(configuration: pdfConfiguration) else {
+            exportError = "Couldn't create the PDF. Try again or use Share as Text."
+            return
+        }
+        sharePayload = SharePayload(items: [url])
+    }
+
+    private func sharePlainText() {
+        exportError = nil
+        sharePayload = SharePayload(items: [rankListText])
     }
 }
 

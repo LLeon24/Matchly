@@ -6,23 +6,28 @@
 //
 
 import SwiftUI
-import EventKit
 
 struct InterviewsView: View {
     @EnvironmentObject var dataManager: DataManager
-    @StateObject private var calendarManager = CalendarManager.shared
+    @EnvironmentObject private var deepLinkHandler: CoupleDeepLinkHandler
     @State private var viewMode: ViewMode = .list
     @State private var selectedMonth: Date = Date()
     @State private var selectedDate: Date?
-    @State private var showCalendarPermissionAlert = false
-    @State private var showCalendarSuccessAlert = false
-    @State private var showCalendarErrorAlert = false
-    @State private var calendarErrorMessage = ""
-    @State private var isCreatingEvents = false
-    @State private var eventsCreatedCount = 0
-    
+    @State private var pendingSectionScroll: CoupleDeepLinkHandler.InterviewsListFocus?
+    @State private var highlightedSectionFocus: CoupleDeepLinkHandler.InterviewsListFocus?
+
+    private enum ScrollAnchor {
+        static let needsDateSection = "interviews-needs-date-section"
+        static let upcomingSection = "interviews-upcoming-section"
+        static let pastSection = "interviews-past-section"
+    }
+
     enum ViewMode {
         case list, calendar
+    }
+    
+    var programsNeedingDates: [Program] {
+        dataManager.programs.filter { $0.interviewDate == nil }
     }
     
     var allInterviews: [Program] {
@@ -42,229 +47,270 @@ struct InterviewsView: View {
     
     var body: some View {
         VStack(spacing: 0) {
+            MatchlyListPageTitleRow(title: "Interviews")
+
             // View Mode Picker
-            Picker("View Mode", selection: $viewMode) {
-                Label("List", systemImage: "list.bullet").tag(ViewMode.list)
-                Label("Calendar", systemImage: "calendar").tag(ViewMode.calendar)
+            MatchlyColoredTabBar(
+                options: [
+                    MatchlyColoredTabOption(value: ViewMode.list, title: "List", tint: AppColors.accentTeal),
+                    MatchlyColoredTabOption(value: ViewMode.calendar, title: "Calendar", tint: AppColors.pipelineUpcoming)
+                ],
+                selection: $viewMode
+            )
+            .padding(.bottom, 8)
+
+            if viewMode == .list, showsSectionJumpRow {
+                interviewsControlsDivider
+                interviewsSectionJumpRow
+                    .padding(.bottom, 8)
             }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            
+
             if viewMode == .list {
                 listView
             } else {
-                calendarView
-            }
-        }
-        .navigationTitle("Interviews")
-        .navigationBarTitleDisplayMode(.large)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: {
-                    Task {
-                        await createCalendarEvents()
-                    }
-                }) {
-                    if isCreatingEvents {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                    } else {
-                        Image(systemName: "calendar.badge.plus")
-                            .font(.system(size: 16))
-                    }
+                ScrollView {
+                    calendarView
                 }
-                .disabled(isCreatingEvents || allInterviews.isEmpty)
+                .scrollContentBackground(.hidden)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
         }
-        .alert("Calendar Access Required", isPresented: $showCalendarPermissionAlert) {
-            Button("Settings") {
-                if let settingsUrl = URL(string: UIApplication.openSettingsURLString) {
-                    UIApplication.shared.open(settingsUrl)
-                }
-            }
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            Text("Matchly needs calendar access to create interview events. Please enable it in Settings.")
-        }
-        .alert("Calendar Events Created", isPresented: $showCalendarSuccessAlert) {
-            Button("OK") { }
-        } message: {
-            Text("Successfully created \(eventsCreatedCount) interview event\(eventsCreatedCount == 1 ? "" : "s") in your calendar.")
-        }
-        .alert("Error", isPresented: $showCalendarErrorAlert) {
-            Button("OK") { }
-        } message: {
-            Text(calendarErrorMessage)
-        }
-        .onAppear {
-            calendarManager.checkAuthorizationStatus()
-        }
-    }
-    
-    private func createCalendarEvents() async {
-        guard !allInterviews.isEmpty else { return }
-        
-        // Check authorization
-        if calendarManager.authorizationStatus == .notDetermined {
-            let granted = await calendarManager.requestAccess()
-            if !granted {
-                await MainActor.run {
-                    showCalendarPermissionAlert = true
-                }
-                return
-            }
-        } else {
-            // Check for appropriate access level (iOS 17+ uses .fullAccess or .writeOnly, iOS < 17 uses .authorized)
-            let hasAccess: Bool
-            if #available(iOS 17.0, *) {
-                hasAccess = (calendarManager.authorizationStatus == .fullAccess) || (calendarManager.authorizationStatus == .writeOnly)
-            } else {
-                hasAccess = calendarManager.authorizationStatus == .authorized
-            }
-            
-            if !hasAccess {
-                await MainActor.run {
-                    showCalendarPermissionAlert = true
-                }
-                return
-            }
-        }
-        
-        await MainActor.run {
-            isCreatingEvents = true
-        }
-        
-        do {
-            try await calendarManager.createEventsForInterviews(allInterviews)
-            await MainActor.run {
-                isCreatingEvents = false
-                eventsCreatedCount = allInterviews.count
-                showCalendarSuccessAlert = true
-            }
-        } catch {
-            await MainActor.run {
-                isCreatingEvents = false
-                calendarErrorMessage = error.localizedDescription
-                showCalendarErrorAlert = true
-            }
-        }
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .matchlyScrollTabBarClearance()
+        .appCanvasBackground()
     }
     
     private var listView: some View {
-        List {
-            // Calendar sync section - always show if enabled in preferences
-            if dataManager.preferences.enableCalendarSync {
+        ScrollViewReader { proxy in
+            List {
                 Section {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack(spacing: 6) {
-                                Image(systemName: calendarManager.calendarAccessGranted ? "calendar.badge.checkmark" : "calendar.badge.exclamationmark")
-                                    .foregroundColor(calendarManager.calendarAccessGranted ? .green : .orange)
-                                Text("Calendar Sync")
-                                    .font(.system(size: 15, weight: .medium))
-                            }
-                            
-                            if calendarManager.calendarAccessGranted {
-                                Text("Interviews will be added to \"\(calendarManager.matchlyCalendar?.title ?? "Matchly Interviews")\" calendar")
-                                    .font(.system(size: 13))
-                                    .foregroundColor(.secondary)
-                            } else {
-                                Text("Enable calendar access to create interview events")
-                                    .font(.system(size: 13))
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        
-                        Spacer()
-                        
-                        Button(action: {
-                            Task {
-                                await createCalendarEvents()
-                            }
-                        }) {
-                            if isCreatingEvents {
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                            } else {
-                                Text(calendarManager.calendarAccessGranted ? "Sync Now" : "Enable")
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 8)
-                                    .background(calendarManager.calendarAccessGranted ? Color.blue : Color.orange)
-                                    .cornerRadius(8)
+                    MatchlyCalendarSyncRow(syncOnAppearIfEnabled: true)
+                        .listRowBackground(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(.clear)
+                                .glassEffect(.regular, in: .rect(cornerRadius: 16))
+                        )
+                }
+
+                if !programsNeedingDates.isEmpty {
+                    Section {
+                        interviewsSectionTitleRow(
+                            "Needs a Date (\(programsNeedingDates.count))",
+                            anchorID: ScrollAnchor.needsDateSection
+                        )
+
+                        ForEach(programsNeedingDates) { program in
+                            NavigationLink(destination: ProgramEntryView(program: program)) {
+                                ProgramNeedingInterviewDateRow(program: program)
                             }
                         }
-                        .disabled(isCreatingEvents || allInterviews.isEmpty)
                     }
-                    .padding(.vertical, 4)
-                } header: {
-                    Text("Calendar")
-                } footer: {
-                    if calendarManager.calendarAccessGranted {
-                        Text("Your interviews are synced to your device calendar. Events will update automatically when you modify interview dates.")
-                    } else {
-                        Text("Add your interviews to your device calendar to get reminders and see them in your calendar app.")
+                }
+
+                if upcomingInterviews.isEmpty && pastInterviews.isEmpty {
+                    if programsNeedingDates.isEmpty {
+                    VStack(spacing: 16) {
+                        Image(systemName: "calendar.badge.exclamationmark")
+                            .font(.arial(size: 60))
+                            .foregroundColor(.secondary)
+
+                        Text("No Interviews Scheduled")
+                            .font(.arial(size: 20, weight: .bold))
+
+                        Text("Add interview dates to your programs to track them here")
+                            .font(.arial(size: 15))
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 40)
+                    .listRowSeparator(.hidden)
+                    }
+                } else {
+
+                    // Upcoming Interviews
+                    if !upcomingInterviews.isEmpty {
+                        Section {
+                            interviewsSectionTitleRow(
+                                "Upcoming (\(upcomingInterviews.count))",
+                                anchorID: ScrollAnchor.upcomingSection
+                            )
+
+                            ForEach(upcomingInterviews) { program in
+                                NavigationLink(destination: ProgramEntryView(program: program)) {
+                                    InterviewRow(program: program, isUpcoming: true, style: .upcomingList)
+                                }
+                            }
+                        }
+                    }
+
+                    // Past Interviews
+                    if !pastInterviews.isEmpty {
+                        Section {
+                            interviewsSectionTitleRow(
+                                "Past (\(pastInterviews.count))",
+                                anchorID: ScrollAnchor.pastSection
+                            )
+
+                            ForEach(pastInterviews) { program in
+                                NavigationLink(destination: ProgramEntryView(program: program)) {
+                                    InterviewRow(program: program, isUpcoming: false, style: .pastList)
+                                }
+                            }
+                        }
                     }
                 }
             }
-            
-            if upcomingInterviews.isEmpty && pastInterviews.isEmpty {
-                VStack(spacing: 16) {
-                    Image(systemName: "calendar.badge.exclamationmark")
-                        .font(.system(size: 60))
-                        .foregroundColor(.secondary)
-                    
-                    Text("No Interviews Scheduled")
-                        .font(.system(size: 20, weight: .bold))
-                    
-                    Text("Add interview dates to your programs to track them here")
-                        .font(.system(size: 15))
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
+            .listStyle(.insetGrouped)
+            .contentMargins(.top, 0, for: .scrollContent)
+            .scrollContentBackground(.hidden)
+            .matchlyScrollTabBarClearance()
+            .onAppear {
+                if let focus = deepLinkHandler.consumeInterviewsListFocus() {
+                    scrollToSection(focus, using: proxy)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 40)
-                .listRowSeparator(.hidden)
-            } else {
-                
-                // Upcoming Interviews
-                if !upcomingInterviews.isEmpty {
-                    Section {
-                        ForEach(upcomingInterviews) { program in
-                            NavigationLink(destination: ProgramEntryView(program: program)) {
-                                InterviewRow(program: program, isUpcoming: true)
-                            }
-                        }
-                    } header: {
-                        Text("Upcoming (\(upcomingInterviews.count))")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(.secondary)
-                    }
+            }
+            .onChange(of: deepLinkHandler.pendingInterviewsListFocus) { _, focus in
+                guard focus != nil else { return }
+                if let focus = deepLinkHandler.consumeInterviewsListFocus() {
+                    scrollToSection(focus, using: proxy)
                 }
-                
-                // Past Interviews
-                if !pastInterviews.isEmpty {
-                    Section {
-                        ForEach(pastInterviews) { program in
-                            NavigationLink(destination: ProgramEntryView(program: program)) {
-                                InterviewRow(program: program, isUpcoming: false)
-                            }
-                        }
-                    } header: {
-                        Text("Past (\(pastInterviews.count))")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(.secondary)
-                    }
-                }
+            }
+            .onChange(of: pendingSectionScroll) { _, focus in
+                guard let focus else { return }
+                scrollToSection(focus, using: proxy)
+                pendingSectionScroll = nil
             }
         }
-        .padding(.bottom, 90) // Space for custom tab bar
+    }
+
+    private var showsSectionJumpRow: Bool {
+        !programsNeedingDates.isEmpty || !upcomingInterviews.isEmpty || !pastInterviews.isEmpty
+    }
+
+    private var interviewsControlsDivider: some View {
+        MatchlyBrandHairline(fullWidth: true, color: AppColors.secondaryText.opacity(0.22))
+            .padding(.horizontal, 16)
+            .padding(.bottom, 10)
+    }
+
+    private var interviewsSectionJumpRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                if !programsNeedingDates.isEmpty {
+                    sectionJumpButton(
+                        icon: "calendar.badge.plus",
+                        title: "Needs Date",
+                        count: programsNeedingDates.count,
+                        tint: AppColors.pipelineNeedDate,
+                        focus: .needDate
+                    )
+                }
+
+                if !upcomingInterviews.isEmpty {
+                    sectionJumpButton(
+                        icon: "calendar",
+                        title: "Upcoming",
+                        count: upcomingInterviews.count,
+                        tint: AppColors.pipelineUpcoming,
+                        focus: .upcoming
+                    )
+                }
+
+                if !pastInterviews.isEmpty {
+                    sectionJumpButton(
+                        icon: "clock.arrow.circlepath",
+                        title: "Past",
+                        count: pastInterviews.count,
+                        tint: AppColors.secondaryText,
+                        focus: .past
+                    )
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+    }
+
+    private func sectionJumpButton(
+        icon: String,
+        title: String,
+        count: Int,
+        tint: Color,
+        focus: CoupleDeepLinkHandler.InterviewsListFocus
+    ) -> some View {
+        Button {
+            pendingSectionScroll = focus
+        } label: {
+            MatchlyActionChipLabel(
+                icon: icon,
+                text: "\(title) (\(count))",
+                tint: tint,
+                isFilled: highlightedSectionFocus == focus
+            )
+            .opacity(highlightedSectionFocus == focus ? 1 : 0.72)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func scrollToSection(
+        _ focus: CoupleDeepLinkHandler.InterviewsListFocus,
+        using proxy: ScrollViewProxy
+    ) {
+        viewMode = .list
+
+        let anchor: String?
+        switch focus {
+        case .needDate:
+            anchor = programsNeedingDates.isEmpty ? nil : ScrollAnchor.needsDateSection
+        case .upcoming:
+            anchor = upcomingInterviews.isEmpty ? nil : ScrollAnchor.upcomingSection
+        case .past:
+            anchor = pastInterviews.isEmpty ? nil : ScrollAnchor.pastSection
+        }
+
+        guard let anchor else { return }
+
+        highlightedSectionFocus = focus
+
+        // Tab switches from the dashboard need an extra beat for List layout.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            performScroll(to: anchor, using: proxy, animated: true)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                performScroll(to: anchor, using: proxy, animated: false)
+            }
+        }
+    }
+
+    private func performScroll(to anchor: String, using proxy: ScrollViewProxy, animated: Bool) {
+        if animated {
+            withAnimation(.easeInOut(duration: 0.25)) {
+                proxy.scrollTo(anchor, anchor: .top)
+            }
+        } else {
+            proxy.scrollTo(anchor, anchor: .top)
+        }
+    }
+
+    private func interviewsSectionTitleRow(_ title: String, anchorID: String) -> some View {
+        interviewsSectionHeader(title)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 4)
+            .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+            .id(anchorID)
     }
     
+    private func interviewsSectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.arial(size: 14, weight: .bold))
+            .foregroundColor(.primary)
+            .textCase(nil)
+    }
+
     private var calendarView: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 12) {
             // Month Navigation Header
             HStack {
                 Button(action: {
@@ -273,15 +319,16 @@ struct InterviewsView: View {
                     }
                 }) {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.arial(size: 16, weight: .semibold))
                         .foregroundColor(.blue)
                         .padding(8)
                 }
+                .accessibilityLabel("Previous month")
                 
                 Spacer()
                 
-                Text(monthYearFormatter.string(from: selectedMonth))
-                    .font(.system(size: 20, weight: .bold))
+                Text(Self.monthYearFormatter.string(from: selectedMonth))
+                    .font(.arial(size: 20, weight: .bold))
                 
                 Spacer()
                 
@@ -291,14 +338,16 @@ struct InterviewsView: View {
                     }
                 }) {
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.arial(size: 16, weight: .semibold))
                         .foregroundColor(.blue)
                         .padding(8)
                 }
+                .accessibilityLabel("Next month")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
-            .background(Color(.systemBackground))
+            .glassEffect(.regular, in: .rect(cornerRadius: 12))
+            .padding(.horizontal, 16)
             
             // Calendar Grid
             CalendarGridView(
@@ -312,30 +361,39 @@ struct InterviewsView: View {
                 let interviewsOnDate = interviewsOnDate(selectedDate)
                 if !interviewsOnDate.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
-                        Divider()
-                        
-                        Text("Interviews on \(dayDateFormatter.string(from: selectedDate))")
-                            .font(.system(size: 16, weight: .semibold))
+                        Text("Interviews on \(Self.dayDateFormatter.string(from: selectedDate))")
+                            .font(.arial(size: 16, weight: .semibold))
                             .padding(.horizontal, 16)
-                            .padding(.top, 8)
-                        
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 12) {
-                                ForEach(interviewsOnDate) { program in
-                                    NavigationLink(destination: ProgramEntryView(program: program)) {
-                                        CompactInterviewCard(program: program)
-                                    }
-                                    .buttonStyle(.plain)
+
+                        VStack(spacing: 12) {
+                            ForEach(interviewsOnDate) { program in
+                                NavigationLink(destination: ProgramEntryView(program: program)) {
+                                    InterviewRow(
+                                        program: program,
+                                        isUpcoming: (program.interviewDate ?? Date()) >= Date(),
+                                        style: .featured
+                                    )
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 12)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                            .fill(AppColors.accentTeal.opacity(0.08))
+                                    )
                                 }
+                                .buttonStyle(.plain)
                             }
-                            .padding(.horizontal, 16)
                         }
-                        .padding(.bottom, 8)
+                        .padding(.horizontal, 16)
                     }
-                    .background(Color(.systemBackground))
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .glassEffect(.regular, in: .rect(cornerRadius: 12))
+                    .padding(.horizontal, 16)
                 }
             }
         }
+        .padding(.top, 4)
     }
     
     private func interviewsOnDate(_ date: Date) -> [Program] {
@@ -346,23 +404,17 @@ struct InterviewsView: View {
         }
     }
     
-    private var monthYearFormatter: DateFormatter {
+    private static let monthYearFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMMM yyyy"
         return formatter
-    }
+    }()
     
-    private var dayDateFormatter: DateFormatter {
+    private static let dayDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "EEEE, MMMM d"
         return formatter
-    }
-    
-    private var monthFormatter: DateFormatter {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMMM yyyy"
-        return formatter
-    }
+    }()
 }
 
 // MARK: - Calendar Grid View
@@ -439,13 +491,13 @@ struct CalendarGridView: View {
             HStack(spacing: 0) {
                 ForEach(weekdays, id: \.self) { weekday in
                     Text(weekday)
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.arial(size: 12, weight: .medium))
                         .foregroundColor(.secondary)
                         .frame(maxWidth: .infinity)
                 }
             }
             .padding(.vertical, 8)
-            .background(Color(.systemGray6))
+            .glassEffect(.regular, in: .rect(cornerRadius: 12))
             
             // Calendar grid
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7), spacing: 0) {
@@ -477,8 +529,8 @@ struct CalendarGridView: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 8)
         }
-        .background(Color(.systemBackground))
-        .padding(.bottom, 90) // Space for custom tab bar
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+        .padding(.horizontal, 16)
     }
 }
 
@@ -497,7 +549,7 @@ struct CalendarDayView: View {
     var body: some View {
         VStack(spacing: 2) {
             Text("\(dayNumber)")
-                .font(.system(size: 16, weight: isToday || isSelected ? .bold : .regular))
+                .font(.arial(size: 16, weight: isToday || isSelected ? .bold : .regular))
                 .foregroundColor(textColor)
             
             if hasInterview {
@@ -551,216 +603,185 @@ struct CompactInterviewCard: View {
             if let date = program.interviewDate {
                 HStack(spacing: 4) {
                     Image(systemName: "clock")
-                        .font(.system(size: 10))
-                    Text(timeFormatter.string(from: date))
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.arial(size: 10))
+                    Text(Self.timeFormatter.string(from: date))
+                        .font(.arial(size: 11, weight: .medium))
                 }
                 .foregroundColor(.blue)
             }
             
             Text(HospitalNameFormatter.format(program.hospital.isEmpty ? program.name : program.hospital))
-                .font(.system(size: 14, weight: .semibold))
+                .font(.arial(size: 14, weight: .semibold))
                 .lineLimit(2)
             
-            if !program.city.isEmpty && !program.state.isEmpty {
-                Text("\(program.city), \(program.state)")
-                    .font(.system(size: 12))
+            if program.hasDisplayLocation {
+                Text(program.displayCityState)
+                    .font(.arial(size: 12))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
             }
         }
         .padding(12)
         .frame(width: 160)
-        .background(Color.blue.opacity(0.08))
-        .cornerRadius(10)
+        .glassEffect(
+            .regular.tint(Color.blue.opacity(0.12)),
+            in: .rect(cornerRadius: 10)
+        )
     }
     
-    private var timeFormatter: DateFormatter {
+    private static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "h:mm a"
         return formatter
-    }
+    }()
 }
 
 struct InterviewRow: View {
+    enum Style {
+        case standard
+        /// List upcoming rows — calendar-style schedule chips, no date circle.
+        case upcomingList
+        /// List past rows — schedule chips with elapsed badge, no date circle.
+        case pastList
+        /// Dashboard hero / calendar day card — full-width program with inline schedule row.
+        case featured
+    }
+
     let program: Program
     let isUpcoming: Bool
-    
-    var body: some View {
-        HStack(spacing: 12) {
-            // Date indicator
-            VStack(spacing: 2) {
-                if let date = program.interviewDate {
-                    Text(dayFormatter.string(from: date))
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundColor(isUpcoming ? .blue : .secondary)
-                    
-                    Text(monthFormatter.string(from: date))
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.secondary)
-                }
-            }
-            .frame(width: 50)
-            .padding(.vertical, 8)
-            .background(isUpcoming ? Color.blue.opacity(0.1) : Color(.systemGray5))
-            .cornerRadius(8)
-            
-            // Program info
-            VStack(alignment: .leading, spacing: 4) {
-                Text(HospitalNameFormatter.format(program.hospital.isEmpty ? program.name : program.hospital))
-                    .font(.system(size: 16, weight: .semibold))
-                    .lineLimit(2)
-                
-                if !program.city.isEmpty && !program.state.isEmpty {
-                    Text("\(program.city), \(program.state)")
-                        .font(.system(size: 13))
-                        .foregroundColor(.secondary)
-                }
-                
-                if let date = program.interviewDate {
-                    HStack(spacing: 4) {
-                        Image(systemName: "clock")
-                            .font(.system(size: 11))
-                        Text(timeFormatter.string(from: date))
-                            .font(.system(size: 12))
-                    }
-                    .foregroundColor(.secondary)
-                }
-            }
-            
-            Spacer()
-            
-            if isUpcoming {
-                // Days until indicator
-                if let date = program.interviewDate {
-                    let daysUntil = Calendar.current.dateComponents([.day], from: Date(), to: date).day ?? 0
-                    VStack(spacing: 2) {
-                        Text("\(daysUntil)")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.blue)
-                        Text("days")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
-                    }
-                }
-            }
-        }
-        .padding(.vertical, 8)
-    }
-    
-    private var dayFormatter: DateFormatter {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "d"
-        return formatter
-    }
-    
-    private var monthFormatter: DateFormatter {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM"
-        return formatter
-    }
-    
-    private var timeFormatter: DateFormatter {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "h:mm a"
-        return formatter
-    }
-}
+    var style: Style = .standard
 
-struct CalendarInterviewRow: View {
-    let program: Program
-    
+    private var showsDateBadge: Bool {
+        style == .standard
+    }
+
+    private var showsScheduleLine: Bool {
+        (style == .featured || style == .upcomingList || style == .pastList) && program.interviewDate != nil
+    }
+
+    private var badgeColor: Color {
+        isUpcoming ? AppColors.accentTeal : Color.secondary
+    }
+
     var body: some View {
-        HStack(spacing: 12) {
-            // Calendar icon with date
-            VStack(spacing: 2) {
-                if let date = program.interviewDate {
-                    Text(dayFormatter.string(from: date))
-                        .font(.system(size: 22, weight: .bold))
-                        .foregroundColor(.blue)
-                    
-                    Text(monthFormatter.string(from: date))
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(.secondary)
-                }
+        HStack(alignment: .top, spacing: 12) {
+            if showsDateBadge {
+                dateBadge
             }
-            .frame(width: 60)
-            .padding(.vertical, 10)
-            .background(Color.blue.opacity(0.1))
-            .cornerRadius(10)
-            
-            VStack(alignment: .leading, spacing: 6) {
-                Text(HospitalNameFormatter.format(program.hospital.isEmpty ? program.name : program.hospital))
-                    .font(.system(size: 16, weight: .semibold))
-                    .lineLimit(2)
-                
-                if !program.city.isEmpty && !program.state.isEmpty {
-                    Text("\(program.city), \(program.state)")
-                        .font(.system(size: 13))
-                        .foregroundColor(.secondary)
-                }
-                
-                if let date = program.interviewDate {
-                    HStack(spacing: 6) {
-                        Image(systemName: "clock")
-                            .font(.system(size: 11))
-                        Text(fullDateFormatter.string(from: date))
-                            .font(.system(size: 12))
-                    }
-                    .foregroundColor(.secondary)
-                }
-            }
-            
-            Spacer()
-            
-            if program.finalScore > 0 {
-                VStack(spacing: 2) {
-                    Text(String(format: "%.0f", program.finalScore))
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(scoreColor(program.finalScore))
-                    Text("score")
-                        .font(.system(size: 9))
+
+            programDetailsColumn
+
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, style == .featured ? 2 : 8)
+    }
+
+    private var dateBadge: some View {
+        ZStack {
+            Circle()
+                .fill(badgeColor.opacity(0.15))
+                .frame(width: 42, height: 42)
+
+            if let date = program.interviewDate {
+                VStack(spacing: 0) {
+                    Text(Self.dayFormatter.string(from: date))
+                        .font(.arial(size: 15, weight: .bold))
+                        .foregroundColor(badgeColor)
+                    Text(Self.monthFormatter.string(from: date))
+                        .font(.arial(size: 9, weight: .medium))
                         .foregroundColor(.secondary)
                 }
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(Color(.systemBackground))
-        .cornerRadius(12)
-        .shadow(color: Color.black.opacity(0.04), radius: 2, x: 0, y: 1)
     }
-    
-    private var dayFormatter: DateFormatter {
+
+    @ViewBuilder
+    private var programDetailsColumn: some View {
+        VStack(alignment: .leading, spacing: style == .featured ? 4 : 4) {
+            Text(HospitalNameFormatter.format(
+                program.hospital.isEmpty
+                    ? (program.name.isEmpty ? "Unnamed Program" : program.name)
+                    : program.hospital
+            ))
+            .font(.arial(size: 15, weight: .semibold))
+            .lineLimit(style == .featured ? 2 : 3)
+            .fixedSize(horizontal: false, vertical: true)
+
+            if showsScheduleLine {
+                ProgramInterviewScheduleLine(program: program, style: .chips)
+            }
+
+            if !program.specialty.isEmpty || program.signalType != .none {
+                featuredMetadataRow
+            }
+
+            MatchlyProgramLocationAndIDRow(program: program)
+
+            ProgramVoiceMemoBadge(program: program, iconSize: 9, textSize: 11)
+        }
+    }
+
+    @ViewBuilder
+    private var featuredMetadataRow: some View {
+        HStack(spacing: 6) {
+            if !program.specialty.isEmpty {
+                MatchlyProgramSpecialtyBadge(
+                    specialty: program.specialty,
+                    useFullName: true
+                )
+            }
+
+            if program.signalType != .none {
+                featuredSignalBadge
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var featuredSignalBadge: some View {
+        let isTiered = SignalLimits.isTiered(
+            for: program.specialty,
+            accreditationID: program.accreditationID
+        )
+        let signalText = isTiered
+            ? (program.signalType == .gold ? "Gold Signal" : "Silver Signal")
+            : "Signal"
+        let signalColor: Color = isTiered
+            ? (program.signalType == .gold ? Color.yellow : Color(white: 0.6))
+            : AppColors.primaryBlue
+
+        HStack(spacing: 3) {
+            Image(systemName: program.signalType == .gold ? "star.fill" : "star")
+                .font(.arial(size: 8))
+            Text(signalText)
+                .font(.arial(size: 10, weight: .semibold))
+        }
+        .foregroundColor(signalColor)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(signalColor.opacity(0.15))
+        .cornerRadius(4)
+    }
+
+    private static let dayFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "d"
         return formatter
-    }
-    
-    private var monthFormatter: DateFormatter {
+    }()
+
+    private static let monthFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM"
         return formatter
-    }
-    
-    private var fullDateFormatter: DateFormatter {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEEE, MMM d 'at' h:mm a"
-        return formatter
-    }
-    
-    private func scoreColor(_ score: Double) -> Color {
-        if score >= 80 { return .green }
-        if score >= 60 { return .blue }
-        if score >= 40 { return .orange }
-        return .red
-    }
+    }()
+
 }
 
 #Preview {
-    NavigationView {
+    MatchlyNavigationView {
         InterviewsView()
             .environmentObject(DataManager.shared)
+            .environmentObject(CoupleDeepLinkHandler())
     }
 }
 

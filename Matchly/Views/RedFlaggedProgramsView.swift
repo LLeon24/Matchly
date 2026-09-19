@@ -32,19 +32,20 @@ struct RedFlaggedProgramsView: View {
                 // Empty state
                 VStack(spacing: 16) {
                     Image(systemName: "checkmark.shield.fill")
-                        .font(.system(size: 48))
+                        .font(.arial(size: 48))
                         .foregroundColor(.green)
                     
                     Text("No Red Flags")
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.arial(size: 18, weight: .semibold))
                     
                     Text("All your programs are clear of red flags")
-                        .font(.system(size: 14))
+                        .font(.arial(size: 14))
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 60)
+                .glassCardStyle(cornerRadius: 20)
             } else {
                 // Group programs by specialty
                 let groupedPrograms = Dictionary(grouping: sortedPrograms) { $0.specialty }
@@ -55,10 +56,10 @@ struct RedFlaggedProgramsView: View {
                         Section(header: 
                             HStack(spacing: 6) {
                                 Image(systemName: "stethoscope")
-                                    .font(.system(size: 12))
+                                    .font(.arial(size: 12))
                                     .foregroundColor(SpecialtyFormatter.color(for: specialty))
                                 Text("\(specialty) (\(SpecialtyFormatter.abbreviation(for: specialty)))")
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.arial(size: 13, weight: .semibold))
                             }
                             .foregroundColor(.secondary)
                         ) {
@@ -74,7 +75,7 @@ struct RedFlaggedProgramsView: View {
                                         }) {
                                             Image(systemName: selectedPrograms.contains(program.id) ? "checkmark.circle.fill" : "circle")
                                                 .foregroundColor(selectedPrograms.contains(program.id) ? .blue : .gray)
-                                                .font(.system(size: 22))
+                                                .font(.arial(size: 22))
                                         }
                                         .buttonStyle(.plain)
                                         
@@ -93,6 +94,8 @@ struct RedFlaggedProgramsView: View {
                     }
                 }
                 .listStyle(.insetGrouped)
+                .scrollContentBackground(.hidden)
+                .appCanvasBackground()
                 .padding(.bottom, 90) // Space for custom tab bar
                 .refreshable {
                     dataManager.recalculateAllScores()
@@ -100,6 +103,7 @@ struct RedFlaggedProgramsView: View {
                 }
             }
         }
+        .appCanvasBackground()
         .navigationTitle("Red Flagged Programs")
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
@@ -120,9 +124,9 @@ struct RedFlaggedProgramsView: View {
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "arrow.up.arrow.down")
-                            .font(.system(size: 14))
+                            .font(.arial(size: 14))
                         Text("Sort")
-                            .font(.system(size: 15))
+                            .font(.arial(size: 15))
                     }
                 }
             }
@@ -243,9 +247,22 @@ struct RedFlaggedProgramsView: View {
 }
 
 #Preview {
-    NavigationView {
+    MatchlyNavigationView {
         RedFlaggedProgramsView()
             .environmentObject(DataManager.shared)
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
 

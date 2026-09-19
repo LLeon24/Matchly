@@ -8,23 +8,14 @@
 import SwiftUI
 
 struct SpecialtySelectionView: View {
-    @StateObject private var dataManager = DataManager.shared
+    @ObservedObject private var dataManager = DataManager.shared
     @State private var searchText = ""
     @State private var showCustomInput = false
     @State private var customSpecialty = ""
     @State private var showWeightsSetup = false
     @State private var selectedSpecialties: Set<String> = []
     
-    let specialties = [
-        "Internal Medicine", "Family Medicine", "Emergency Medicine", "Pediatrics",
-        "General Surgery", "OB/GYN", "Psychiatry", "Neurology", "Anesthesiology",
-        "Radiology", "Pathology", "Orthopedics", "ENT", "Urology", "PM&R",
-        "Dermatology", "Neurosurgery", "Child Neurology", "Nuclear Medicine",
-        "Radiation Oncology", "Plastic Surgery", "Ophthalmology", "Interventional Radiology - Integrated",
-        "Thoracic Surgery - Integrated", "Vascular Surgery - Integrated", "Transitional Year",
-        "Aerospace Medicine", "Occupational and Environmental Medicine",
-        "Public Health and General Preventive Medicine", "Osteopathic Neuromusculoskeletal Medicine"
-    ]
+    let specialties = SpecialtyFormatter.commonSpecialties
     
     var filteredSpecialties: [String] {
         if searchText.isEmpty {
@@ -34,12 +25,12 @@ struct SpecialtySelectionView: View {
     }
     
     var body: some View {
-        NavigationView {
+        MatchlyNavigationView {
             VStack(spacing: 0) {
                 // Header
                 VStack(spacing: 8) {
                     Text("Select Your Specialty")
-                        .font(.system(size: 28, weight: .bold))
+                        .font(.arial(size: 28, weight: .bold))
                         .padding(.top, 20)
                     
                     Text("Choose the specialty you're applying to")
@@ -52,11 +43,10 @@ struct SpecialtySelectionView: View {
                 HStack {
                     Image(systemName: "magnifyingglass")
                         .foregroundColor(.secondary)
-                    TextField("Search specialties...", text: $searchText)
+                    ClearableTextField("Search specialties...", text: $searchText)
                 }
                 .padding()
-                .background(Color(.systemGray6))
-                .cornerRadius(10)
+                .glassEffect(.regular, in: .capsule)
                 .padding(.horizontal)
                 .padding(.bottom, 20)
                 
@@ -82,8 +72,7 @@ struct SpecialtySelectionView: View {
                                 Spacer()
                             }
                             .padding()
-                            .background(Color(.systemGray6))
-                            .cornerRadius(10)
+                            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 10))
                         }
                     }
                     .padding(.horizontal)
@@ -100,20 +89,19 @@ struct SpecialtySelectionView: View {
                             HStack {
                                 Spacer()
                                 Text("Continue with \(selectedSpecialties.count) Specialty\(selectedSpecialties.count == 1 ? "" : "ies")")
-                                    .font(.system(size: 17, weight: .semibold))
-                                    .foregroundColor(.white)
+                                    .font(.arial(size: 17, weight: .semibold))
                                     .padding(.vertical, 14)
                                 Spacer()
                             }
-                            .background(Color.blue)
-                            .cornerRadius(12)
                         }
+                        .buttonStyle(.glassProminent)
+                        .tint(AppColors.primaryBlue)
                         .padding()
-                        .background(Color(.systemBackground))
                     }
                 }
             }
             .navigationBarHidden(true)
+            .appCanvasBackground()
             .alert("Custom Specialty", isPresented: $showCustomInput) {
                 TextField("Enter specialty name", text: $customSpecialty)
                 Button("Cancel", role: .cancel) { }
@@ -172,17 +160,19 @@ struct SpecialtyRow: View {
                 // Selection indicator
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .foregroundColor(isSelected ? .blue : .gray)
-                    .font(.system(size: 22))
+                    .font(.arial(size: 22))
                 
                 Text(specialty)
-                    .font(.system(size: 18))
+                    .font(.arial(size: 18))
                     .foregroundColor(.primary)
                 
                 Spacer()
             }
             .padding()
-            .background(isSelected ? Color.blue.opacity(0.1) : Color(.systemGray6))
-            .cornerRadius(10)
+            .glassEffect(
+                isSelected ? .regular.tint(Color.blue.opacity(0.18)).interactive() : .regular,
+                in: .rect(cornerRadius: 10)
+            )
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2)

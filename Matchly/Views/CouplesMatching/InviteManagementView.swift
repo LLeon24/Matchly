@@ -9,8 +9,11 @@ import SwiftUI
 
 struct InviteManagementView: View {
     @EnvironmentObject var dataManager: DataManager
-    @StateObject private var authManager = AuthManager.shared
+    @ObservedObject private var authManager = AuthManager.shared
     @Environment(\.dismiss) var dismiss
+    
+    @State private var linkingError: String?
+    @State private var isLinkingInvite = false
     
     var pendingReceivedInvites: [CoupleInvite] {
         dataManager.preferences.receivedInvites.filter { $0.status == .pending && !$0.isExpired }
@@ -21,7 +24,7 @@ struct InviteManagementView: View {
     }
     
     var body: some View {
-        NavigationView {
+        MatchlyNavigationView {
             List {
                 // Received Invites
                 if !pendingReceivedInvites.isEmpty {
@@ -58,14 +61,14 @@ struct InviteManagementView: View {
                     Section {
                         VStack(spacing: 16) {
                             Image(systemName: "envelope")
-                                .font(.system(size: 48))
+                                .font(.arial(size: 48))
                                 .foregroundColor(.secondary)
                             
                             Text("No Pending Invites")
-                                .font(.system(size: 18, weight: .semibold))
+                                .font(.arial(size: 18, weight: .semibold))
                             
                             Text("You don't have any pending invites.")
-                                .font(.system(size: 14))
+                                .font(.arial(size: 14))
                                 .foregroundColor(.secondary)
                                 .multilineTextAlignment(.center)
                         }
@@ -74,6 +77,8 @@ struct InviteManagementView: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .appCanvasBackground()
             .navigationTitle("Invites")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -83,55 +88,35 @@ struct InviteManagementView: View {
                     }
                 }
             }
+            .alert("Could Not Link", isPresented: Binding(
+                get: { linkingError != nil },
+                set: { if !$0 { linkingError = nil } }
+            )) {
+                Button("OK") { linkingError = nil }
+            } message: {
+                Text(linkingError ?? "")
+            }
         }
     }
     
     private func acceptInvite(_ invite: CoupleInvite) {
-        // Update invite status
-        if let index = dataManager.preferences.receivedInvites.firstIndex(where: { $0.id == invite.id }) {
-            var updatedInvite = invite
-            updatedInvite.status = .accepted
-            updatedInvite.respondedAt = Date()
-            dataManager.preferences.receivedInvites[index] = updatedInvite
+        guard !isLinkingInvite else { return }
+        isLinkingInvite = true
+        Task { @MainActor in
+            defer { isLinkingInvite = false }
+            do {
+                try await CoupleLinkingActions.acceptReceivedInvite(
+                    invite,
+                    dataManager: dataManager,
+                    authManager: authManager
+                )
+                dismiss()
+            } catch let error as CoupleLinkingError {
+                linkingError = error.localizedDescription
+            } catch {
+                linkingError = CoupleLinkingService.mapError(error).localizedDescription
+            }
         }
-        
-        // Link the couple
-        if let couple = dataManager.preferences.couple {
-            var updatedCouple = couple
-            updatedCouple.user2ID = invite.fromUserID
-            updatedCouple.user2Name = invite.fromUserName
-            updatedCouple.user2Email = invite.fromUserEmail
-            updatedCouple.status = .linked
-            updatedCouple.linkedAt = Date()
-            dataManager.preferences.couple = updatedCouple
-        } else {
-            // Create new couple from invite
-            let newCouple = Couple(
-                user1ID: authManager.currentUser?.id ?? dataManager.preferences.userID,
-                user1Name: authManager.currentUser?.displayName ?? (dataManager.preferences.profile.name.isEmpty ? "You" : dataManager.preferences.profile.name),
-                user1Email: authManager.currentUser?.email,
-                coupleCode: invite.coupleCode,
-                inviteLink: invite.inviteLink,
-                status: .linked
-            )
-            var updatedCouple = newCouple
-            updatedCouple.user2ID = invite.fromUserID
-            updatedCouple.user2Name = invite.fromUserName
-            updatedCouple.user2Email = invite.fromUserEmail
-            updatedCouple.linkedAt = Date()
-            dataManager.preferences.couple = updatedCouple
-        }
-        
-        // Update sent invite status on sender's side (in real app, this would sync via server)
-        if let index = dataManager.preferences.sentInvites.firstIndex(where: { $0.id == invite.id }) {
-            var sentInvite = dataManager.preferences.sentInvites[index]
-            sentInvite.status = .accepted
-            sentInvite.respondedAt = Date()
-            dataManager.preferences.sentInvites[index] = sentInvite
-        }
-        
-        dataManager.savePreferences()
-        dismiss()
     }
     
     private func declineInvite(_ invite: CoupleInvite) {
@@ -161,14 +146,14 @@ struct InviteRowView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(isReceived ? "From:" : "To:")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.arial(size: 12, weight: .medium))
                         .foregroundColor(.secondary)
                     Text(isReceived ? invite.fromUserName : (invite.toUserEmail ?? "Unknown"))
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.arial(size: 16, weight: .semibold))
                     
                     if let email = isReceived ? invite.fromUserEmail : invite.toUserEmail {
                         Text(email)
-                            .font(.system(size: 13))
+                            .font(.arial(size: 13))
                             .foregroundColor(.secondary)
                     }
                 }
@@ -179,48 +164,46 @@ struct InviteRowView: View {
                     HStack(spacing: 8) {
                         Button(action: onAccept) {
                             Text("Accept")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(.white)
+                                .font(.arial(size: 14, weight: .semibold))
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 8)
-                                .background(Color.blue)
-                                .cornerRadius(8)
                         }
+                        .buttonStyle(.glassProminent)
+                        .tint(AppColors.primaryBlue)
                         
                         Button(action: onDecline) {
                             Text("Decline")
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.arial(size: 14, weight: .semibold))
                                 .foregroundColor(.red)
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 8)
-                                .background(Color.red.opacity(0.1))
-                                .cornerRadius(8)
                         }
+                        .buttonStyle(.glass)
                     }
                 } else {
                     Button(action: onDecline) {
                         Text("Cancel")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.arial(size: 14, weight: .semibold))
                             .foregroundColor(.red)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 8)
-                            .background(Color.red.opacity(0.1))
-                            .cornerRadius(8)
                     }
+                    .buttonStyle(.glass)
                 }
             }
             
             if isReceived {
                 Text("Tap Accept to link accounts and start couples matching.")
-                    .font(.system(size: 12))
+                    .font(.arial(size: 12))
                     .foregroundColor(.secondary)
             } else {
                 Text("Waiting for response...")
-                    .font(.system(size: 12))
+                    .font(.arial(size: 12))
                     .foregroundColor(.secondary)
             }
         }
         .padding(.vertical, 4)
+        .glassPanelStyle(cornerRadius: 14)
     }
 }
 

@@ -8,6 +8,9 @@
 import SwiftUI
 import MapKit
 import CoreLocation
+import OSLog
+
+private let programsMapLogger = Logger(subsystem: "com.matchly", category: "ProgramsMapView")
 
 struct ProgramsMapView: View {
     @EnvironmentObject var dataManager: DataManager
@@ -20,16 +23,10 @@ struct ProgramsMapView: View {
     @State private var selectedProgram: Program?
     @State private var showProgramDetail = false
     @State private var mapType: MapStyle = .standard
-    
-    private var programAnnotations: [ProgramAnnotation] {
-        // Show all programs - use fallback coordinates if city/state missing
-        dataManager.programs.map { program in
-            ProgramAnnotation(program: program)
-        }
-    }
+    @State private var programAnnotations: [ProgramAnnotation] = []
     
     var body: some View {
-        NavigationView {
+        MatchlyNavigationView {
             ZStack {
                 Map(position: $cameraPosition) {
                     ForEach(programAnnotations) { annotation in
@@ -53,8 +50,7 @@ struct ProgramsMapView: View {
                     }
                 }
                 .mapStyle(mapType)
-                .ignoresSafeArea()
-                .padding(.bottom, 90) // Space for custom tab bar
+                .ignoresSafeArea(edges: [.top, .horizontal])
                 
                 // Program detail card at bottom - positioned above tab bar
                 if let program = selectedProgram {
@@ -66,7 +62,7 @@ struct ProgramsMapView: View {
                             selectedProgram = nil
                         }
                         .transition(.move(edge: .bottom).combined(with: .opacity))
-                        .padding(.bottom, 90) // Space above tab bar
+                        .padding(.bottom, 8)
                     }
                 }
                 
@@ -83,17 +79,17 @@ struct ProgramsMapView: View {
                             }
                         } label: {
                             Image(systemName: "map")
-                                .font(.system(size: 18))
+                                .font(.arial(size: 18))
                                 .foregroundColor(AppColors.primaryBlue)
                                 .padding(10)
-                                .background(.ultraThinMaterial)
-                                .clipShape(Circle())
+                                .glassCircleButtonStyle()
                         }
                         .padding()
                     }
                     Spacer()
                 }
             }
+            .matchlyRootContentFrame()
             .navigationTitle("Programs Map")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -108,18 +104,67 @@ struct ProgramsMapView: View {
             }
             .sheet(isPresented: $showProgramDetail) {
                 if let program = selectedProgram {
-                    NavigationView {
+                    MatchlyNavigationView {
                         ProgramEntryView(program: program)
                     }
                 }
             }
             .onAppear {
-                if programAnnotations.isEmpty {
-                    // Default to USA center
-                } else {
+                if programAnnotations.isEmpty && !dataManager.programs.isEmpty {
+                    programAnnotations = dataManager.programs.map {
+                        ProgramAnnotation(
+                            program: $0,
+                            coordinate: GeocodingHelper.fallbackCoordinate(for: $0)
+                        )
+                    }
                     fitAllPrograms()
                 }
             }
+            .task(id: dataManager.programs.map(\.id).sorted().joined(separator: "|")) {
+                await refreshProgramAnnotations()
+            }
+        }
+    }
+
+    private func refreshProgramAnnotations() async {
+        let programs = dataManager.programs
+        guard !programs.isEmpty else {
+            await MainActor.run { programAnnotations = [] }
+            return
+        }
+
+        let fallbacks = programs.map {
+            ProgramAnnotation(program: $0, coordinate: GeocodingHelper.fallbackCoordinate(for: $0))
+        }
+        await MainActor.run {
+            programAnnotations = fallbacks
+            fitAllPrograms()
+        }
+
+        var geocodedByID: [String: CLLocationCoordinate2D] = [:]
+        geocodedByID.reserveCapacity(programs.count)
+
+        await withTaskGroup(of: (String, CLLocationCoordinate2D).self) { group in
+            for program in programs {
+                group.addTask {
+                    let coordinate = await GeocodingHelper.coordinate(for: program)
+                    return (program.id, coordinate)
+                }
+            }
+
+            for await (programID, coordinate) in group {
+                geocodedByID[programID] = coordinate
+            }
+        }
+
+        await MainActor.run {
+            programAnnotations = programs.map { program in
+                ProgramAnnotation(
+                    program: program,
+                    coordinate: geocodedByID[program.id] ?? GeocodingHelper.fallbackCoordinate(for: program)
+                )
+            }
+            fitAllPrograms()
         }
     }
     
@@ -154,21 +199,10 @@ struct ProgramAnnotation: Identifiable {
     let program: Program
     let coordinate: CLLocationCoordinate2D
     
-    init(program: Program) {
+    init(program: Program, coordinate: CLLocationCoordinate2D) {
         self.id = program.id
         self.program = program
-        // Use address if available, otherwise fall back to city/state, then state center, then USA center
-        if let address = program.address, !address.isEmpty {
-            self.coordinate = GeocodingHelper.coordinate(for: address, city: program.city, state: program.state)
-        } else if !program.city.isEmpty && !program.state.isEmpty {
-            self.coordinate = GeocodingHelper.coordinate(for: program.city, state: program.state)
-        } else if !program.state.isEmpty {
-            // If only state is available, use state center
-            self.coordinate = GeocodingHelper.coordinate(for: program.state)
-        } else {
-            // Fallback to center of USA if no location data
-            self.coordinate = CLLocationCoordinate2D(latitude: 39.8283, longitude: -98.5795)
-        }
+        self.coordinate = coordinate
     }
 }
 
@@ -191,13 +225,13 @@ struct ProgramMapPin: View {
                     // Signal indicator - star inside the pin
                     Image(systemName: program.signalType == .gold ? "star.fill" : "star")
                         .foregroundColor(.white)
-                        .font(.system(size: isSelected ? 18 : 16, weight: .bold))
+                        .font(.arial(size: isSelected ? 18 : 16, weight: .bold))
                         .shadow(color: .black.opacity(0.3), radius: 1, x: 0, y: 1)
                 } else {
                     // Regular pin icon when not signaled
                     Image(systemName: "mappin.circle.fill")
                         .foregroundColor(.white)
-                        .font(.system(size: isSelected ? 20 : 18, weight: .bold))
+                        .font(.arial(size: isSelected ? 20 : 18, weight: .bold))
                 }
             }
         }
@@ -226,7 +260,7 @@ struct ProgramMapCard: View {
                             // Hospital name with signal indicator
                             HStack(alignment: .top, spacing: 6) {
                                 Text(HospitalNameFormatter.format(program.hospital))
-                                    .font(.system(size: 18, weight: .bold))
+                                    .font(.arial(size: 18, weight: .bold))
                                     .foregroundColor(.primary)
                                     .lineLimit(nil)
                                     .fixedSize(horizontal: false, vertical: true)
@@ -234,22 +268,33 @@ struct ProgramMapCard: View {
                                 // Signal indicator - subtle
                                 if program.signalType != .none {
                                     Image(systemName: program.signalType == .gold ? "star.fill" : "star")
-                                        .font(.system(size: 14))
+                                        .font(.arial(size: 14))
                                         .foregroundColor(program.signalType == .gold ? .yellow : .gray)
                                         .padding(.top, 2) // Align with first line of text
                                 }
+
+                                if program.hasVoiceMemo {
+                                    Image(systemName: "waveform")
+                                        .font(.arial(size: 14))
+                                        .foregroundColor(.purple)
+                                        .padding(.top, 2)
+                                        .accessibilityLabel("Has voice memo")
+                                }
                             }
                             
-                            if let address = program.address, !address.isEmpty {
-                                Text(address)
-                                    .font(.system(size: 13, weight: .medium))
+                            let resolved = program.resolvedAddress
+                            if !resolved.street.isEmpty {
+                                Text(resolved.street)
+                                    .font(.arial(size: 13, weight: .medium))
                                     .foregroundColor(.primary)
-                                Text("\(program.city), \(program.state)")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.secondary)
-                            } else {
-                                Text("\(program.city), \(program.state)")
-                                    .font(.system(size: 14))
+                            }
+                            if program.hasDisplayLocation {
+                                Text(program.displayCityState)
+                                    .font(.arial(size: resolved.street.isEmpty ? 14 : 12, weight: resolved.street.isEmpty ? .regular : .medium))
+                                    .foregroundColor(resolved.street.isEmpty ? .secondary : .secondary)
+                            } else if let site = resolved.siteName, !site.isEmpty {
+                                Text(site)
+                                    .font(.arial(size: 14))
                                     .foregroundColor(.secondary)
                             }
                         }
@@ -258,7 +303,7 @@ struct ProgramMapCard: View {
                         
                         Button(action: onDismiss) {
                             Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 24))
+                                .font(.arial(size: 24))
                                 .foregroundColor(.secondary)
                         }
                     }
@@ -271,9 +316,9 @@ struct ProgramMapCard: View {
                             
                             HStack(spacing: 3) {
                                 Image(systemName: "stethoscope")
-                                    .font(.system(size: 10))
+                                    .font(.arial(size: 10))
                                 Text(specialtyAbbrev)
-                                    .font(.system(size: 12, weight: .semibold))
+                                    .font(.arial(size: 12, weight: .semibold))
                             }
                             .foregroundColor(specialtyColor)
                             .padding(.horizontal, 8)
@@ -285,10 +330,10 @@ struct ProgramMapCard: View {
                         // Score
                         HStack(spacing: 4) {
                             Image(systemName: "star.fill")
-                                .font(.system(size: 12))
+                                .font(.arial(size: 12))
                                 .foregroundColor(.orange)
                             Text(String(format: "%.1f", program.finalScore))
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.arial(size: 12, weight: .semibold))
                         }
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
@@ -303,15 +348,14 @@ struct ProgramMapCard: View {
                         }) {
                             HStack(spacing: 4) {
                                 Image(systemName: "map.fill")
-                                    .font(.system(size: 12))
+                                    .font(.arial(size: 12))
                                 Text("Directions")
-                                    .font(.system(size: 12, weight: .medium))
+                                    .font(.arial(size: 12, weight: .medium))
                             }
                             .foregroundColor(AppColors.primaryBlue)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
-                            .background(AppColors.primaryBlue.opacity(0.15))
-                            .cornerRadius(8)
+                            .glassChipStyle(tint: AppColors.primaryBlue)
                         }
                         .buttonStyle(.plain)
                     }
@@ -320,23 +364,13 @@ struct ProgramMapCard: View {
             }
             .buttonStyle(.plain)
         }
-        .background(.ultraThinMaterial)
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
         .cornerRadius(16, corners: [.topLeft, .topRight])
         .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: -5)
     }
     
     private func openInMaps() {
-        // Use full address if available, otherwise use hospital + city + state
-        let addressString: String
-        if let address = program.address, !address.isEmpty {
-            addressString = "\(address), \(program.city), \(program.state)"
-        } else if !program.hospital.isEmpty {
-            addressString = "\(program.hospital), \(program.city), \(program.state)"
-        } else if !program.name.isEmpty {
-            addressString = "\(program.name), \(program.city), \(program.state)"
-        } else {
-            addressString = "\(program.city), \(program.state)"
-        }
+        let addressString = AddressFormatter.geocodingQuery(for: program)
         
         Task { @MainActor in
             do {
@@ -347,9 +381,9 @@ struct ProgramMapCard: View {
                     MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving
                 ])
             } catch {
-                print("Geocoding error: \(error.localizedDescription)")
+                programsMapLogger.error("Geocoding error: \(error.localizedDescription, privacy: .public)")
                 // Fallback: use city/state coordinates from GeocodingHelper
-                let fallbackCoordinate = GeocodingHelper.coordinate(for: program.city, state: program.state)
+                let fallbackCoordinate = GeocodingHelper.fallbackCoordinate(for: program)
                 let fallbackLocation = CLLocation(latitude: fallbackCoordinate.latitude, longitude: fallbackCoordinate.longitude)
                 let mapItem = MKMapItem(location: fallbackLocation, address: nil)
                 mapItem.name = program.hospital.isEmpty ? (program.name.isEmpty ? "Program Location" : program.name) : program.hospital
@@ -363,26 +397,6 @@ struct ProgramMapCard: View {
     private func geocodeAddress(_ addressString: String) async throws -> CLLocation {
         // Use modern GeocodingHelper which uses MKLocalSearch (iOS 13+) or CLGeocoder fallback
         return try await GeocodingHelper.geocodeAddress(addressString)
-    }
-}
-
-extension View {
-    func cornerRadius(_ radius: CGFloat, corners: UIRectCorner) -> some View {
-        clipShape(RoundedCorner(radius: radius, corners: corners))
-    }
-}
-
-struct RoundedCorner: Shape {
-    var radius: CGFloat = .infinity
-    var corners: UIRectCorner = .allCorners
-
-    func path(in rect: CGRect) -> Path {
-        let path = UIBezierPath(
-            roundedRect: rect,
-            byRoundingCorners: corners,
-            cornerRadii: CGSize(width: radius, height: radius)
-        )
-        return Path(path.cgPath)
     }
 }
 

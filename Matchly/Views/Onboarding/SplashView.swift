@@ -6,64 +6,51 @@
 //
 
 import SwiftUI
+import Combine
 
 struct SplashView: View {
-    @StateObject private var authManager = AuthManager.shared
-    @StateObject private var dataManager = DataManager.shared
+    @ObservedObject private var authManager = AuthManager.shared
+    @ObservedObject private var dataManager = DataManager.shared
+    @Environment(\.scenePhase) private var scenePhase
     @State private var showSplash = true
-    @State private var scale: CGFloat = 0.8
-    @State private var opacity: Double = 0
+    @State private var revealProgress: Double = 0
+    @State private var showBiometricSetupAlert = false
+    @State private var hasCompletedOnboarding = DataManager.shared.preferences.hasCompletedOnboarding
     
     var body: some View {
         Group {
             if showSplash {
                 // Splash screen
                 ZStack {
-                    // Clean white background
-                    Color(.systemBackground)
+                    AppColors.dashboardCanvas
                         .ignoresSafeArea()
                     
-                    VStack(spacing: 20) {
+                    VStack(spacing: 0) {
                         Spacer()
-                        
-                        // Matchly app icon
-                        Image("MatchlyIcon")
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(width: 120, height: 120)
-                            .cornerRadius(26) // iOS app icon corner radius
-                            .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
-                            .scaleEffect(scale)
-                            .opacity(opacity)
-                        
-                        // App name - clean, professional typography
-                        Text("Matchly")
-                            .font(.system(size: 36, weight: .semibold, design: .default))
-                            .foregroundColor(.primary)
-                            .opacity(opacity)
-                        
-                        // Tagline - subtle and professional
-                        Text("Residency Match Management")
-                            .font(.system(size: 15, weight: .regular))
-                            .foregroundColor(.secondary)
-                            .opacity(opacity)
-                        
+
+                        MatchlyBrandInlineLockup(glyphSize: .feature)
+                            .frame(maxWidth: .infinity)
+                            .scaleEffect(0.97 + (0.03 * revealProgress))
+                            .opacity(revealProgress)
+
                         Spacer()
                     }
                 }
                 .onAppear {
-                    // Smooth fade-in animation
-                    withAnimation(.easeOut(duration: 0.6)) {
-                        scale = 1.0
-                        opacity = 1.0
+                    if case .signedIn = authManager.authState {
+                        showSplash = false
+                        return
                     }
-                    
-                    // Navigate after brief display
+                    guard revealProgress == 0 else { return }
+                    withAnimation(.easeOut(duration: 0.85)) {
+                        revealProgress = 1
+                    }
+
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                        withAnimation(.easeIn(duration: 0.3)) {
-                            opacity = 0
+                        withAnimation(.easeInOut(duration: 0.45)) {
+                            revealProgress = 0
                         }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
                             showSplash = false
                         }
                     }
@@ -73,28 +60,96 @@ struct SplashView: View {
                 contentView
             }
         }
+        .preferredColorScheme(dataManager.preferences.appearanceMode.preferredColorScheme)
+        .environmentObject(dataManager)
+        .onReceive(dataManager.$preferences.map(\.hasCompletedOnboarding).removeDuplicates()) { completed in
+            hasCompletedOnboarding = completed
+        }
+        .onAppear {
+            hasCompletedOnboarding = dataManager.preferences.hasCompletedOnboarding
+        }
         .onChange(of: authManager.authState) { oldValue, newState in
             // React to auth state changes immediately
             if case .signedIn = newState {
                 showSplash = false
             }
         }
+        .onChange(of: authManager.shouldOfferBiometricSetup) { _, shouldOffer in
+            showBiometricSetupAlert = shouldOffer
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .background {
+                authManager.lockAppIfNeeded()
+            } else if newPhase == .active, authManager.isAppLocked, !showSplash {
+                authManager.attemptAutomaticBiometricUnlock()
+            }
+        }
+        .onChange(of: showSplash) { _, showing in
+            if !showing, authManager.isAppLocked {
+                authManager.attemptAutomaticBiometricUnlock()
+            }
+        }
+        .onChange(of: authManager.isAppLocked) { _, locked in
+            if locked, !showSplash {
+                authManager.attemptAutomaticBiometricUnlock()
+            }
+        }
+        .overlay {
+            if !showSplash && authManager.isAppLocked {
+                BiometricLockView()
+                    .transition(.opacity)
+                    .zIndex(20)
+            }
+        }
+        .alert(
+            "Use \(authManager.biometricDisplayName)?",
+            isPresented: $showBiometricSetupAlert
+        ) {
+            Button("Not Now", role: .cancel) {
+                authManager.declineBiometricSetup()
+            }
+            Button("Enable \(authManager.biometricDisplayName)") {
+                authManager.enableBiometricLogin()
+            }
+        } message: {
+            Text("Quickly unlock Matchly with \(authManager.biometricDisplayName) when you return to the app.")
+        }
     }
     
     @ViewBuilder
     private var contentView: some View {
-        // Check authentication first
-        if authManager.authState == .signedOut {
+        switch authManager.authState {
+        case .loading:
+            launchPlaceholder
+        case .signedOut:
             AuthenticationView()
-        } else if dataManager.preferences.hasCompletedOnboarding {
-            MainTabView()
-        } else {
-            OnboardingFlowView()
+        case .signedIn:
+            if hasCompletedOnboarding {
+                MainTabView()
+            } else {
+                OnboardingFlowView()
+            }
+        }
+    }
+
+    /// Avoid flashing login or main UI while session restoration finishes.
+    private var launchPlaceholder: some View {
+        ZStack {
+            AppColors.dashboardCanvas
+                .ignoresSafeArea()
+
+            VStack(spacing: 18) {
+                MatchlyBrandInlineLockup(glyphSize: .feature)
+                ProgressView()
+                    .tint(AppColors.primaryBlue)
+            }
         }
     }
 }
 
 #Preview {
     SplashView()
+        .environmentObject(CoupleDeepLinkHandler())
+        .environmentObject(CoupleSyncCoordinator.shared)
 }
 
