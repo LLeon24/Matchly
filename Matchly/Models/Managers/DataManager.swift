@@ -394,40 +394,103 @@ class DataManager: ObservableObject {
     /// Pass `authEmail` when called from auth flows so we never touch `AuthManager.shared` during singleton init.
     @MainActor
     func applyAuthDisplayNameToProfileIfNeeded(_ displayName: String?, authEmail: String? = nil) {
-        guard let displayName = displayName?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !displayName.isEmpty else { return }
-        guard !AuthManager.isEmailDerivedDisplayName(displayName, email: authEmail) else {
-            return
+        applyAuthNamePartsToProfileIfNeeded(displayName: displayName, authEmail: authEmail)
+    }
+
+    /// Prefers explicit first/last (Google given/family, Apple PersonNameComponents) before splitting a display string.
+    @MainActor
+    func applyAuthNamePartsToProfileIfNeeded(
+        firstName: String? = nil,
+        lastName: String? = nil,
+        displayName: String? = nil,
+        authEmail: String? = nil
+    ) {
+        func clean(_ value: String?) -> String? {
+            guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+                return nil
+            }
+            return trimmed
         }
 
-        let split = UserProfile.splitLegacyName(displayName)
+        var resolvedFirst = clean(firstName)
+        var resolvedLast = clean(lastName)
+
+        if resolvedFirst == nil || resolvedLast == nil,
+           let full = clean(displayName),
+           !AuthManager.isEmailDerivedDisplayName(full, email: authEmail) {
+            let split = UserProfile.splitLegacyName(full)
+            if resolvedFirst == nil { resolvedFirst = clean(split.first) }
+            if resolvedLast == nil { resolvedLast = clean(split.last) }
+        }
+
+        guard resolvedFirst != nil || resolvedLast != nil else { return }
+
         var profile = preferences.profile
         var changed = false
 
-        if profile.firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !split.first.isEmpty {
-            profile.firstName = split.first
+        if let resolvedFirst,
+           profile.firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           !AuthManager.isEmailDerivedDisplayName(resolvedFirst, email: authEmail) {
+            profile.firstName = resolvedFirst
             changed = true
         }
-        if profile.lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !split.last.isEmpty {
-            profile.lastName = split.last
+        if let resolvedLast,
+           profile.lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           !AuthManager.isEmailDerivedDisplayName(resolvedLast, email: authEmail) {
+            profile.lastName = resolvedLast
             changed = true
         }
 
         guard changed else { return }
-        preferences.profile = profile
-        savePreferences()
-        objectWillChange.send()
-        Self.logger.info("Applied auth display name to profile")
+        replacePreferencesProfile(with: profile, persistImmediately: true)
+        Self.logger.info("Applied auth name parts to profile")
     }
 
     /// Applies auth provider name and photo to the local profile when fields are still empty.
     @MainActor
     func applyAuthUserToProfileIfNeeded(_ user: User) {
-        applyAuthDisplayNameToProfileIfNeeded(user.displayName, authEmail: user.email)
+        AuthManager.shared.applyProviderProfileNamesToLocalProfileIfNeeded()
+
+        let profileName = preferences.profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolved = AuthManager.shared.preferredDisplayName(profileName: profileName)
+        if resolved != "User" {
+            applyAuthDisplayNameToProfileIfNeeded(resolved, authEmail: user.email)
+        } else {
+            applyAuthDisplayNameToProfileIfNeeded(user.displayName, authEmail: user.email)
+        }
         clearEmailDerivedProfileNameIfNeeded(email: user.email)
         Task {
             await applyAuthPhotoToProfileIfNeeded(from: user.photoURL)
         }
+    }
+
+    @MainActor
+    func replacePreferencesProfile(with profile: UserProfile, persistImmediately: Bool = false) {
+        var updated = preferences
+        updated.profile = profile
+        preferences = updated
+        objectWillChange.send()
+        if persistImmediately {
+            savePreferencesImmediately()
+        } else {
+            savePreferences()
+        }
+    }
+
+    /// While onboarding is incomplete, keep auth-filled names if cloud prefs are empty.
+    func mergeOnboardingProfilePreservingAuthNames(local: UserProfile, remote: UserProfile) -> UserProfile {
+        var merged = remote
+        if !preferences.hasCompletedOnboarding {
+            if merged.firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               !local.firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                merged.firstName = local.firstName
+            }
+            if merged.lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               !local.lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                merged.lastName = local.lastName
+            }
+        }
+        return merged
     }
 
     @MainActor
@@ -475,9 +538,7 @@ class DataManager: ObservableObject {
         }
 
         guard changed else { return }
-        preferences.profile = profile
-        savePreferences()
-        objectWillChange.send()
+        replacePreferencesProfile(with: profile, persistImmediately: true)
         Self.logger.info("Cleared email-derived profile name")
     }
     
@@ -686,7 +747,12 @@ class DataManager: ObservableObject {
         }
 
         if pulledPreferences, let cloudPreferences = cloud.preferences {
-            preferences = cloudPreferences
+            var mergedPreferences = cloudPreferences
+            mergedPreferences.profile = mergeOnboardingProfilePreservingAuthNames(
+                local: preferences.profile,
+                remote: cloudPreferences.profile
+            )
+            preferences = mergedPreferences
             applyInterviewPrepListMigrationIfNeeded(persist: false)
             persistPreferencesToDisk()
             setLocalPreferencesTimestamp(cloudPreferencesAt == .distantPast ? Date() : cloudPreferencesAt)
@@ -788,7 +854,12 @@ class DataManager: ObservableObject {
             }
             if shouldRestorePreferences {
                 await MainActor.run {
-                    self.preferences = remotePreferences
+                    var mergedPreferences = remotePreferences
+                    mergedPreferences.profile = self.mergeOnboardingProfilePreservingAuthNames(
+                        local: self.preferences.profile,
+                        remote: remotePreferences.profile
+                    )
+                    self.preferences = mergedPreferences
                     self.applyInterviewPrepListMigrationIfNeeded(persist: false)
                     self.persistPreferencesToDisk()
                     self.setLocalPreferencesTimestamp(remotePreferencesAt == .distantPast ? Date() : remotePreferencesAt)
@@ -869,7 +940,7 @@ class DataManager: ObservableObject {
         shared.removeObject(forKey: Self.widgetInterviewsKey)
         shared.removeObject(forKey: Self.widgetSnapshotUpdatedAtKey)
         shared.synchronize()
-        WidgetCenter.shared.reloadTimelines(ofKind: Self.widgetKind)
+        WidgetCenterCoordinator.scheduleReloadTimelines(ofKind: Self.widgetKind)
     }
 
     private func persistProgramsToDisk() {
@@ -883,7 +954,7 @@ class DataManager: ObservableObject {
     static let widgetAppGroupID = "group.com.lestarlu.matchly"
     static let widgetInterviewsKey = "widget_upcoming_interviews"
     static let widgetSnapshotUpdatedAtKey = "widget_snapshot_updated_at"
-    static let widgetKind = "MatchlyWidget"
+    nonisolated static let widgetKind = "MatchlyWidget"
 
     /// Publishes upcoming interviews (today onward) as plain plist values so the
     /// widget can render without sharing any model code with the app.
@@ -920,7 +991,7 @@ class DataManager: ObservableObject {
             shared.set(upcoming, forKey: Self.widgetInterviewsKey)
             shared.set(Date().timeIntervalSince1970, forKey: Self.widgetSnapshotUpdatedAtKey)
             shared.synchronize()
-            WidgetCenter.shared.reloadTimelines(ofKind: Self.widgetKind)
+            WidgetCenterCoordinator.scheduleReloadTimelines(ofKind: Self.widgetKind)
         }
         if Thread.isMainThread {
             reloadWidget()

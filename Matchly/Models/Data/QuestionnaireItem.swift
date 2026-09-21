@@ -190,6 +190,10 @@ struct Questionnaire: Codable, Equatable {
         preferences: UserPreferences,
         candidateItems: [QuestionnaireItem]
     ) -> Bool {
+        let allSections = sections + customSections
+        guard sectionIsEnabled(section, preferences: preferences, allSections: allSections) else {
+            return false
+        }
         if preferences.enabledQuestionIds.isEmpty {
             return true
         }
@@ -507,6 +511,11 @@ struct Questionnaire: Codable, Equatable {
     
     // Get enabled items for a section based on preferences (includes custom questions added to standard sections)
     func enabledItems(for section: QuestionnaireSection, preferences: UserPreferences) -> [QuestionnaireItem] {
+        let allSections = sections + customSections
+        guard sectionIsEnabled(section, preferences: preferences, allSections: allSections) else {
+            return []
+        }
+
         var allItems = section.items
         let existingIDs = Set(section.items.map(\.id))
 

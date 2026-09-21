@@ -19,6 +19,7 @@ struct MatchlyCalendarSyncRow: View {
     @State private var showCalendarErrorAlert = false
     @State private var calendarErrorMessage = ""
     @State private var isCreatingEvents = false
+    @State private var isRequestingCalendarAccess = false
     @State private var eventsCreatedCount = 0
 
     private var interviewPrograms: [Program] {
@@ -78,13 +79,14 @@ struct MatchlyCalendarSyncRow: View {
 
             Spacer(minLength: 8)
 
-            if isCreatingEvents {
+            if isCreatingEvents || isRequestingCalendarAccess {
                 ProgressView()
                     .scaleEffect(0.85)
             }
 
             Toggle("", isOn: calendarSyncBinding)
                 .labelsHidden()
+                .disabled(isRequestingCalendarAccess)
         }
         .padding(.vertical, 2)
     }
@@ -93,15 +95,37 @@ struct MatchlyCalendarSyncRow: View {
         Binding(
             get: { dataManager.preferences.enableCalendarSync },
             set: { newValue in
-                dataManager.preferences.enableCalendarSync = newValue
-                dataManager.savePreferences()
                 if newValue {
-                    Task {
-                        await createCalendarEvents(showSuccessAlert: false)
-                    }
+                    dataManager.preferences.enableCalendarSync = true
+                    dataManager.savePreferences()
+                    requestCalendarAccessAndSyncEvents()
+                } else {
+                    dataManager.preferences.enableCalendarSync = false
+                    dataManager.savePreferences()
                 }
             }
         )
+    }
+
+    private func requestCalendarAccessAndSyncEvents() {
+        guard !isRequestingCalendarAccess else { return }
+        isRequestingCalendarAccess = true
+        Task {
+            let granted = await calendarManager.requestAccess()
+            await MainActor.run {
+                isRequestingCalendarAccess = false
+                calendarManager.checkAuthorizationStatus()
+                if granted {
+                    Task {
+                        await createCalendarEvents(showSuccessAlert: false)
+                    }
+                } else {
+                    dataManager.preferences.enableCalendarSync = false
+                    dataManager.savePreferences()
+                    showCalendarPermissionAlert = true
+                }
+            }
+        }
     }
 
     private func createCalendarEvents(showSuccessAlert: Bool = true) async {

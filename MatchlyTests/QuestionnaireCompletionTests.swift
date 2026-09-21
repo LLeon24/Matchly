@@ -46,6 +46,24 @@ final class QuestionnaireCompletionTests: XCTestCase {
         XCTAssertLessThan(questionnaire.questionnaireCompletionRatio(preferences: prefs), 1.0)
     }
 
+    func testDisabledSectionExcludesQuestionsEvenWhenQuestionIdsStillEnabled() {
+        var questionnaire = Questionnaire()
+        var prefs = UserPreferences()
+
+        guard let disabledSection = questionnaire.sections.first(where: {
+            !$0.title.lowercased().contains("red flag")
+        }) else {
+            return XCTFail("Expected a non–red-flag section")
+        }
+
+        prefs.enabledSectionIds = Set(questionnaire.sections.map(\.id)).subtracting([disabledSection.id])
+        prefs.enabledQuestionIds = Set(disabledSection.items.map(\.id))
+
+        XCTAssertTrue(disabledSection.items.contains { $0.id == disabledSection.items.first?.id })
+        let enabledInDisabledSection = questionnaire.enabledItems(for: disabledSection, preferences: prefs)
+        XCTAssertTrue(enabledInDisabledSection.isEmpty)
+    }
+
     func testDisabledSectionDoesNotBlockCompletion() {
         var questionnaire = Questionnaire()
         var prefs = UserPreferences()

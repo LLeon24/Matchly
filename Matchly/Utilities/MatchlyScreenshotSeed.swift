@@ -19,6 +19,8 @@ enum MatchlyScreenshotSeed {
 
     @MainActor
     static func apply() {
+        AuthManager.shared.applyScreenshotDemoSession()
+
         let manager = DataManager.shared
         var preferences = manager.preferences
         preferences.hasCompletedOnboarding = true

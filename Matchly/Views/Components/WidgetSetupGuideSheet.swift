@@ -4,13 +4,10 @@
 //
 
 import SwiftUI
-import WidgetKit
 
 struct WidgetSetupGuideSheet: View {
     @Environment(\.dismiss) private var dismiss
-
-    @State private var widgetAlreadyAdded = false
-    @State private var checkedForWidget = false
+    @StateObject private var model = WidgetSetupGuideModel()
 
     var body: some View {
         NavigationStack {
@@ -34,23 +31,29 @@ struct WidgetSetupGuideSheet: View {
                         .font(.arial(size: 13))
                         .foregroundColor(.secondary)
 
-                    if widgetAlreadyAdded {
+                    if model.widgetAlreadyAdded {
                         Label("Matchly widget detected on your Home Screen", systemImage: "checkmark.circle.fill")
                             .font(.arial(size: 14, weight: .medium))
                             .foregroundColor(.green)
-                    } else if checkedForWidget {
+                    } else if model.checkedForWidget {
                         Text("No Matchly widget found yet. Follow the steps above, then check again.")
                             .font(.arial(size: 13))
                             .foregroundColor(.secondary)
                     }
 
-                    Button(action: checkForWidget) {
-                        Label("Check if Widget Is Added", systemImage: "arrow.clockwise")
+                    Button {
+                        model.checkForWidget()
+                    } label: {
+                        Label(
+                            model.isCheckingWidget ? "Checking…" : "Check if Widget Is Added",
+                            systemImage: model.isCheckingWidget ? "hourglass" : "arrow.clockwise"
+                        )
                             .font(.arial(size: 15, weight: .medium))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 12)
                     }
                     .buttonStyle(.glass)
+                    .disabled(model.isCheckingWidget)
                 }
                 .padding(24)
             }
@@ -63,8 +66,8 @@ struct WidgetSetupGuideSheet: View {
                 }
             }
         }
-        .onAppear {
-            DataManager.shared.publishWidgetSnapshot()
+        .onDisappear {
+            model.cancelInFlightCheck()
         }
     }
 
@@ -120,17 +123,4 @@ struct WidgetSetupGuideSheet: View {
         }
     }
 
-    private func checkForWidget() {
-        checkedForWidget = true
-        WidgetCenter.shared.getCurrentConfigurations { result in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let configurations):
-                    widgetAlreadyAdded = configurations.contains { $0.kind == DataManager.widgetKind }
-                case .failure:
-                    widgetAlreadyAdded = false
-                }
-            }
-        }
-    }
 }

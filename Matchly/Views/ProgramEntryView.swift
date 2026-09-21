@@ -85,9 +85,12 @@ struct ProgramEntryView: View {
     @State private var pendingProgramScrollAnchor: UnitPoint = ProgramEntryView.nextQuestionScrollAnchor
     @State private var pendingProgramScrollSectionId: String?
 
-    /// Positions the next question below mid-screen so the just-answered question stays visible above.
-    private static let nextQuestionScrollAnchor = UnitPoint(x: 0.5, y: 0.42)
-    private static let questionScrollAnimation = Animation.easeInOut(duration: 0.2)
+    /// Positions the next question in the upper-middle of the viewport.
+    private static let nextQuestionScrollAnchor = UnitPoint(x: 0.5, y: 0.38)
+    private static let questionScrollAnimation = Animation.easeOut(duration: 0.14)
+    /// Delay after expanding a lazy section before scrolling to a question inside it.
+    private static let questionScrollLayoutDelay: TimeInterval = 0.12
+    private static let questionScrollCorrectionDelay: TimeInterval = 0.14
     /// Faint highlight when EMR still needs a selection (not bright teal).
     private static let emrPromptFill = Color(red: 0.92, green: 0.95, blue: 0.99)
     private static let emrPromptStroke = Color(red: 0.78, green: 0.86, blue: 0.96)
@@ -662,7 +665,7 @@ struct ProgramEntryView: View {
                                                     }
 
                                                     if oldValue == 0 && newValue > 0 {
-                                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                                        DispatchQueue.main.asyncAfter(deadline: .now() + Self.questionScrollLayoutDelay) {
                                                             scrollToFirstUnansweredQuestion()
                                                         }
                                                     }
@@ -732,7 +735,7 @@ struct ProgramEntryView: View {
                                                     }
 
                                                     if oldValue == 0 && newValue > 0 {
-                                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                                        DispatchQueue.main.asyncAfter(deadline: .now() + Self.questionScrollLayoutDelay) {
                                                             scrollToFirstUnansweredQuestion()
                                                         }
                                                     }
@@ -1432,7 +1435,18 @@ struct ProgramEntryView: View {
             preferences: dataManager.preferences,
             programEMR: emr
         ) else { return }
+        dismissProgramEntryKeyboard()
         scrollToQuestion(target)
+    }
+
+    private func dismissProgramEntryKeyboard() {
+        isNotesFocused = false
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+        )
     }
 
     private func scrollToFirstRedFlag() {
@@ -1452,7 +1466,9 @@ struct ProgramEntryView: View {
     }
 
     private func scrollToQuestion(sectionId: String, scrollID: String) {
-        _ = withAnimation(Self.questionScrollAnimation) {
+        var expandTransaction = Transaction()
+        expandTransaction.disablesAnimations = true
+        _ = withTransaction(expandTransaction) {
             expandedSections.insert(sectionId)
         }
         requestProgramScroll(
@@ -1473,27 +1489,42 @@ struct ProgramEntryView: View {
         programScrollToken += 1
     }
 
-    /// Expands lazy questionnaire rows, scrolls near the section, then lands on the question id.
+    /// Scrolls to questionnaire targets after lazy section bodies mount (Jump to unanswered / auto-advance).
     private func performProgramScroll(
         scrollID: String,
         sectionId: String?,
         anchor: UnitPoint,
         using proxy: ScrollViewProxy
     ) {
-        let firstDelay: TimeInterval = sectionId == nil ? 0.05 : 0.22
-        DispatchQueue.main.asyncAfter(deadline: .now() + firstDelay) {
-            if let sectionId {
-                withAnimation(Self.questionScrollAnimation) {
-                    proxy.scrollTo(Self.sectionHeaderScrollID(sectionId), anchor: .top)
-                }
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + (sectionId == nil ? 0 : 0.18)) {
+        if sectionId == nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
                 withAnimation(Self.questionScrollAnimation) {
                     proxy.scrollTo(scrollID, anchor: anchor)
                 }
-                if sectionId != nil {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            }
+            return
+        }
+
+        // Two run-loop ticks so `expandedSections` can lay out inside `LazyVStack`.
+        DispatchQueue.main.async {
+            DispatchQueue.main.async {
+                var headerTransaction = Transaction()
+                headerTransaction.disablesAnimations = true
+                withTransaction(headerTransaction) {
+                    proxy.scrollTo(Self.sectionHeaderScrollID(sectionId!), anchor: .top)
+                }
+
+                DispatchQueue.main.asyncAfter(deadline: .now() + Self.questionScrollLayoutDelay) {
+                    withAnimation(Self.questionScrollAnimation) {
                         proxy.scrollTo(scrollID, anchor: anchor)
+                    }
+
+                    DispatchQueue.main.asyncAfter(deadline: .now() + Self.questionScrollCorrectionDelay) {
+                        var correctionTransaction = Transaction()
+                        correctionTransaction.disablesAnimations = true
+                        withTransaction(correctionTransaction) {
+                            proxy.scrollTo(scrollID, anchor: anchor)
+                        }
                     }
                 }
             }
@@ -1521,7 +1552,11 @@ struct ProgramEntryView: View {
                 let nextSection = questionnaire.sections[nextSectionIndex]
                 let nextEnabledItems = questionnaire.enabledItems(for: nextSection, preferences: dataManager.preferences)
                 if !nextEnabledItems.isEmpty {
-                    expandedSections.insert(nextSection.id)
+                    var expandTransaction = Transaction()
+                    expandTransaction.disablesAnimations = true
+                    _ = withTransaction(expandTransaction) {
+                        expandedSections.insert(nextSection.id)
+                    }
                 }
             }
         }

@@ -96,6 +96,8 @@ class AuthManager: ObservableObject {
     private static let keychainService = "com.lestarlu.matchly.auth"
     private static let keychainAppleUserAccount = "apple_user_id"
     private static let keychainAppleDisplayNameAccount = "apple_display_name"
+    private static let keychainAppleGivenNameAccount = "apple_given_name"
+    private static let keychainAppleFamilyNameAccount = "apple_family_name"
     private static let keychainCachedUserAccount = "cached_user_session"
     private static let biometricEnabledKey = "matchly_biometric_login_enabled"
     private static let biometricOfferDeclinedKey = "matchly_biometric_offer_declined"
@@ -198,7 +200,31 @@ class AuthManager: ObservableObject {
     }
     
     // MARK: - Auth State Management
+    /// UI tests / marketing captures (`-MatchlyScreenshotSeed`): signed-in demo user, no lock screen.
+    func applyScreenshotDemoSession() {
+        let user = User(
+            id: "screenshot-demo-user",
+            email: "alex.chen@example.com",
+            displayName: "Alex Chen",
+            provider: .email
+        )
+        currentUser = user
+        authState = .signedIn(user)
+        isAppLocked = false
+        isBiometricLoginEnabled = false
+        shouldOfferBiometricSetup = false
+        UserDefaults.standard.set(false, forKey: Self.biometricEnabledKey)
+        if let encoded = try? JSONEncoder().encode(user) {
+            UserDefaults.standard.set(encoded, forKey: authKey)
+        }
+    }
+
     func checkAuthState() {
+        if ProcessInfo.processInfo.arguments.contains(MatchlyScreenshotSeed.launchArgument) {
+            applyScreenshotDemoSession()
+            return
+        }
+
         isBiometricLoginEnabled = UserDefaults.standard.bool(forKey: Self.biometricEnabledKey)
 
         // Check if user is already signed in. We do NOT wipe legacy stub users here; if a
@@ -239,6 +265,8 @@ class AuthManager: ObservableObject {
 
         Self.keychainDelete(account: Self.keychainAppleUserAccount)
         Self.keychainDelete(account: Self.keychainAppleDisplayNameAccount)
+        Self.keychainDelete(account: Self.keychainAppleGivenNameAccount)
+        Self.keychainDelete(account: Self.keychainAppleFamilyNameAccount)
         Self.keychainDelete(account: Self.keychainCachedUserAccount)
 
         Self.logger.info("Cleared orphaned auth after missing local session (e.g. app reinstall)")
@@ -281,19 +309,13 @@ class AuthManager: ObservableObject {
         }
 
         DataManager.shared.applyAuthUserToProfileIfNeeded(updatedUser)
+        DataManager.shared.savePreferencesImmediately()
 
         Task {
             _ = await DataManager.shared.mergeWithAccountCloudIfNeeded(trigger: "signIn")
-            let profileName = DataManager.shared.preferences.profile.name
-            if let resolvedName = resolvedAuthDisplayName(
-                stored: updatedUser.displayName,
-                profileName: profileName,
-                email: updatedUser.email
-            ) {
-                DataManager.shared.applyAuthDisplayNameToProfileIfNeeded(resolvedName, authEmail: updatedUser.email)
-            }
-            DataManager.shared.clearEmailDerivedProfileNameIfNeeded(email: updatedUser.email)
             if let current = self.currentUser {
+                DataManager.shared.applyAuthUserToProfileIfNeeded(current)
+                DataManager.shared.savePreferencesImmediately()
                 await DataManager.shared.applyAuthPhotoToProfileIfNeeded(from: current.photoURL)
             }
         }
@@ -429,6 +451,8 @@ class AuthManager: ObservableObject {
         if !isBiometricLoginEnabled {
             Self.keychainDelete(account: Self.keychainAppleUserAccount)
             Self.keychainDelete(account: Self.keychainAppleDisplayNameAccount)
+            Self.keychainDelete(account: Self.keychainAppleGivenNameAccount)
+            Self.keychainDelete(account: Self.keychainAppleFamilyNameAccount)
             Self.keychainDelete(account: Self.keychainCachedUserAccount)
         }
     }
@@ -528,6 +552,8 @@ class AuthManager: ObservableObject {
             UserDefaults.standard.removeObject(forKey: Self.biometricOfferDeclinedKey)
             Self.keychainDelete(account: Self.keychainAppleUserAccount)
             Self.keychainDelete(account: Self.keychainAppleDisplayNameAccount)
+            Self.keychainDelete(account: Self.keychainAppleGivenNameAccount)
+            Self.keychainDelete(account: Self.keychainAppleFamilyNameAccount)
             Self.keychainDelete(account: Self.keychainCachedUserAccount)
         }
 
@@ -723,8 +749,9 @@ class AuthManager: ObservableObject {
             let accessToken = gidResult.user.accessToken.tokenString
             let credential = GoogleAuthProvider.credential(withIDToken: idToken, accessToken: accessToken)
             let authResult = try await Auth.auth().signIn(with: credential)
-            let googleName = gidResult.user.profile?.name
-            let googlePhotoURL = gidResult.user.profile?.imageURL(withDimension: 256)?.absoluteString
+            let googleProfile = gidResult.user.profile
+            let googleName = Self.formattedGoogleDisplayName(from: googleProfile)
+            let googlePhotoURL = googleProfile?.imageURL(withDimension: 256)?.absoluteString
             let user = makeUser(
                 from: authResult.user,
                 provider: .google,
@@ -732,7 +759,15 @@ class AuthManager: ObservableObject {
                 photoURL: googlePhotoURL,
                 existing: currentUser
             )
-            await MainActor.run { signIn(user: user) }
+            await MainActor.run {
+                DataManager.shared.applyAuthNamePartsToProfileIfNeeded(
+                    firstName: googleProfile?.givenName,
+                    lastName: googleProfile?.familyName,
+                    displayName: googleName,
+                    authEmail: authResult.user.email
+                )
+                signIn(user: user)
+            }
             await refreshCloudKitIdentity()
         } catch let error as AuthError {
             throw error
@@ -799,9 +834,11 @@ class AuthManager: ObservableObject {
         }()
 
         var displayName: String? = existingUser?.displayName
-        if let appleName = Self.formattedDisplayName(from: appleIDCredential.fullName) {
-            displayName = appleName
-            Self.keychainSave(appleName, account: Self.keychainAppleDisplayNameAccount)
+        if let fullName = appleIDCredential.fullName {
+            Self.persistAppleNameComponents(fullName)
+            if let appleName = Self.formattedDisplayName(from: fullName) {
+                displayName = appleName
+            }
         } else if displayName == nil || displayName?.isEmpty == true {
             displayName = Self.keychainRead(account: Self.keychainAppleDisplayNameAccount)
         }
@@ -838,7 +875,24 @@ class AuthManager: ObservableObject {
             )
 
             Self.logger.info("Apple Sign In: Firebase UID authenticated")
-            await MainActor.run { signIn(user: user) }
+            await MainActor.run {
+                if let fullName = appleIDCredential.fullName {
+                    DataManager.shared.applyAuthNamePartsToProfileIfNeeded(
+                        firstName: fullName.givenName,
+                        lastName: fullName.familyName,
+                        displayName: Self.formattedDisplayName(from: fullName),
+                        authEmail: appleIDCredential.email ?? authResult.user.email
+                    )
+                } else {
+                    DataManager.shared.applyAuthNamePartsToProfileIfNeeded(
+                        firstName: Self.keychainRead(account: Self.keychainAppleGivenNameAccount),
+                        lastName: Self.keychainRead(account: Self.keychainAppleFamilyNameAccount),
+                        displayName: Self.keychainRead(account: Self.keychainAppleDisplayNameAccount),
+                        authEmail: appleIDCredential.email ?? authResult.user.email
+                    )
+                }
+                signIn(user: user)
+            }
             await refreshCloudKitIdentity()
         } catch {
             throw mapFirebaseAuthError(error)
@@ -1157,6 +1211,58 @@ class AuthManager: ObservableObject {
         let formatted = formatter.string(from: components)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return formatted.isEmpty ? nil : formatted
+    }
+
+    static func formattedGoogleDisplayName(from profile: GIDProfileData?) -> String? {
+        guard let profile else { return nil }
+        let given = profile.givenName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let family = profile.familyName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !given.isEmpty, !family.isEmpty {
+            return "\(given) \(family)"
+        }
+        let combined = profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return combined.isEmpty ? nil : combined
+    }
+
+    private static func persistAppleNameComponents(_ components: PersonNameComponents) {
+        if let formatted = formattedDisplayName(from: components) {
+            keychainSave(formatted, account: keychainAppleDisplayNameAccount)
+        }
+        let given = components.givenName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !given.isEmpty {
+            keychainSave(given, account: keychainAppleGivenNameAccount)
+        }
+        let family = components.familyName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !family.isEmpty {
+            keychainSave(family, account: keychainAppleFamilyNameAccount)
+        }
+    }
+
+    /// Applies provider-native first/last fields (Google given/family, Apple keychain) to the local profile.
+    @MainActor
+    func applyProviderProfileNamesToLocalProfileIfNeeded() {
+        guard let user = currentUser else { return }
+
+        switch user.provider {
+        case .google:
+            if let googleProfile = GIDSignIn.sharedInstance.currentUser?.profile {
+                DataManager.shared.applyAuthNamePartsToProfileIfNeeded(
+                    firstName: googleProfile.givenName,
+                    lastName: googleProfile.familyName,
+                    displayName: Self.formattedGoogleDisplayName(from: googleProfile),
+                    authEmail: user.email
+                )
+            }
+        case .apple:
+            DataManager.shared.applyAuthNamePartsToProfileIfNeeded(
+                firstName: Self.keychainRead(account: Self.keychainAppleGivenNameAccount),
+                lastName: Self.keychainRead(account: Self.keychainAppleFamilyNameAccount),
+                displayName: Self.keychainRead(account: Self.keychainAppleDisplayNameAccount),
+                authEmail: user.email
+            )
+        default:
+            break
+        }
     }
 
     static func isEmailDerivedDisplayName(_ name: String, email: String?) -> Bool {

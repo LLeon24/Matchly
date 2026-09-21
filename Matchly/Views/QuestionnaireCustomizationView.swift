@@ -47,61 +47,11 @@ struct QuestionnaireCustomizationView: View {
                             let itemId = item.id
                             
                             Toggle(isOn: Binding(
-                                get: { 
-                                    // Check if this question is enabled
-                                    // Empty set = all enabled, non-empty set = only items in set are enabled
-                                    if enabledQuestionIds.isEmpty {
-                                        return true // All enabled by default
-                                    }
-                                    // Check if this item's ID is in the enabled set
-                                    return enabledQuestionIds.contains(itemId)
+                                get: {
+                                    isQuestionEnabled(itemId, sectionId: section.id)
                                 },
                                 set: { isEnabled in
-                                    // Use the item's ID directly from the current section
-                                    let actualIdToUse = itemId
-                                    
-                                    // Calculate the new set value
-                                    var newSet = enabledQuestionIds
-                                    
-                                    if isEnabled {
-                                        // Enabling: if set is empty (all enabled), no change needed
-                                        // If set is not empty, add this question to enabled set
-                                        if newSet.isEmpty {
-                                            // Set is empty means all are enabled, so this question is already enabled
-                                            // No change needed - but we should still update to ensure consistency
-                                        } else {
-                                            // Set is not empty, add this question to enabled set
-                                            newSet.insert(actualIdToUse)
-                                        }
-                                    } else {
-                                        // Disabling: if set is empty (all enabled), populate with all questions except this one
-                                        if newSet.isEmpty {
-                                            // Get all question IDs from current sections (standard + custom)
-                                            var allQuestionIds = Set<String>()
-                                            
-                                            // Add all standard section question IDs
-                                            for standardSection in standardSections {
-                                                allQuestionIds.formUnion(standardSection.items.map { $0.id })
-                                            }
-                                            
-                                            // Add all custom questions added to standard sections
-                                            for (_, customQuestions) in customQuestionsInSections {
-                                                allQuestionIds.formUnion(customQuestions.map { $0.id })
-                                            }
-                                            
-                                            // Add all custom section question IDs
-                                            for customSection in customSections {
-                                                allQuestionIds.formUnion(customSection.items.map { $0.id })
-                                            }
-                                            
-                                            newSet = allQuestionIds
-                                        }
-                                        // Remove this question from enabled set
-                                        newSet.remove(actualIdToUse)
-                                    }
-                                    
-                                    // Update state
-                                    enabledQuestionIds = newSet
+                                    updateQuestionEnabled(itemId, sectionId: section.id, isEnabled: isEnabled)
                                 }
                             )) {
                                 VStack(alignment: .leading, spacing: 4) {
@@ -114,6 +64,7 @@ struct QuestionnaireCustomizationView: View {
                                     }
                                 }
                             }
+                            .disabled(!isSectionEnabled(section.id))
                         }
                         
                         // Custom questions added to this section
@@ -122,16 +73,17 @@ struct QuestionnaireCustomizationView: View {
                                 deletableCustomQuestionRow(
                                     question: customItem.question,
                                     questionId: customItem.id,
-                                    isEnabled: enabledQuestionIds.isEmpty || enabledQuestionIds.contains(customItem.id),
+                                    isEnabled: isQuestionEnabled(customItem.id, sectionId: section.id),
                                     onToggle: { isEnabled in
-                                        updateQuestionEnabled(customItem.id, isEnabled: isEnabled)
+                                        updateQuestionEnabled(customItem.id, sectionId: section.id, isEnabled: isEnabled)
                                     },
                                     onDelete: {
                                         deleteCustomQuestionFromStandardSection(
                                             sectionId: section.id,
                                             questionId: customItem.id
                                         )
-                                    }
+                                    },
+                                    isInteractionEnabled: isSectionEnabled(section.id)
                                 )
                             }
                             .onDelete { offsets in
@@ -160,48 +112,15 @@ struct QuestionnaireCustomizationView: View {
                                     .font(.arial(size: 13))
                             }
                         }
+                        .disabled(!isSectionEnabled(section.id))
                     } label: {
                         HStack {
                             Toggle(isOn: Binding(
-                                get: { 
-                                    // Empty set = all enabled, non-empty set = only sections in set are enabled
-                                    if enabledSectionIds.isEmpty {
-                                        return true // All enabled by default
-                                    }
-                                    return enabledSectionIds.contains(section.id)
+                                get: {
+                                    isSectionEnabled(section.id)
                                 },
                                 set: { isEnabled in
-                                    var newSet = enabledSectionIds
-                                    
-                                    if isEnabled {
-                                        // Enabling: if set is empty (all enabled), no change needed
-                                        // If set is not empty, add this section to enabled set
-                                        if !newSet.isEmpty {
-                                            newSet.insert(section.id)
-                                        }
-                                    } else {
-                                        // Disabling: if set is empty (all enabled), populate with all sections except this one
-                                        if newSet.isEmpty {
-                                            // Get all section IDs from current sections (standard + custom)
-                                            var allSectionIds = Set<String>()
-                                            
-                                            // Add all standard section IDs
-                                            for standardSection in standardSections {
-                                                allSectionIds.insert(standardSection.id)
-                                            }
-                                            
-                                            // Add all custom section IDs
-                                            for customSection in customSections {
-                                                allSectionIds.insert(customSection.id)
-                                            }
-                                            
-                                            newSet = allSectionIds
-                                        }
-                                        // Remove this section from enabled set
-                                        newSet.remove(section.id)
-                                    }
-                                    
-                                    enabledSectionIds = newSet
+                                    updateSectionEnabled(section.id, isEnabled: isEnabled)
                                 }
                             )) {
                                 Text(section.title)
@@ -226,16 +145,17 @@ struct QuestionnaireCustomizationView: View {
                             deletableCustomQuestionRow(
                                 question: item.question,
                                 questionId: item.id,
-                                isEnabled: enabledQuestionIds.isEmpty || enabledQuestionIds.contains(item.id),
+                                isEnabled: isQuestionEnabled(item.id, sectionId: section.id),
                                 onToggle: { isEnabled in
-                                    updateQuestionEnabled(item.id, isEnabled: isEnabled)
+                                    updateQuestionEnabled(item.id, sectionId: section.id, isEnabled: isEnabled)
                                 },
                                 onDelete: {
                                     deleteCustomQuestionFromCustomSection(
                                         sectionIndex: index,
                                         questionId: item.id
                                     )
-                                }
+                                },
+                                isInteractionEnabled: isSectionEnabled(section.id)
                             )
                         }
                         .onDelete { offsets in
@@ -260,6 +180,7 @@ struct QuestionnaireCustomizationView: View {
                                     .font(.arial(size: 13))
                             }
                         }
+                        .disabled(!isSectionEnabled(section.id))
                     } label: {
                         HStack(spacing: 10) {
                             Button {
@@ -274,10 +195,7 @@ struct QuestionnaireCustomizationView: View {
 
                             Toggle(isOn: Binding(
                                 get: {
-                                    if enabledSectionIds.isEmpty {
-                                        return true
-                                    }
-                                    return enabledSectionIds.contains(section.id)
+                                    isSectionEnabled(section.id)
                                 },
                                 set: { isEnabled in
                                     updateSectionEnabled(section.id, isEnabled: isEnabled)
@@ -398,6 +316,50 @@ struct QuestionnaireCustomizationView: View {
         customQuestionsInSections[sectionId]?.append(newItem)
     }
 
+    private func isSectionEnabled(_ sectionId: String) -> Bool {
+        if enabledSectionIds.isEmpty {
+            return true
+        }
+        return enabledSectionIds.contains(sectionId)
+    }
+
+    private func isQuestionEnabled(_ questionId: String, sectionId: String) -> Bool {
+        guard isSectionEnabled(sectionId) else { return false }
+        if enabledQuestionIds.isEmpty {
+            return true
+        }
+        return enabledQuestionIds.contains(questionId)
+    }
+
+    private func questionIds(inSection sectionId: String) -> Set<String> {
+        var ids = Set<String>()
+        if let standard = standardSections.first(where: { $0.id == sectionId }) {
+            ids.formUnion(standard.items.map(\.id))
+        }
+        if let custom = customSections.first(where: { $0.id == sectionId }) {
+            ids.formUnion(custom.items.map(\.id))
+        }
+        if let customQuestions = customQuestionsInSections[sectionId] {
+            ids.formUnion(customQuestions.map(\.id))
+        }
+        return ids
+    }
+
+    private func setQuestionsEnabled(_ questionIds: Set<String>, inSectionEnabled isEnabled: Bool) {
+        guard !questionIds.isEmpty else { return }
+        var newSet = enabledQuestionIds
+        if isEnabled {
+            if !newSet.isEmpty {
+                newSet.formUnion(questionIds)
+            }
+        } else if newSet.isEmpty {
+            newSet = allQuestionIds().subtracting(questionIds)
+        } else {
+            newSet.subtract(questionIds)
+        }
+        enabledQuestionIds = newSet
+    }
+
     private func updateSectionEnabled(_ sectionId: String, isEnabled: Bool) {
         var newSet = enabledSectionIds
         if isEnabled {
@@ -413,9 +375,11 @@ struct QuestionnaireCustomizationView: View {
             newSet.remove(sectionId)
         }
         enabledSectionIds = newSet
+        setQuestionsEnabled(questionIds(inSection: sectionId), inSectionEnabled: isEnabled)
     }
 
-    private func updateQuestionEnabled(_ questionId: String, isEnabled: Bool) {
+    private func updateQuestionEnabled(_ questionId: String, sectionId: String, isEnabled: Bool) {
+        guard isSectionEnabled(sectionId) else { return }
         var newSet = enabledQuestionIds
         if isEnabled {
             if !newSet.isEmpty {
@@ -459,7 +423,8 @@ struct QuestionnaireCustomizationView: View {
         questionId: String,
         isEnabled: Bool,
         onToggle: @escaping (Bool) -> Void,
-        onDelete: @escaping () -> Void
+        onDelete: @escaping () -> Void,
+        isInteractionEnabled: Bool = true
     ) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Button(action: onDelete) {
@@ -484,6 +449,7 @@ struct QuestionnaireCustomizationView: View {
                         .foregroundColor(.secondary)
                 }
             }
+            .disabled(!isInteractionEnabled)
         }
     }
 
@@ -551,6 +517,21 @@ struct QuestionnaireCustomizationView: View {
         )
 
         let activeQuestionIds = allQuestionIds()
+        if !enabledSectionIds.isEmpty {
+            let disabledSectionIds = Set(standardSections.map(\.id))
+                .union(customSections.map(\.id))
+                .subtracting(enabledSectionIds)
+            let disabledQuestionIds = disabledSectionIds.reduce(into: Set<String>()) { partial, sectionId in
+                partial.formUnion(questionIds(inSection: sectionId))
+            }
+            if !disabledQuestionIds.isEmpty {
+                if enabledQuestionIds.isEmpty {
+                    enabledQuestionIds = activeQuestionIds.subtracting(disabledQuestionIds)
+                } else {
+                    enabledQuestionIds.subtract(disabledQuestionIds)
+                }
+            }
+        }
         if !enabledQuestionIds.isEmpty {
             enabledQuestionIds = enabledQuestionIds.intersection(activeQuestionIds)
         }

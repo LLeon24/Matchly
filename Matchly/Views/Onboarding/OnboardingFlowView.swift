@@ -21,6 +21,8 @@ struct OnboardingFlowView: View {
     @State private var selectedFellowshipCodes: Set<String> = []
     @State private var showMainApp = false
     @State private var enableCalendarSync: Bool = false
+    @State private var showCalendarPermissionAlert = false
+    @State private var isRequestingCalendarAccess = false
     @State private var includeRedFlaggedInRankList: Bool = true
     @State private var preferredEMR: String = ""
     @State private var preferredEMROtherDetail: String = ""
@@ -98,15 +100,24 @@ struct OnboardingFlowView: View {
             }
         }
         .preferredColorScheme(dataManager.preferences.appearanceMode.preferredColorScheme)
-        .id(dataManager.preferences.appearanceMode)
         .onAppear {
             loadProfileFromAuthAndPreferences()
+            loadMatchPreferencesState()
         }
         .onChange(of: dataManager.preferences.profile) { _, updatedProfile in
             mergeStoredProfileIntoLocalState(updatedProfile)
         }
+        .onChange(of: dataManager.preferences) { _, _ in
+            syncOnboardingProfileFromAuth()
+        }
+        .onChange(of: authManager.authState) { _, _ in
+            loadProfileFromAuthAndPreferences()
+        }
         .onChange(of: authManager.currentUser?.displayName) { _, _ in
             loadProfileFromAuthAndPreferences()
+        }
+        .onChange(of: dataManager.preferences.preferredEMR) { _, _ in
+            loadMatchPreferencesState()
         }
         .fullScreenCover(isPresented: $showMainApp) {
             MainTabView()
@@ -254,7 +265,10 @@ struct OnboardingFlowView: View {
             }
         )
         .onAppear {
-            loadProfileFromAuthAndPreferences()
+            syncOnboardingProfileFromAuth()
+        }
+        .task {
+            syncOnboardingProfileFromAuth()
         }
     }
     
@@ -394,6 +408,7 @@ struct OnboardingFlowView: View {
                                     .onChange(of: preferredEMROtherDetail) { _, newValue in
                                         let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
                                         preferredEMR = trimmed.isEmpty ? EMRSystem.other.rawValue : trimmed
+                                        persistPreferredEMRDraft()
                                     }
                             }
 
@@ -541,8 +556,7 @@ struct OnboardingFlowView: View {
                 preferredEMR = EMRSystem.other.rawValue
                 preferredEMROtherDetail = stored
             }
-        } else {
-            preferredEMR = ""
+        } else if preferredEMR.isEmpty {
             preferredEMROtherDetail = ""
         }
     }
@@ -551,6 +565,7 @@ struct OnboardingFlowView: View {
         guard let system else {
             preferredEMR = ""
             preferredEMROtherDetail = ""
+            persistPreferredEMRDraft()
             return
         }
         if system == .other {
@@ -560,6 +575,12 @@ struct OnboardingFlowView: View {
             preferredEMR = system.rawValue
             preferredEMROtherDetail = ""
         }
+        persistPreferredEMRDraft()
+    }
+
+    private func persistPreferredEMRDraft() {
+        dataManager.preferences.preferredEMR = resolvedPreferredEMRForSave()
+        dataManager.savePreferences()
     }
 
     private func resolvedPreferredEMRForSave() -> String? {
@@ -596,7 +617,7 @@ struct OnboardingFlowView: View {
                                 .padding(.horizontal, 20)
                         }
                         
-                        Toggle(isOn: $enableCalendarSync) {
+                        Toggle(isOn: onboardingCalendarSyncBinding) {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Enable Calendar Sync")
                                     .font(.arial(size: 17, weight: .medium))
@@ -605,6 +626,7 @@ struct OnboardingFlowView: View {
                                     .foregroundColor(.secondary)
                             }
                         }
+                        .disabled(isRequestingCalendarAccess)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 16)
                         .glassEffect(.regular, in: .rect(cornerRadius: 12))
@@ -627,6 +649,47 @@ struct OnboardingFlowView: View {
         .onAppear {
             // Initialize from existing preferences if available
             enableCalendarSync = dataManager.preferences.enableCalendarSync
+        }
+        .alert("Calendar Access Required", isPresented: $showCalendarPermissionAlert) {
+            Button("Settings") {
+                if let settingsUrl = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(settingsUrl)
+                }
+            }
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Matchly needs Full Calendar Access to create the Matchly Interviews calendar. In Settings, choose Full Access (not Add Events Only).")
+        }
+    }
+
+    private var onboardingCalendarSyncBinding: Binding<Bool> {
+        Binding(
+            get: { enableCalendarSync },
+            set: { newValue in
+                if newValue {
+                    enableCalendarSync = true
+                    requestCalendarAccessForOnboarding()
+                } else {
+                    enableCalendarSync = false
+                }
+            }
+        )
+    }
+
+    private func requestCalendarAccessForOnboarding() {
+        guard !isRequestingCalendarAccess else { return }
+        isRequestingCalendarAccess = true
+        Task {
+            let granted = await CalendarManager.shared.requestAccess()
+            await MainActor.run {
+                isRequestingCalendarAccess = false
+                if granted {
+                    CalendarManager.shared.checkAuthorizationStatus()
+                } else {
+                    enableCalendarSync = false
+                    showCalendarPermissionAlert = true
+                }
+            }
         }
     }
     
@@ -860,46 +923,54 @@ struct OnboardingFlowView: View {
             dataManager.recalculateAllScores()
         }
         
-        // If the user opted into calendar sync, actually request permission now.
-        // If access is denied, turn the preference back off so the stored state
-        // matches reality.
-        if enableCalendarSync {
-            Task {
-                let granted = await CalendarManager.shared.requestAccess()
-                if !granted {
-                    await MainActor.run {
-                        dataManager.preferences.enableCalendarSync = false
-                        dataManager.savePreferences()
-                    }
-                }
-            }
-        }
-        
         showMainApp = true
     }
 
     private func loadProfileFromAuthAndPreferences() {
+        syncOnboardingProfileFromAuth()
+    }
+
+    /// Keeps onboarding `@State profile` aligned with saved prefs and Apple/Google auth names.
+    private func syncOnboardingProfileFromAuth() {
+        authManager.applyProviderProfileNamesToLocalProfileIfNeeded()
+
+        if case .signedIn(let user) = authManager.authState {
+            dataManager.applyAuthUserToProfileIfNeeded(user)
+        } else if let user = authManager.currentUser {
+            dataManager.applyAuthUserToProfileIfNeeded(user)
+        }
+
         mergeStoredProfileIntoLocalState(dataManager.preferences.profile)
 
-        if let user = authManager.currentUser {
-            if let displayName = user.displayName?.trimmingCharacters(in: .whitespacesAndNewlines),
-               !displayName.isEmpty,
-               !AuthManager.isEmailDerivedDisplayName(displayName, email: user.email) {
-                let split = UserProfile.splitLegacyName(displayName)
-                if profile.firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                   !split.first.isEmpty {
-                    profile.firstName = split.first
-                }
-                if profile.lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                   !split.last.isEmpty {
-                    profile.lastName = split.last
-                }
-            }
+        guard case .signedIn = authManager.authState else { return }
 
-            if profile.photoData == nil, user.photoURL != nil {
-                Task {
-                    await dataManager.applyAuthPhotoToProfileIfNeeded(from: user.photoURL)
-                }
+        let existingName = profile.name
+        let resolved = authManager.preferredDisplayName(profileName: existingName)
+        guard resolved != "User" else { return }
+
+        let split = UserProfile.splitLegacyName(resolved)
+        var changed = false
+        if profile.firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           !split.first.isEmpty {
+            profile.firstName = split.first
+            changed = true
+        }
+        if profile.lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           !split.last.isEmpty {
+            profile.lastName = split.last
+            changed = true
+        }
+
+        if changed {
+            var stored = dataManager.preferences.profile
+            if stored.firstName.isEmpty { stored.firstName = profile.firstName }
+            if stored.lastName.isEmpty { stored.lastName = profile.lastName }
+            dataManager.replacePreferencesProfile(with: stored, persistImmediately: false)
+        }
+
+        if profile.photoData == nil, authManager.currentUser?.photoURL != nil {
+            Task {
+                await dataManager.applyAuthPhotoToProfileIfNeeded(from: authManager.currentUser?.photoURL)
             }
         }
     }
