@@ -354,7 +354,7 @@ struct OnboardingFlowView: View {
                                         Text("Not set")
                                     }
                                 }
-                                ForEach(EMRSystem.allCases) { system in
+                                ForEach(EMRSystem.menuChoices) { system in
                                     Button {
                                         selectPreferredEMR(system)
                                     } label: {

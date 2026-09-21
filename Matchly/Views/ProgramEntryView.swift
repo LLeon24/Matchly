@@ -79,12 +79,23 @@ struct ProgramEntryView: View {
     // New comprehensive questionnaire
     @State private var questionnaire: Questionnaire = Questionnaire()
     @State private var expandedSections: Set<String> = [] // Track which sections are expanded
-    @State private var scrollProxy: ScrollViewProxy? = nil // Notes + questionnaire auto-scroll
+    /// Bumped to run `scrollTo` from inside `ScrollViewReader` (stored `ScrollViewProxy` is unreliable).
+    @State private var programScrollToken = 0
+    @State private var pendingProgramScrollID: String?
+    @State private var pendingProgramScrollAnchor: UnitPoint = ProgramEntryView.nextQuestionScrollAnchor
+    @State private var pendingProgramScrollSectionId: String?
 
     /// Positions the next question below mid-screen so the just-answered question stays visible above.
     private static let nextQuestionScrollAnchor = UnitPoint(x: 0.5, y: 0.42)
     private static let questionScrollAnimation = Animation.easeInOut(duration: 0.2)
-    private static let questionScrollDelay: TimeInterval = 0.08
+    /// Faint highlight when EMR still needs a selection (not bright teal).
+    private static let emrPromptFill = Color(red: 0.92, green: 0.95, blue: 0.99)
+    private static let emrPromptStroke = Color(red: 0.78, green: 0.86, blue: 0.96)
+    private static let emrPromptChevron = Color(red: 0.55, green: 0.68, blue: 0.88)
+
+    private static func sectionHeaderScrollID(_ sectionId: String) -> String {
+        "matchly-section-header-\(sectionId)"
+    }
     
     init(program: Program?, scrollToFirstMissing: Bool = false, scrollToRedFlags: Bool = false) {
         self.program = program
@@ -94,6 +105,7 @@ struct ProgramEntryView: View {
     
     // MARK: - Form Content (now using ScrollView for better scrolling)
     private var formContent: some View {
+        ScrollViewReader { scrollProxy in
         ScrollView(.vertical) {
             LazyVStack(spacing: 16, pinnedViews: [.sectionHeaders]) {
                 // Basic Information Section (only show if hospital not selected)
@@ -246,13 +258,7 @@ struct ProgramEntryView: View {
                             }
                             .onChange(of: isNotesFocused) { oldValue, newValue in
                                 if newValue {
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                                        if let proxy = scrollProxy {
-                                            withAnimation(Self.questionScrollAnimation) {
-                                                proxy.scrollTo("notes-section", anchor: .center)
-                                            }
-                                        }
-                                    }
+                                    requestProgramScroll(to: "notes-section", anchor: .center)
                                 }
                             }
                         }
@@ -291,6 +297,18 @@ struct ProgramEntryView: View {
                 keyboardHeight = 0
             }
         }
+        .onChange(of: programScrollToken) { _, _ in
+            guard let scrollID = pendingProgramScrollID else { return }
+            let anchor = pendingProgramScrollAnchor
+            let sectionId = pendingProgramScrollSectionId
+            performProgramScroll(
+                scrollID: scrollID,
+                sectionId: sectionId,
+                anchor: anchor,
+                using: scrollProxy
+            )
+        }
+        }
     }
     
     // MARK: - EMR Selection (Section E)
@@ -299,6 +317,8 @@ struct ProgramEntryView: View {
         let selectedIsSpecific = emr.flatMap { EMRSystem(rawValue: $0)?.isSpecific } ?? false
         let preferredIsSpecific = preferred.flatMap { EMRSystem(rawValue: $0)?.isSpecific } ?? false
         let isOtherSelected = EMRSystem.isOtherOrCustom(emr)
+        let isEMRNotApplicable = EMRSystem.isNotApplicable(emr)
+        let emrNeedsSelection = emr == nil || (emr?.isEmpty == true)
 
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
@@ -307,7 +327,7 @@ struct ProgramEntryView: View {
                     .foregroundColor(.teal)
                 Text("Electronic Medical Record (EMR)")
                     .font(.arial(size: 14, weight: .semibold))
-                if preferredIsSpecific, emr == nil {
+                if preferredIsSpecific, emrNeedsSelection {
                     Text("Required")
                         .font(.arial(size: 10, weight: .bold))
                         .foregroundColor(AppColors.pipelineNeedDate)
@@ -322,41 +342,83 @@ struct ProgramEntryView: View {
                 .font(.arial(size: 12))
                 .foregroundColor(.secondary)
 
-            Menu {
-                Button(action: {
-                    emr = nil
-                    emrOtherDetail = ""
-                }) {
-                    if emr == nil {
-                        Label("Not selected", systemImage: "checkmark")
-                    } else {
-                        Text("Not selected")
-                    }
-                }
-                ForEach(EMRSystem.allCases) { system in
-                    Button(action: { selectEMR(system) }) {
-                        if EMRSystem.matchesSelection(emr, system: system) {
-                            Label(system.displayName, systemImage: "checkmark")
+            HStack(spacing: 8) {
+                Menu {
+                    Button(action: {
+                        emr = nil
+                        emrOtherDetail = ""
+                    }) {
+                        if emrNeedsSelection {
+                            Label("Not selected", systemImage: "checkmark")
                         } else {
-                            Text(system.displayName)
+                            Text("Not selected")
                         }
                     }
+                    ForEach(EMRSystem.menuChoices) { system in
+                        Button(action: { selectEMR(system) }) {
+                            if EMRSystem.matchesSelection(emr, system: system) {
+                                Label(system.displayName, systemImage: "checkmark")
+                            } else {
+                                Text(system.displayName)
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(emrMenuLabel)
+                            .font(.arial(size: 13, weight: .medium))
+                            .foregroundColor(emrNeedsSelection && !isEMRNotApplicable ? .secondary : .primary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                        Spacer(minLength: 4)
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.arial(size: 10))
+                            .foregroundColor(emrNeedsSelection && !isEMRNotApplicable ? Self.emrPromptChevron : .secondary)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, minHeight: 36)
+                    .background {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(emrNeedsSelection && !isEMRNotApplicable ? Self.emrPromptFill : Color.clear)
+                    }
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(
+                                emrNeedsSelection && !isEMRNotApplicable ? Self.emrPromptStroke : Color.clear,
+                                lineWidth: emrNeedsSelection && !isEMRNotApplicable ? 1 : 0
+                            )
+                    }
+                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 8))
                 }
-            } label: {
-                HStack {
-                    Text(emrMenuLabel)
-                        .font(.arial(size: 14, weight: .medium))
-                        .foregroundColor(emr == nil ? .secondary : .primary)
-                    Spacer()
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.arial(size: 11))
-                        .foregroundColor(.secondary)
+                .buttonStyle(.plain)
+
+                Button(action: {
+                    if isEMRNotApplicable {
+                        emr = nil
+                    } else {
+                        emr = EMRSystem.notApplicable.rawValue
+                        emrOtherDetail = ""
+                    }
+                }) {
+                    Text("N/A")
+                        .font(.arial(size: 11, weight: .semibold))
+                        .foregroundColor(isEMRNotApplicable ? .white : .secondary)
+                        .frame(width: 44, height: 36)
+                        .background {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(isEMRNotApplicable ? Color.secondary : Color(.tertiarySystemFill))
+                        }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 10))
+                .buttonStyle(.plain)
+                .accessibilityLabel(isEMRNotApplicable ? "EMR not applicable, selected" : "Mark EMR as not applicable")
             }
-            .buttonStyle(.plain)
+
+            if isEMRNotApplicable {
+                Text("EMR won't affect this program's score (same as N/A on other questions).")
+                    .font(.arial(size: 11))
+                    .foregroundColor(.secondary)
+            }
 
             if isOtherSelected {
                 ClearableTextField("Type EMR name", text: $emrOtherDetail)
@@ -393,6 +455,9 @@ struct ProgramEntryView: View {
     }
 
     private var emrMenuLabel: String {
+        if EMRSystem.isNotApplicable(emr) {
+            return "N/A"
+        }
         guard let emr else { return "Select EMR" }
         if EMRSystem.isOtherOrCustom(emr) {
             let trimmed = emrOtherDetail.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -402,6 +467,11 @@ struct ProgramEntryView: View {
     }
 
     private func selectEMR(_ system: EMRSystem) {
+        if system == .notApplicable {
+            emr = EMRSystem.notApplicable.rawValue
+            emrOtherDetail = ""
+            return
+        }
         if system == .other {
             let trimmed = emrOtherDetail.trimmingCharacters(in: .whitespacesAndNewlines)
             emr = trimmed.isEmpty ? EMRSystem.other.rawValue : trimmed
@@ -426,7 +496,7 @@ struct ProgramEntryView: View {
     }
 
     private var questionnaireUnansweredCount: Int {
-        questionnaire.unansweredCount(preferences: dataManager.preferences)
+        questionnaire.unansweredCount(preferences: dataManager.preferences, programEMR: emr)
     }
 
     private var questionnaireCompletionBanner: some View {
@@ -444,7 +514,7 @@ struct ProgramEntryView: View {
 
                 Spacer(minLength: 8)
 
-                Button("Jump to next") {
+                Button("Jump to unanswered") {
                     scrollToFirstUnansweredQuestion()
                 }
                 .font(.arial(size: 14, weight: .semibold))
@@ -593,7 +663,7 @@ struct ProgramEntryView: View {
 
                                                     if oldValue == 0 && newValue > 0 {
                                                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                                            scrollToNextQuestion(currentSectionId: section.id, currentItemId: item.id)
+                                                            scrollToFirstUnansweredQuestion()
                                                         }
                                                     }
                                                 }
@@ -625,6 +695,7 @@ struct ProgramEntryView: View {
                 } header: {
                     questionnaireSectionHeader(
                         title: section.title,
+                        sectionId: section.id,
                         unansweredCount: sectionUnansweredCount(section),
                         accentColor: questionnaireSectionColor(title: section.title, sectionId: section.id),
                         isExpanded: sectionExpansionBinding(for: section.id)
@@ -662,7 +733,7 @@ struct ProgramEntryView: View {
 
                                                     if oldValue == 0 && newValue > 0 {
                                                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                                            scrollToNextQuestion(currentSectionId: customSection.id, currentItemId: item.id)
+                                                            scrollToFirstUnansweredQuestion()
                                                         }
                                                     }
                                                 }
@@ -687,6 +758,7 @@ struct ProgramEntryView: View {
                 } header: {
                     questionnaireSectionHeader(
                         title: customSection.title,
+                        sectionId: customSection.id,
                         unansweredCount: sectionUnansweredCount(customSection),
                         accentColor: questionnaireSectionColor(title: customSection.title, sectionId: customSection.id),
                         isExpanded: sectionExpansionBinding(for: customSection.id)
@@ -962,7 +1034,7 @@ struct ProgramEntryView: View {
                     }
                 } else {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        scrollProxy?.scrollTo("program-entry-top", anchor: .top)
+                        requestProgramScroll(to: "program-entry-top", anchor: .top)
                     }
                 }
             }
@@ -1162,12 +1234,7 @@ struct ProgramEntryView: View {
                     .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 10))
                 }
                 
-                ScrollViewReader { proxy in
-                    formContent
-                        .onAppear {
-                            scrollProxy = proxy
-                        }
-                }
+                formContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .navigationTitle(program == nil ? (hospital.isEmpty ? "Add Program" : "") : "Edit Program")
@@ -1360,67 +1427,83 @@ struct ProgramEntryView: View {
         return false
     }
     
-    /// Scrolls to the next enabled question while keeping the answered question visible above it.
-    private func scrollToNextQuestion(currentSectionId: String, currentItemId: String) {
-        let allSections = questionnaire.enabledSections(preferences: dataManager.preferences)
-        var allQuestions: [(sectionId: String, itemId: String)] = []
-
-        for section in allSections {
-            let enabledItems = questionnaire.enabledItems(for: section, preferences: dataManager.preferences)
-            for item in enabledItems {
-                allQuestions.append((sectionId: section.id, itemId: item.id))
-            }
-        }
-
-        guard let currentIndex = allQuestions.firstIndex(where: {
-            $0.sectionId == currentSectionId && $0.itemId == currentItemId
-        }) else {
-            return
-        }
-
-        let nextIndex = currentIndex + 1
-        guard nextIndex < allQuestions.count else { return }
-
-        let nextQuestion = allQuestions[nextIndex]
-        scrollToQuestion(sectionId: nextQuestion.sectionId, itemId: nextQuestion.itemId)
-    }
-
     private func scrollToFirstUnansweredQuestion() {
-        guard let target = questionnaire.firstUnansweredQuestion(preferences: dataManager.preferences) else { return }
-        scrollToQuestion(sectionId: target.sectionId, itemId: target.itemId)
+        guard let target = questionnaire.firstUnansweredQuestion(
+            preferences: dataManager.preferences,
+            programEMR: emr
+        ) else { return }
+        scrollToQuestion(target)
     }
 
     private func scrollToFirstRedFlag() {
         guard let target = questionnaire.firstFlaggedRedFlagQuestion() else { return }
-        scrollToQuestion(sectionId: target.sectionId, itemId: target.itemId)
+        scrollToQuestion(target)
+    }
+
+    private func scrollToQuestion(_ ref: QuestionnaireQuestionRef) {
+        scrollToQuestion(sectionId: ref.sectionId, scrollID: ref.scrollID)
     }
 
     private func scrollToQuestion(sectionId: String, itemId: String) {
-        if !expandedSections.contains(sectionId) {
+        scrollToQuestion(
+            sectionId: sectionId,
+            scrollID: QuestionnaireQuestionRef(sectionId: sectionId, itemId: itemId).scrollID
+        )
+    }
+
+    private func scrollToQuestion(sectionId: String, scrollID: String) {
+        _ = withAnimation(Self.questionScrollAnimation) {
             expandedSections.insert(sectionId)
         }
+        requestProgramScroll(
+            to: scrollID,
+            anchor: Self.nextQuestionScrollAnchor,
+            sectionId: sectionId
+        )
+    }
 
-        let questionId = "\(sectionId)-\(itemId)"
+    private func requestProgramScroll(
+        to scrollID: String,
+        anchor: UnitPoint,
+        sectionId: String? = nil
+    ) {
+        pendingProgramScrollID = scrollID
+        pendingProgramScrollAnchor = anchor
+        pendingProgramScrollSectionId = sectionId
+        programScrollToken += 1
+    }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.questionScrollDelay) {
-            scrollProxy?.scrollTo(questionId, anchor: Self.nextQuestionScrollAnchor)
+    /// Expands lazy questionnaire rows, scrolls near the section, then lands on the question id.
+    private func performProgramScroll(
+        scrollID: String,
+        sectionId: String?,
+        anchor: UnitPoint,
+        using proxy: ScrollViewProxy
+    ) {
+        let firstDelay: TimeInterval = sectionId == nil ? 0.05 : 0.22
+        DispatchQueue.main.asyncAfter(deadline: .now() + firstDelay) {
+            if let sectionId {
+                withAnimation(Self.questionScrollAnimation) {
+                    proxy.scrollTo(Self.sectionHeaderScrollID(sectionId), anchor: .top)
+                }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + (sectionId == nil ? 0 : 0.18)) {
+                withAnimation(Self.questionScrollAnimation) {
+                    proxy.scrollTo(scrollID, anchor: anchor)
+                }
+                if sectionId != nil {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        proxy.scrollTo(scrollID, anchor: anchor)
+                    }
+                }
+            }
         }
     }
 
     private func sectionUnansweredCount(_ section: QuestionnaireSection) -> Int {
-        let ratingByItemID = Dictionary(uniqueKeysWithValues: section.items.map { ($0.id, $0.programRating) })
-        var count = questionnaire.enabledItems(for: section, preferences: dataManager.preferences)
-            .filter { (ratingByItemID[$0.id] ?? $0.programRating) == 0 }
+        questionnaire.unansweredQuestions(preferences: dataManager.preferences, programEMR: emr)
+            .filter { $0.sectionId == section.id }
             .count
-
-        if section.id == SectionWeighting.sectionEId,
-           let preferred = dataManager.preferences.preferredEMR,
-           EMRSystem(rawValue: preferred)?.isSpecific == true,
-           emr == nil {
-            count += 1
-        }
-
-        return count
     }
 
     // Helper function to check if we should auto-expand next section
@@ -1888,6 +1971,7 @@ extension ProgramEntryView {
 
     func questionnaireSectionHeader(
         title: String,
+        sectionId: String,
         unansweredCount: Int = 0,
         accentColor: Color = AppColors.primaryBlue,
         isExpanded: Binding<Bool>
@@ -1929,6 +2013,7 @@ extension ProgramEntryView {
         .buttonStyle(.plain)
         .background(AppColors.dashboardCanvas)
         .padding(.horizontal, 20)
+        .id(Self.sectionHeaderScrollID(sectionId))
     }
 
     @ViewBuilder

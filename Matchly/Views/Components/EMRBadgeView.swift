@@ -22,6 +22,7 @@ extension EMRSystem {
         case .cpsiEvident: return "CPSI"
         case .other: return "Other"
         case .notSure: return "Not sure"
+        case .notApplicable: return "N/A"
         }
     }
 
@@ -38,6 +39,7 @@ extension EMRSystem {
         case .cpsiEvident: return "P"
         case .other: return "?"
         case .notSure: return "?"
+        case .notApplicable: return "—"
         }
     }
 
@@ -52,7 +54,7 @@ extension EMRSystem {
         case .eClinicalWorks: return Color(red: 0.10, green: 0.55, blue: 0.45)
         case .nextGen: return Color(red: 0.00, green: 0.35, blue: 0.65)
         case .cpsiEvident: return Color(red: 0.20, green: 0.40, blue: 0.70)
-        case .other, .notSure: return .secondary
+        case .other, .notSure, .notApplicable: return .secondary
         }
     }
 }

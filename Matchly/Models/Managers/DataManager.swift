@@ -102,10 +102,10 @@ class DataManager: ObservableObject {
     
     init() {
         loadData()
-        publishWidgetSnapshot()
         bootstrapLocalSyncTimestampsIfNeeded()
         observeCatalogReadiness()
         observeCloudSyncTriggers()
+        observeWidgetInterviewSnapshotUpdates()
         validateAndSanitizeSignals()
         // Defer cloud sync so the first frame can render from local storage.
         scheduleCloudMerge(trigger: "launch", delay: 1.25)
@@ -134,6 +134,30 @@ class DataManager: ObservableObject {
                 self?.publishWidgetSnapshot()
             }
             .store(in: &cancellables)
+    }
+
+    /// Keeps the home-screen widget in sync whenever interview-relevant program fields change.
+    private func observeWidgetInterviewSnapshotUpdates() {
+        $programs
+            .map { Self.widgetSnapshotFingerprint(for: $0) }
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.publishWidgetSnapshot()
+            }
+            .store(in: &cancellables)
+    }
+
+    /// Fields that appear in the widget (dates, titles, subtitles). Score-only edits are ignored.
+    private static func widgetSnapshotFingerprint(for programs: [Program]) -> String {
+        programs.map { program in
+            let date = program.interviewDate.map { String(format: "%.0f", $0.timeIntervalSince1970) } ?? "none"
+            let titleSource = program.hospital.isEmpty ? program.name : program.hospital
+            let location = program.hasDisplayLocation ? program.displayCityState : ""
+            return "\(program.id)|\(date)|\(titleSource)|\(program.specialty)|\(location)"
+        }
+        .sorted()
+        .joined(separator: ";")
     }
 
     private func scheduleCloudMerge(trigger: String, delay: TimeInterval) {
@@ -175,8 +199,6 @@ class DataManager: ObservableObject {
     }
     
     func savePrograms() {
-        publishWidgetSnapshot()
-
         // Cancel previous save operation
         saveProgramsWorkItem?.cancel()
 
@@ -309,6 +331,38 @@ class DataManager: ObservableObject {
         
         savePreferencesWorkItem = workItem
         saveQueue.asyncAfter(deadline: .now() + 0.5, execute: workItem)
+    }
+
+    func savePreferencesImmediately() {
+        savePreferencesWorkItem?.cancel()
+
+        do {
+            let encoded = try JSONEncoder().encode(preferences)
+            UserDefaults.standard.set(encoded, forKey: preferencesKey)
+            clearScoreCache()
+            if !isApplyingRemoteCloudSnapshot {
+                touchLocalPreferencesTimestamp()
+            }
+
+            if cloudSync.isCloudAvailable, !isApplyingRemoteCloudSnapshot {
+                let snapshot = programs
+                let prefs = preferences
+                let updatedAt = localPreferencesUpdatedAt ?? Date()
+                DispatchQueue.global(qos: .utility).async { [weak self] in
+                    self?.cloudSync.syncPreferencesToCloud(
+                        programs: snapshot,
+                        preferences: prefs,
+                        preferencesUpdatedAt: updatedAt
+                    )
+                }
+            }
+            if !isApplyingAccountCloudSnapshot {
+                scheduleAccountCloudPush()
+            }
+            scheduleCoupleCloudPublish()
+        } catch {
+            Self.logger.error("Error saving preferences: \(error.localizedDescription, privacy: .public)")
+        }
     }
     
     func loadPreferences() {
@@ -517,6 +571,44 @@ class DataManager: ObservableObject {
         UserDefaults.standard.set(date.timeIntervalSince1970, forKey: localPreferencesUpdatedAtKey)
     }
 
+    /// Pull remote programs when cloud is newer, or on first local load (no sync timestamp yet).
+    private func shouldRestoreProgramsFromCloud(cloudUpdatedAt: Date) -> Bool {
+        let localUpdatedAt = localProgramsUpdatedAt ?? .distantPast
+        if cloudUpdatedAt > localUpdatedAt { return true }
+        return programs.isEmpty && localProgramsUpdatedAt == nil
+    }
+
+    /// Pull remote preferences when cloud is newer, or before the user has meaningful local prefs and a sync timestamp.
+    private func shouldRestorePreferencesFromCloud(cloudUpdatedAt: Date) -> Bool {
+        let localUpdatedAt = localPreferencesUpdatedAt ?? .distantPast
+        if cloudUpdatedAt > localUpdatedAt { return true }
+        return localPreferencesUpdatedAt == nil && !hasMeaningfulLocalPreferences
+    }
+
+    /// Settings → Reset All Data: clear local content, push empty state to cloud, refresh widget.
+    @MainActor
+    func resetAllLocalContent() {
+        accountCloudPushWorkItem?.cancel()
+        saveProgramsWorkItem?.cancel()
+        savePreferencesWorkItem?.cancel()
+
+        programs = []
+        preferences = UserPreferences()
+        clearScoreCache()
+
+        UserDefaults.standard.removeObject(forKey: manualRankOrderKey)
+
+        touchLocalProgramsTimestamp()
+        touchLocalPreferencesTimestamp()
+
+        saveProgramsImmediately()
+        savePreferencesImmediately()
+        objectWillChange.send()
+        Self.logger.info("Reset all local Matchly content")
+
+        Task { await pushAccountCloudBackup() }
+    }
+
     @MainActor
     @discardableResult
     func mergeWithCloudIfNeeded(trigger: String) async -> CloudSyncMergeOutcome {
@@ -536,7 +628,7 @@ class DataManager: ObservableObject {
         var pushedLocal = false
 
         if cloud.programs != nil {
-            if programs.isEmpty || cloudProgramsAt > localProgramsAt {
+            if shouldRestoreProgramsFromCloud(cloudUpdatedAt: cloudProgramsAt) {
                 pulledPrograms = true
             } else if localProgramsAt > cloudProgramsAt {
                 cloudSync.syncProgramsToCloud(
@@ -556,7 +648,7 @@ class DataManager: ObservableObject {
         }
 
         if cloud.preferences != nil {
-            if !hasMeaningfulLocalPreferences || cloudPreferencesAt > localPreferencesAt {
+            if shouldRestorePreferencesFromCloud(cloudUpdatedAt: cloudPreferencesAt) {
                 pulledPreferences = true
             } else if localPreferencesAt > cloudPreferencesAt {
                 cloudSync.syncPreferencesToCloud(
@@ -670,7 +762,10 @@ class DataManager: ObservableObject {
                programsJSON,
                preservingLocalVoiceMemosFrom: await MainActor.run { self.programs }
            ) {
-            if await MainActor.run(body: { self.programs.isEmpty }) || remoteProgramsAt > localProgramsAt {
+            let shouldRestorePrograms = await MainActor.run {
+                self.shouldRestoreProgramsFromCloud(cloudUpdatedAt: remoteProgramsAt)
+            }
+            if shouldRestorePrograms {
                 await MainActor.run {
                     self.programs = remotePrograms
                     self.persistProgramsToDisk()
@@ -688,8 +783,10 @@ class DataManager: ObservableObject {
 
         if let preferencesJSON = backup.preferencesJSON,
            let remotePreferences = try? JSONDecoder().decode(UserPreferences.self, from: preferencesJSON) {
-            let meaningful = await MainActor.run(body: { self.hasMeaningfulLocalPreferences })
-            if !meaningful || remotePreferencesAt > localPreferencesAt {
+            let shouldRestorePreferences = await MainActor.run {
+                self.shouldRestorePreferencesFromCloud(cloudUpdatedAt: remotePreferencesAt)
+            }
+            if shouldRestorePreferences {
                 await MainActor.run {
                     self.preferences = remotePreferences
                     self.applyInterviewPrepListMigrationIfNeeded(persist: false)
@@ -706,9 +803,11 @@ class DataManager: ObservableObject {
 
         if let remoteOrder = backup.manualRankOrder, !remoteOrder.isEmpty {
             let localOrder = UserDefaults.standard.array(forKey: manualRankOrderKey) as? [String] ?? []
-            if localOrder.isEmpty || remoteProgramsAt >= localProgramsAt {
+            let localProgramsAt = localProgramsUpdatedAt ?? .distantPast
+            if remoteProgramsAt > localProgramsAt
+                || (localOrder.isEmpty && localProgramsUpdatedAt == nil) {
                 UserDefaults.standard.set(remoteOrder, forKey: manualRankOrderKey)
-            } else {
+            } else if localProgramsAt > remoteProgramsAt {
                 shouldPush = true
             }
         } else if UserDefaults.standard.array(forKey: manualRankOrderKey) != nil {
@@ -768,13 +867,14 @@ class DataManager: ObservableObject {
     func clearWidgetSnapshot() {
         guard let shared = UserDefaults(suiteName: Self.widgetAppGroupID) else { return }
         shared.removeObject(forKey: Self.widgetInterviewsKey)
+        shared.removeObject(forKey: Self.widgetSnapshotUpdatedAtKey)
+        shared.synchronize()
         WidgetCenter.shared.reloadTimelines(ofKind: Self.widgetKind)
     }
 
     private func persistProgramsToDisk() {
         guard let encoded = try? JSONEncoder().encode(programs) else { return }
         UserDefaults.standard.set(encoded, forKey: programsKey)
-        publishWidgetSnapshot()
     }
 
     // MARK: - Widget Snapshot
@@ -782,6 +882,7 @@ class DataManager: ObservableObject {
     /// Shared with MatchlyWidgetExtension via the App Group container.
     static let widgetAppGroupID = "group.com.lestarlu.matchly"
     static let widgetInterviewsKey = "widget_upcoming_interviews"
+    static let widgetSnapshotUpdatedAtKey = "widget_snapshot_updated_at"
     static let widgetKind = "MatchlyWidget"
 
     /// Publishes upcoming interviews (today onward) as plain plist values so the
@@ -817,6 +918,8 @@ class DataManager: ObservableObject {
 
         let reloadWidget = {
             shared.set(upcoming, forKey: Self.widgetInterviewsKey)
+            shared.set(Date().timeIntervalSince1970, forKey: Self.widgetSnapshotUpdatedAtKey)
+            shared.synchronize()
             WidgetCenter.shared.reloadTimelines(ofKind: Self.widgetKind)
         }
         if Thread.isMainThread {

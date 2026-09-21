@@ -86,7 +86,20 @@ extension UIImage {
         return CGSize(width: width, height: height)
     }
 
+    /// Upright image for library imports (applies full EXIF orientation, including un-mirror).
     nonisolated func fixedOrientation() -> UIImage {
+        fixedOrientation(applyMirrorCorrection: true)
+    }
+
+    nonisolated func mirroredHorizontally() -> UIImage {
+        UIGraphicsImageRenderer(size: size).image { context in
+            context.cgContext.translateBy(x: size.width, y: 0)
+            context.cgContext.scaleBy(x: -1, y: 1)
+            draw(in: CGRect(origin: .zero, size: size))
+        }
+    }
+
+    nonisolated private func fixedOrientation(applyMirrorCorrection: Bool) -> UIImage {
         if imageOrientation == .up {
             return self
         }
@@ -107,15 +120,17 @@ extension UIImage {
             break
         }
 
-        switch imageOrientation {
-        case .upMirrored, .downMirrored:
-            transform = transform.translatedBy(x: size.width, y: 0)
-            transform = transform.scaledBy(x: -1, y: 1)
-        case .leftMirrored, .rightMirrored:
-            transform = transform.translatedBy(x: size.height, y: 0)
-            transform = transform.scaledBy(x: -1, y: 1)
-        default:
-            break
+        if applyMirrorCorrection {
+            switch imageOrientation {
+            case .upMirrored, .downMirrored:
+                transform = transform.translatedBy(x: size.width, y: 0)
+                transform = transform.scaledBy(x: -1, y: 1)
+            case .leftMirrored, .rightMirrored:
+                transform = transform.translatedBy(x: size.height, y: 0)
+                transform = transform.scaledBy(x: -1, y: 1)
+            default:
+                break
+            }
         }
 
         guard let cgImage, let colorSpace = cgImage.colorSpace else {

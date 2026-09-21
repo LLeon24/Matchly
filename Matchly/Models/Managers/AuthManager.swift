@@ -184,9 +184,14 @@ class AuthManager: ObservableObject {
     }
 
     /// Align local session with Firebase Auth after `FirebaseApp.configure()`.
-    /// Never clears a valid local session on launch — that caused a flash of the login
-    /// screen before Face ID / cached session restored the user.
+    /// Only restores when this install already has a saved local session (UserDefaults).
+    /// Firebase tokens can survive app deletion in the Keychain; without this guard, reinstall
+    /// would skip the login screen and jump straight to Face ID unlock.
     func syncWithFirebaseSession() {
+        guard UserDefaults.standard.data(forKey: authKey) != nil else {
+            clearOrphanPersistedCredentialsAfterReinstall()
+            return
+        }
         guard let firebaseUser = Auth.auth().currentUser else { return }
         let user = makeUser(from: firebaseUser, existing: currentUser)
         signIn(user: user)
@@ -209,9 +214,34 @@ class AuthManager: ObservableObject {
                 self.isAppLocked = true
             }
         } else {
+            clearOrphanPersistedCredentialsAfterReinstall()
             self.authState = .signedOut
             self.isAppLocked = false
         }
+    }
+
+    /// After delete-and-reinstall, UserDefaults is empty but Firebase / Keychain may still hold credentials.
+    private func clearOrphanPersistedCredentialsAfterReinstall() {
+        guard UserDefaults.standard.data(forKey: authKey) == nil else { return }
+
+        currentUser = nil
+        isBiometricLoginEnabled = false
+        UserDefaults.standard.set(false, forKey: Self.biometricEnabledKey)
+        isAppLocked = false
+        isBiometricUnlockInFlight = false
+        shouldShowBiometricRetry = false
+        biometricUnlockError = nil
+
+        if FirebaseApp.app() != nil {
+            try? Auth.auth().signOut()
+        }
+        GIDSignIn.sharedInstance.signOut()
+
+        Self.keychainDelete(account: Self.keychainAppleUserAccount)
+        Self.keychainDelete(account: Self.keychainAppleDisplayNameAccount)
+        Self.keychainDelete(account: Self.keychainCachedUserAccount)
+
+        Self.logger.info("Cleared orphaned auth after missing local session (e.g. app reinstall)")
     }
     
     func signIn(user: User) {

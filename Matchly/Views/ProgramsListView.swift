@@ -509,6 +509,10 @@ struct CompactProgramRowView: View {
             Spacer()
         }
         .padding(.vertical, 6)
+        .programRedFlagLeadingStripe(
+            isRedFlagged: program.hasRedFlags(),
+            listLeadingInset: 10
+        )
     }
     
 }

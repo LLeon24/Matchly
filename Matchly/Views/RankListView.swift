@@ -690,14 +690,10 @@ struct RankListItemView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.vertical, 10)
-        .overlay(alignment: .leading) {
-            if showsElevatedRedFlag {
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(Color.red.opacity(0.75))
-                    .frame(width: 3)
-                    .padding(.vertical, 8)
-            }
-        }
+        .programRedFlagLeadingStripe(
+            isRedFlagged: program.hasRedFlags(),
+            listLeadingInset: 12
+        )
     }
 
     private var rankScoreRail: some View {

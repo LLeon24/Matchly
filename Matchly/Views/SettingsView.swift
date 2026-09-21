@@ -357,7 +357,7 @@ struct SettingsView: View {
                         }
                     )) {
                         Text("Not set").tag("")
-                        ForEach(EMRSystem.allCases) { system in
+                        ForEach(EMRSystem.menuChoices) { system in
                             Text(system.displayName).tag(system.rawValue)
                         }
                     }
@@ -548,10 +548,7 @@ struct SettingsView: View {
     }
 
     private func resetAllData() {
-        dataManager.programs = []
-        dataManager.preferences = UserPreferences()
-        dataManager.savePrograms()
-        dataManager.savePreferences()
+        dataManager.resetAllLocalContent()
     }
 }
 

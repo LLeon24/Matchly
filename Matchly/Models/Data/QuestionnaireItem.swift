@@ -8,10 +8,16 @@
 import Foundation
 
 struct QuestionnaireQuestionRef: Equatable, Hashable {
+    static let emrPickerItemId = "matchly.emr"
+    static let emrScrollID = "matchly.section.e-emr"
+
     let sectionId: String
     let itemId: String
 
-    var scrollID: String { "\(sectionId)-\(itemId)" }
+    var scrollID: String {
+        if itemId == Self.emrPickerItemId { return Self.emrScrollID }
+        return "\(sectionId)-\(itemId)"
+    }
 }
 
 struct QuestionnaireItem: Codable, Identifiable, Equatable {
@@ -377,7 +383,7 @@ struct Questionnaire: Codable, Equatable {
 
             if section.id == SectionWeighting.sectionEId, countsEMRForCompletion(preferredEMR: preferences.preferredEMR) {
                 total += 1
-                if programEMR != nil {
+                if emrAnsweredForCompletion(programEMR) {
                     answered += 1
                 }
             }
@@ -418,30 +424,49 @@ struct Questionnaire: Codable, Equatable {
         return preferred.isSpecific
     }
 
+    private func emrAnsweredForCompletion(_ programEMR: String?) -> Bool {
+        guard let programEMR, !programEMR.isEmpty else { return false }
+        return true
+    }
+
     /// True when any enabled questionnaire item still needs an answer.
     func needsScoring(preferences: UserPreferences, programEMR: String? = nil) -> Bool {
         questionnaireCompletionRatio(preferences: preferences, programEMR: programEMR) < 1.0
     }
 
-    /// Enabled questions that still have no rating (programRating == 0).
-    func unansweredQuestions(preferences: UserPreferences) -> [QuestionnaireQuestionRef] {
+    /// Enabled questions that still have no rating (programRating == 0), plus EMR in Section E when required.
+    func unansweredQuestions(preferences: UserPreferences, programEMR: String? = nil) -> [QuestionnaireQuestionRef] {
         var unanswered: [QuestionnaireQuestionRef] = []
-        let allSections = sections + customSections
+        let orderedSections = enabledSections(preferences: preferences)
 
-        for section in allSections {
+        for section in orderedSections {
             if isRedFlagSection(section) { continue }
-            guard sectionIsEnabled(section, preferences: preferences, allSections: allSections) else { continue }
 
-            for item in enabledItems(for: section, preferences: preferences) where item.programRating == 0 {
-                unanswered.append(QuestionnaireQuestionRef(sectionId: section.id, itemId: item.id))
+            let ratingByItemID = Dictionary(uniqueKeysWithValues: section.items.map { ($0.id, $0.programRating) })
+            for item in enabledItems(for: section, preferences: preferences) {
+                let rating = ratingByItemID[item.id] ?? item.programRating
+                if rating == 0 {
+                    unanswered.append(QuestionnaireQuestionRef(sectionId: section.id, itemId: item.id))
+                }
+            }
+
+            if section.id == SectionWeighting.sectionEId,
+               countsEMRForCompletion(preferredEMR: preferences.preferredEMR),
+               !emrAnsweredForCompletion(programEMR) {
+                unanswered.append(
+                    QuestionnaireQuestionRef(
+                        sectionId: section.id,
+                        itemId: QuestionnaireQuestionRef.emrPickerItemId
+                    )
+                )
             }
         }
 
         return unanswered
     }
 
-    func firstUnansweredQuestion(preferences: UserPreferences) -> QuestionnaireQuestionRef? {
-        unansweredQuestions(preferences: preferences).first
+    func firstUnansweredQuestion(preferences: UserPreferences, programEMR: String? = nil) -> QuestionnaireQuestionRef? {
+        unansweredQuestions(preferences: preferences, programEMR: programEMR).first
     }
 
     /// First red-flag question the user marked Yes (or No on inverted positive questions).
@@ -463,8 +488,8 @@ struct Questionnaire: Codable, Equatable {
         return nil
     }
 
-    func unansweredCount(preferences: UserPreferences) -> Int {
-        unansweredQuestions(preferences: preferences).count
+    func unansweredCount(preferences: UserPreferences, programEMR: String? = nil) -> Int {
+        unansweredQuestions(preferences: preferences, programEMR: programEMR).count
     }
 
     private func isRedFlagSection(_ section: QuestionnaireSection) -> Bool {
