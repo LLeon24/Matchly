@@ -9,6 +9,7 @@ import SwiftUI
 import UIKit
 
 struct OnboardingFlowView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var deepLinkHandler: CoupleDeepLinkHandler
     @ObservedObject private var dataManager = DataManager.shared
     @ObservedObject private var authManager = AuthManager.shared
@@ -383,11 +384,11 @@ struct OnboardingFlowView: View {
                                 HStack {
                                     Text(preferredEMRMenuLabel)
                                         .font(.arial(size: 15, weight: .medium))
-                                        .foregroundColor(preferredEMR.isEmpty ? .secondary : .primary)
+                                        .foregroundColor(colorScheme == .dark ? .black : (preferredEMR.isEmpty ? .secondary : .primary))
                                     Spacer()
                                     Image(systemName: "chevron.up.chevron.down")
                                         .font(.arial(size: 12))
-                                        .foregroundColor(.secondary)
+                                        .foregroundColor(colorScheme == .dark ? Color.black.opacity(0.65) : .secondary)
                                 }
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 10)
