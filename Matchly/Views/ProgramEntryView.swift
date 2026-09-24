@@ -40,6 +40,7 @@ struct ProgramEntryView: View {
     @State private var pendingInterviewDate: Date? = nil
     @State private var previousInterviewDate: Date? = nil
     @State private var isInitialLoad = true
+    @State private var didPerformInitialProgramLoad = false
     @State private var hasUnsavedChanges = false
     @State private var showUnsavedChangesAlert = false
     @State private var pendingDismissal = false
@@ -542,6 +543,7 @@ struct ProgramEntryView: View {
         }
         .padding(16)
         .glassEffect(.regular, in: .rect(cornerRadius: 16))
+        .id("program-questionnaire-start")
     }
 
     private var interviewPrepSummary: String {
@@ -561,7 +563,7 @@ struct ProgramEntryView: View {
     }
 
     private var interviewPrepReferenceCard: some View {
-        NavigationLink(destination: InterviewPrepView(program: currentProgramSnapshot())) {
+        NavigationLink(destination: InterviewPrepView(program: currentProgramSnapshot(), presentationContext: .fromProgramEntry)) {
             HStack(spacing: 12) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -1023,14 +1025,10 @@ struct ProgramEntryView: View {
     private var contentWithLifecycle: some View {
         mainContentView
             .onAppear {
-                if let program = program {
-                    draftProgramId = program.id
-                    loadProgram(program)
-                } else {
-                    draftProgramId = UUID().uuidString
-                    questionnaire.mergeCustomization(from: dataManager.preferences)
-                    isInitialLoad = false
-                }
+                let isInitialAppearance = !didPerformInitialProgramLoad
+                reloadProgramFromStoreIfNeeded(isInitialAppearance: isInitialAppearance)
+                didPerformInitialProgramLoad = true
+
                 if let sectionA = questionnaire.sections.first(where: { $0.title.contains("Section A") }) {
                     expandedSections.insert(sectionA.id)
                 }
@@ -1039,10 +1037,20 @@ struct ProgramEntryView: View {
                     revealFirstRedFlagSection()
                 } else if scrollToFirstMissing {
                     revealFirstUnansweredQuestionSection()
-                } else {
+                } else if isInitialAppearance {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                         requestProgramScroll(to: "program-entry-top", anchor: .top)
                     }
+                }
+            }
+            .onDisappear {
+                autopPersistProgramChangesIfNeeded()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .matchlyFocusProgramQuestionnaire)) { notification in
+                guard let programId = notification.userInfo?[MatchlyNotificationKey.programId] as? String,
+                      programId == currentProgramId else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    focusQuestionnaireOnProgram()
                 }
             }
     }
@@ -1325,14 +1333,29 @@ struct ProgramEntryView: View {
     private var currentVoiceMemoReference: String? {
         VoiceMemoStorage.referenceIfMemoExists(forProgramId: draftProgramId)
     }
-    
-    private func saveProgram() {
+
+    private func reloadProgramFromStoreIfNeeded(isInitialAppearance: Bool) {
+        if let program {
+            draftProgramId = program.id
+            let latest = dataManager.programs.first(where: { $0.id == program.id }) ?? program
+            if isInitialAppearance || !checkForUnsavedChanges() {
+                loadProgram(latest)
+                hasUnsavedChanges = false
+            }
+        } else if isInitialAppearance {
+            draftProgramId = UUID().uuidString
+            questionnaire.mergeCustomization(from: dataManager.preferences)
+            isInitialLoad = false
+        }
+    }
+
+    private func buildProgramDraft() -> Program {
         let programId = program?.id ?? draftProgramId
         let normalizedSpecialty = SpecialtyFormatter.normalizedUserSpecialty(
             !specialty.isEmpty ? specialty : (program?.specialty ?? dataManager.preferences.specialties.first ?? dataManager.preferences.specialty ?? "Unknown")
         )
-        
-        let newProgram = Program(
+
+        return Program(
             id: programId,
             specialty: normalizedSpecialty,
             name: name,
@@ -1363,30 +1386,49 @@ struct ProgramEntryView: View {
             signalNote: trimmedSignalNote,
             finalScore: questionnaire.totalWeightedScore(preferences: dataManager.preferences, programEMR: emr)
         )
-        
-        // Update or add program - this calculates score and updates immediately
+    }
+
+    @discardableResult
+    private func persistProgramChanges() -> Bool {
+        let newProgram = buildProgramDraft()
+
         if program == nil {
-            guard dataManager.addProgram(newProgram) == .added else { return }
+            guard dataManager.addProgram(newProgram) == .added else { return false }
         } else {
             dataManager.updateProgram(newProgram)
         }
-        
-        // Force immediate save (bypass debounce for critical updates)
+
         dataManager.saveProgramsImmediately()
-        
+        return true
+    }
+
+    private func autopPersistProgramChangesIfNeeded() {
+        changeCheckTask?.cancel()
+        guard program != nil else { return }
+        guard checkForUnsavedChanges() else { return }
+        guard persistProgramChanges() else { return }
+        hasUnsavedChanges = false
+    }
+
+    private func saveProgram() {
+        guard persistProgramChanges() else { return }
+
         // Note: Calendar sync is handled through alerts when interview date is set/changed
         // No need to sync here as it's already handled in handleInterviewDateChanged
-        
-        // Mark as saved
+
         hasUnsavedChanges = false
-        
-        // Dismiss after ensuring data is saved
         dismiss()
     }
     
+    /// Latest persisted copy used for dirty-state checks (not the snapshot passed at navigation time).
+    private func persistedProgramBaseline() -> Program? {
+        guard let id = program?.id else { return nil }
+        return dataManager.programs.first(where: { $0.id == id })
+    }
+
     // Check if there are unsaved changes - optimized to avoid expensive comparisons
     private func checkForUnsavedChanges() -> Bool {
-        guard let program = program else {
+        guard let program = persistedProgramBaseline() ?? program else {
             // For new programs, check if any fields are filled (quick checks)
             return !name.isEmpty || !hospital.isEmpty || !city.isEmpty || !state.isEmpty ||
                    !notes.isEmpty || hasInterviewDate || signalType != .none || !signalNote.isEmpty || emr != nil ||
@@ -1441,6 +1483,18 @@ struct ProgramEntryView: View {
         ) else { return }
         dismissProgramEntryKeyboard()
         revealQuestionnaireSection(target.sectionId)
+    }
+
+    private func focusQuestionnaireOnProgram() {
+        dismissProgramEntryKeyboard()
+        if questionnaire.firstUnansweredQuestion(
+            preferences: dataManager.preferences,
+            programEMR: emr
+        ) != nil {
+            revealFirstUnansweredQuestionSection()
+        } else {
+            requestProgramScroll(to: "program-questionnaire-start", anchor: .top)
+        }
     }
 
     private func dismissProgramEntryKeyboard() {
@@ -1605,41 +1659,37 @@ struct ProgramEntryView: View {
     // MARK: - Combined Interview & Signaling Section
 
     private var interviewSchedulingRow: some View {
-        HStack(alignment: .center, spacing: 8) {
+        HStack(alignment: .top, spacing: 8) {
             Image(systemName: "calendar")
                 .font(.arial(size: 15))
                 .foregroundColor(.secondary)
                 .frame(width: 18, height: 18)
+                .padding(.top, 2)
                 .accessibilityHidden(true)
 
-            Text("Interview")
-                .font(.arial(size: 16, weight: .semibold))
-                .foregroundColor(.primary)
-                .fixedSize(horizontal: true, vertical: false)
-                .layoutPriority(2)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Interview")
+                    .font(.arial(size: 16, weight: .semibold))
+                    .foregroundColor(.primary)
 
-            Button {
-                showDatePickerSheet = true
-            } label: {
-                Group {
+                Button {
+                    showDatePickerSheet = true
+                } label: {
                     if hasInterviewDate {
                         Text(formatInterviewDate(interviewDate))
                             .font(.arial(size: 15, weight: .medium))
                             .foregroundColor(.primary)
                             .multilineTextAlignment(.leading)
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.85)
+                            .fixedSize(horizontal: false, vertical: true)
                     } else {
                         Text("Set Date")
                             .font(.arial(size: 15, weight: .medium))
                             .foregroundColor(.blue)
-                            .lineLimit(1)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
-            .layoutPriority(1)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

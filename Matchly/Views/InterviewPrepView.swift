@@ -5,11 +5,22 @@
 
 import SwiftUI
 
+enum InterviewPrepPresentationContext {
+    /// Opened from `ProgramEntryView`; questionnaire lives on the screen below in the navigation stack.
+    case fromProgramEntry
+    /// Opened from dashboard, interviews list, etc.
+    case standalone
+}
+
 struct InterviewPrepView: View {
     @EnvironmentObject private var dataManager: DataManager
+    @Environment(\.dismiss) private var dismiss
+
     let program: Program
+    let presentationContext: InterviewPrepPresentationContext
 
     @State private var prepState = InterviewPrepState()
+    @State private var showProgramQuestionnaire = false
     @State private var didLoadPrepState = false
     @State private var showQuestionnairePicker = false
     @State private var newCustomQuestionText = ""
@@ -39,7 +50,14 @@ struct InterviewPrepView: View {
     private typealias PrepPrompt = (id: String, sectionTitle: String, question: String)
 
     private var liveProgram: Program {
-        dataManager.programs.first { $0.id == program.id } ?? program
+        guard var stored = dataManager.programs.first(where: { $0.id == program.id }) else {
+            return program
+        }
+        // Parent ProgramEntryView may pass an unsaved snapshot; prefer it until the store catches up.
+        if stored.questionnaire != program.questionnaire {
+            stored.questionnaire = program.questionnaire
+        }
+        return stored
     }
 
     private var availablePrompts: [PrepPrompt] {
@@ -105,6 +123,14 @@ struct InterviewPrepView: View {
         "If virtual, join 5 minutes early with camera and mic ready"
     ]
 
+    init(
+        program: Program,
+        presentationContext: InterviewPrepPresentationContext = .standalone
+    ) {
+        self.program = program
+        self.presentationContext = presentationContext
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             snapshotCard
@@ -166,6 +192,9 @@ struct InterviewPrepView: View {
         }
         .sheet(isPresented: $showProgramInfo) {
             programInfoSheet
+        }
+        .navigationDestination(isPresented: $showProgramQuestionnaire) {
+            ProgramEntryView(program: liveProgram, scrollToFirstMissing: true)
         }
         .sheet(isPresented: $showQuestionnairePicker) {
             InterviewPrepQuestionnairePickerSheet(
@@ -862,7 +891,9 @@ struct InterviewPrepView: View {
     // MARK: - Score CTA
 
     private var scoreAfterButton: some View {
-        NavigationLink(destination: ProgramEntryView(program: liveProgram)) {
+        Button {
+            openProgramQuestionnaire()
+        } label: {
             HStack(spacing: 10) {
                 Image(systemName: "square.and.pencil")
                     .font(.arial(size: 16, weight: .semibold))
@@ -872,12 +903,15 @@ struct InterviewPrepView: View {
                     Text(
                         liveProgram.isReviewed
                             ? "Update ratings or notes from your visit"
-                            : "Open the questionnaire when you're ready to rate this visit"
+                            : "Return to this program to rate your visit"
                     )
                         .font(.arial(size: 12))
                         .foregroundColor(.secondary)
                 }
                 Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.arial(size: 12, weight: .semibold))
+                    .foregroundColor(.secondary)
             }
             .foregroundColor(.primary)
             .padding(16)
@@ -885,6 +919,20 @@ struct InterviewPrepView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    private func openProgramQuestionnaire() {
+        switch presentationContext {
+        case .fromProgramEntry:
+            NotificationCenter.default.post(
+                name: .matchlyFocusProgramQuestionnaire,
+                object: nil,
+                userInfo: [MatchlyNotificationKey.programId: program.id]
+            )
+            dismiss()
+        case .standalone:
+            showProgramQuestionnaire = true
+        }
     }
 
     private static func uniquePreservingOrder(_ ids: [String]) -> [String] {
