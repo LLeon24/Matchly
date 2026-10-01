@@ -25,8 +25,15 @@ enum EMRSystem: String, CaseIterable, Identifiable, Codable {
     case cpsiEvident = "CPSI/Evident"
     case other = "Other"
     case notSure = "Not sure"
+    /// User does not know the program's EMR — completes the questionnaire but is not scored.
+    case notApplicable = "N/A"
 
     var id: String { rawValue }
+
+    /// EMR choices shown in the picker menu (`N/A` is a separate control beside the menu).
+    static var menuChoices: [EMRSystem] {
+        allCases.filter { $0 != .notApplicable }
+    }
 
     var displayName: String { rawValue }
 
@@ -34,11 +41,38 @@ enum EMRSystem: String, CaseIterable, Identifiable, Codable {
     /// "Other" / "Not sure" choices, which cannot be objectively matched.
     var isSpecific: Bool {
         switch self {
-        case .other, .notSure:
+        case .other, .notSure, .notApplicable:
             return false
         default:
             return true
         }
+    }
+
+    /// Stored program EMR value meaning “unknown / not applicable” (not scored).
+    static func isNotApplicable(_ rawValue: String?) -> Bool {
+        guard let rawValue, !rawValue.isEmpty else { return false }
+        if rawValue == EMRSystem.notApplicable.rawValue || rawValue == EMRSystem.notSure.rawValue {
+            return true
+        }
+        return false
+    }
+
+    /// `true` when the stored value is the "Other" choice or a free-typed EMR name
+    /// (any string that isn't a known `EMRSystem` raw value).
+    static func isOtherOrCustom(_ rawValue: String?) -> Bool {
+        guard let rawValue, !rawValue.isEmpty else { return false }
+        if let system = EMRSystem(rawValue: rawValue) {
+            return system == .other
+        }
+        return true
+    }
+
+    /// Whether a menu/picker row should appear selected for the given stored value.
+    static func matchesSelection(_ rawValue: String?, system: EMRSystem) -> Bool {
+        if system == .other {
+            return isOtherOrCustom(rawValue)
+        }
+        return rawValue == system.rawValue
     }
 }
 
@@ -46,9 +80,7 @@ enum EMRSystem: String, CaseIterable, Identifiable, Codable {
 /// 1–5 rating scale the rest of the questionnaire uses, so EMR can flow
 /// through the existing weighted-section scoring mechanism.
 enum EMRScoring {
-    /// Stable key used both as the row title in the weights UI and as the
-    /// key into `UserPreferences.sectionWeights`. Mirrors how standard
-    /// questionnaire sections key their weight by their (stable) title.
+    /// Stable identifier for the EMR scoring factor in weighted section calculations.
     static let weightKey = "Electronic Medical Record (EMR)"
 
     /// Rating when the program's EMR matches the applicant's preferred EMR.

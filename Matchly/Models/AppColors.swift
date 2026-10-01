@@ -43,6 +43,32 @@ struct AppColors {
         light: Color(red: 1.0, green: 0.85, blue: 0.2),
         dark: Color(red: 1.0, green: 0.9, blue: 0.3)
     )
+    /// Darker yellow for stat labels on light backgrounds.
+    static let accentAmber = Color(
+        light: Color(red: 0.80, green: 0.58, blue: 0.04),
+        dark: Color(red: 1.0, green: 0.82, blue: 0.28)
+    )
+    static let accentRed = Color(
+        light: Color(red: 0.90, green: 0.28, blue: 0.30),
+        dark: Color(red: 1.0, green: 0.38, blue: 0.40)
+    )
+
+    // MARK: - Interview season pipeline (hero ring + stat row share these exactly)
+
+    /// Warm orange — program still needs an interview date.
+    static let pipelineNeedDate = accentOrange
+    /// Soft purple — scheduled upcoming interview.
+    static let pipelineUpcoming = Color(
+        light: Color(red: 0.55, green: 0.42, blue: 0.88),
+        dark: Color(red: 0.68, green: 0.55, blue: 0.96)
+    )
+    /// Brand-success green — questionnaire scored and ready.
+    static let pipelineScored = accentGreen
+    /// Magenta-rose — interview done; questionnaire still needs review.
+    static let pipelineToReview = Color(
+        light: Color(red: 0.84, green: 0.24, blue: 0.52),
+        dark: Color(red: 0.94, green: 0.38, blue: 0.62)
+    )
     
     // Gradient combinations - adapt to dark mode
     static var primaryGradient: LinearGradient {
@@ -110,11 +136,12 @@ struct AppColors {
     static let cardBackground = Color(.systemBackground)
     static let cardBackgroundAccent = Color(.secondarySystemBackground)
 
-    // Warm, bright dashboard canvas (Monarch-style).
-    // Light: very light warm off-white/cream (~#FAF8F5) so white cards still pop.
-    // Dark: a proper near-black warm dark so elevated cards stand out clearly.
+    // Bright, clean dashboard canvas (Monarch-style).
+    // Light: crisp near-white with only a whisper of coolness (no yellow/cream
+    // cast) so it reads light & happy; white cards still separate via shadow.
+    // Dark: a proper near-black so elevated cards stand out clearly.
     static let dashboardCanvas = Color(
-        light: Color(red: 0.980, green: 0.972, blue: 0.960),
+        light: Color(red: 1.0, green: 1.0, blue: 1.0),
         dark: Color(red: 0.071, green: 0.071, blue: 0.078)
     )
 
@@ -129,6 +156,43 @@ struct AppColors {
     static let primaryText = Color(.label)
     static let secondaryText = Color(.secondaryLabel)
     static let tertiaryText = Color(.tertiaryLabel)
+
+    /// Magenta-pink — distinct from red-flag section F.
+    static let sectionDMagenta = Color(
+        light: Color(red: 0.82, green: 0.22, blue: 0.62),
+        dark: Color(red: 0.92, green: 0.38, blue: 0.72)
+    )
+
+    /// Deep red reserved for red-flag section F.
+    static let sectionFRed = Color(
+        light: Color(red: 0.62, green: 0.08, blue: 0.10),
+        dark: Color(red: 0.92, green: 0.24, blue: 0.26)
+    )
+}
+
+enum QuestionnaireSectionAccent {
+    static func color(for sectionId: String, title: String) -> Color {
+        switch sectionId {
+        case "matchly.section.a": return .blue
+        case "matchly.section.b": return AppColors.accentPurple
+        case "matchly.section.c": return AppColors.accentOrange
+        case "matchly.section.d": return AppColors.sectionDMagenta
+        case "matchly.section.e": return AppColors.accentTeal
+        case "matchly.section.f": return AppColors.sectionFRed
+        default:
+            guard let letter = QuestionnaireSectionNaming.letter(from: title) else {
+                return AppColors.primaryBlue
+            }
+            switch letter {
+            case "G": return .indigo
+            case "H": return .mint
+            case "I": return .cyan
+            case "J": return .brown
+            case "K": return .green
+            default: return AppColors.primaryBlue
+            }
+        }
+    }
 }
 
 // Extension to create Color with light/dark variants

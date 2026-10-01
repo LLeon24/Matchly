@@ -54,7 +54,7 @@ These cannot be done from code/CLI and must be done in Xcode + the Apple Develop
    - In Xcode: *Target → Signing & Capabilities → + Capability → Sign in with Apple*. Confirm it's enabled for the App ID in the Developer portal (Certificates, Identifiers & Profiles → your App ID → Sign in with Apple).
 2. **iCloud + CloudKit:**
    - *Signing & Capabilities → + Capability → iCloud*. Check **CloudKit**.
-   - Under Containers, **create/select a container**, e.g. `iCloud.com.matchly.Matchly` (must match the App ID's iCloud entitlement). Keep KVS checkbox enabled for now (migration coexistence — see §7).
+   - Under Containers, **create/select a container**, e.g. `iCloud.com.lestarlu.matchly` (must match the App ID's iCloud entitlement). Keep KVS checkbox enabled for now (migration coexistence — see §7).
    - This populates `com.apple.developer.icloud-container-identifiers` (currently an empty `<array/>`) and `com.apple.developer.icloud-services` (add `CloudKit`) in `Matchly.entitlements`.
 3. **Background Modes → Remote notifications:**
    - *+ Capability → Background Modes → check "Remote notifications".* Required so CloudKit `CKSubscription` push notifications (record/zone/database changes and share-accept notifications) can wake the app and refresh the shared rank list.
@@ -200,14 +200,14 @@ To keep momentum, proceed with these defaults unless the user objects:
 - **"No Match" UI: keep the existing per-side toggle** in `AddCouplesRankPairView` (`user1NoMatch`/`user2NoMatch`), and have suggestions only propose "No Match" when `mustMatchTogether == false`.
 - **Data sharing: MINIMAL (default).** Share only program identity + location (`name`, `hospital`, `city`, `state`, `address`, coords). Never share notes, voice memos, questionnaire scores, or `finalScore`.
 - **Couple cardinality:** exactly 2 participants; share `publicPermission = .none`, single read-write participant. One active couple per user at a time (mirrors current single `preferences.couple`).
-- **Container id:** `iCloud.com.matchly.Matchly` unless the user already has a preferred container.
+- **Container id:** `iCloud.com.lestarlu.matchly` unless the user already has a preferred container.
 - **Conflict policy:** last-writer-wins with refetch-on-conflict for v1.
 
 ---
 
 ## Decisions still needed from the user
 
-1. **CloudKit container identifier** — use `iCloud.com.matchly.Matchly`, or an existing/preferred container name?
+1. **CloudKit container identifier** — use `iCloud.com.lestarlu.matchly`, or an existing/preferred container name?
 2. **Drop email/password + other social providers for v1?** (Plan assumes Apple/iCloud only; couples requires iCloud. Confirm OK to gate non-Apple providers off.)
 3. **Pair-building level** — confirm ASSISTED (suggest + accept) vs requiring fully manual, or wanting full auto-generation.
 4. **Apple developer access** — confirm you (the user) will perform the Xcode capability + Developer-portal steps in §2, and that you have **two iCloud accounts/devices** available for testing P3–P4.

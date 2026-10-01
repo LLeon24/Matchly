@@ -26,20 +26,13 @@ struct ProgramDetailView: View {
                             .foregroundColor(.secondary)
                     }
                     
-                    if !program.city.isEmpty && !program.state.isEmpty {
-                        Text("\(program.city), \(program.state)")
+                    if program.hasDisplayLocation {
+                        Text(program.displayCityState)
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                     }
                     
                     HStack {
-                        Text(program.type)
-                            .font(.caption)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Color.blue.opacity(0.1))
-                            .cornerRadius(8)
-                        
                         Spacer()
                         
                         VStack(alignment: .trailing) {
@@ -110,10 +103,9 @@ struct ProgramDetailView: View {
                         .font(.arial(size: 18, weight: .semibold))
                         .padding(.horizontal)
                     
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(program.emr ?? "Not specified")
-                            .font(.arial(size: 15, weight: program.emr == nil ? .regular : .semibold))
-                            .foregroundColor(program.emr == nil ? .secondary : .primary)
+                    VStack(alignment: .leading, spacing: 8) {
+                        EMRValueView(rawValue: program.emr, style: .regular)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         
                         if let indicator = emrMatchIndicator {
                             Label(indicator.text, systemImage: indicator.systemImage)
@@ -123,8 +115,7 @@ struct ProgramDetailView: View {
                     }
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(.systemGray6))
-                    .cornerRadius(12)
+                    .glassEffect(.regular, in: .rect(cornerRadius: 12))
                     .padding(.horizontal)
                 }
                 
@@ -139,8 +130,7 @@ struct ProgramDetailView: View {
                             .font(.arial(size: 15))
                             .padding()
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color(.systemGray6))
-                            .cornerRadius(12)
+                            .glassEffect(.regular, in: .rect(cornerRadius: 12))
                             .padding(.horizontal)
                     }
                 }
@@ -156,8 +146,7 @@ struct ProgramDetailView: View {
                             .font(.arial(size: 15))
                             .padding()
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color(.systemGray6))
-                            .cornerRadius(12)
+                            .glassEffect(.regular, in: .rect(cornerRadius: 12))
                             .padding(.horizontal)
                     }
                 }
@@ -165,6 +154,7 @@ struct ProgramDetailView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+        .appCanvasBackground()
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("Edit") {
@@ -173,7 +163,10 @@ struct ProgramDetailView: View {
             }
         }
         .sheet(isPresented: $showEdit) {
-            ProgramEntryView(program: program)
+            MatchlyNavigationView {
+                ProgramEntryView(program: program)
+            }
+            .environmentObject(dataManager)
         }
     }
     
@@ -190,13 +183,13 @@ struct ProgramDetailView: View {
               let programSystem = EMRSystem(rawValue: programRaw),
               programSystem.isSpecific else {
             // Program EMR unknown / "Other" / "Not sure" -> neutral, not scored.
-            return ("Not scored — EMR unknown for this program", "minus.circle", .secondary)
+            return ("EMR not recorded for this program", "minus.circle", .secondary)
         }
         
         if programSystem == preferred {
-            return ("Matches your preferred EMR", "checkmark.circle.fill", .green)
+            return ("Uses your preferred EMR", "checkmark.circle.fill", .green)
         } else {
-            return ("Different from your preferred EMR (\(preferred.displayName))", "exclamationmark.circle", .orange)
+            return ("Uses \(programSystem.displayName) — you prefer \(preferred.displayName)", "info.circle", .secondary)
         }
     }
     
@@ -234,13 +227,12 @@ struct CategoryScoreView: View {
             .frame(height: 8)
         }
         .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(12)
+        .glassEffect(.regular, in: .rect(cornerRadius: 12))
     }
 }
 
 #Preview {
-    NavigationView {
+    MatchlyNavigationView {
         ProgramDetailView(program: Program(
             specialty: "Internal Medicine",
             name: "Sample Program",

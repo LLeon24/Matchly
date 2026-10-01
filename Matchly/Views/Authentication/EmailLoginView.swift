@@ -9,25 +9,37 @@ import SwiftUI
 
 struct EmailLoginView: View {
     @Environment(\.dismiss) var dismiss
-    @StateObject private var authManager = AuthManager.shared
+    @ObservedObject private var authManager = AuthManager.shared
     @State private var email = ""
     @State private var password = ""
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showSignUp = false
     @State private var showForgotPassword = false
+    @State private var showResetSentAlert = false
+    @State private var isResettingPassword = false
     
     var body: some View {
-        NavigationView {
+        MatchlyNavigationView {
             Form {
                 Section {
-                    TextField("Email", text: $email)
-                        .textContentType(.emailAddress)
-                        .autocapitalization(.none)
+                    ClearableTextField("Email", text: $email, textContentType: .username)
                         .keyboardType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .glassEffect(.regular, in: .capsule)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
+                        .listRowBackground(Color.clear)
                     
                     SecureField("Password", text: $password)
                         .textContentType(.password)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .glassEffect(.regular, in: .capsule)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
+                        .listRowBackground(Color.clear)
                 } header: {
                     Text("Sign In")
                 } footer: {
@@ -55,34 +67,47 @@ struct EmailLoginView: View {
                             Spacer()
                         }
                     }
+                    .buttonStyle(.glassProminent)
+                    .tint(AppColors.primaryBlue)
                     .disabled(isLoading || email.isEmpty || password.isEmpty)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    .listRowBackground(Color.clear)
                     
                     Button(action: {
                         showForgotPassword = true
                     }) {
-                        Text("Forgot Password?")
-                            .foregroundColor(.blue)
+                        HStack {
+                            Text("Forgot Password?")
+                                .foregroundColor(.blue)
+                            if isResettingPassword {
+                                Spacer()
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                            }
+                        }
                     }
+                    .disabled(isResettingPassword)
                 }
                 
                 Section {
                     HStack {
                         Spacer()
                         Text("Don't have an account?")
-                            .font(.system(size: 14))
+                            .font(.arial(size: 14))
                             .foregroundColor(.secondary)
                         Button(action: {
-                            dismiss()
                             showSignUp = true
                         }) {
                             Text("Sign Up")
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.arial(size: 14, weight: .semibold))
                                 .foregroundColor(.blue)
                         }
                         Spacer()
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .appCanvasBackground()
             .navigationTitle("Sign In")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -106,6 +131,11 @@ struct EmailLoginView: View {
             } message: {
                 Text("Enter your email address and we'll send you a password reset link.")
             }
+            .alert("Check your email", isPresented: $showResetSentAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("If an account exists for \(email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()), a reset link was sent. Check Inbox and Spam — Firebase mail often lands in Spam.")
+            }
         }
     }
     
@@ -126,9 +156,13 @@ struct EmailLoginView: View {
     }
     
     private func resetPassword() async {
+        isResettingPassword = true
+        errorMessage = nil
+        defer { isResettingPassword = false }
+
         do {
             try await authManager.resetPassword(email: email)
-            errorMessage = "Password reset email sent. Please check your inbox."
+            showResetSentAlert = true
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -138,5 +172,4 @@ struct EmailLoginView: View {
 #Preview {
     EmailLoginView()
 }
-
 

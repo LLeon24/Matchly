@@ -17,27 +17,43 @@ private let programEntryLogger = Logger(subsystem: "com.matchly", category: "Pro
 
 struct ProgramEntryView: View {
     @EnvironmentObject var dataManager: DataManager
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) var dismiss
     
     let program: Program?
+    let scrollToFirstMissing: Bool
+    let scrollToRedFlags: Bool
+    /// When adding manually from program search, pre-select the specialty the user was filtering by.
+    let preferredSpecialty: String?
+    /// Called after saving a new manually entered program (closes search and returns to My Programs).
+    var onNewManualProgramSaved: (() -> Void)? = nil
     
     @State private var specialty: String = ""
     @State private var name: String = ""
     @State private var hospital: String = ""
     @State private var city: String = ""
     @State private var state: String = ""
+    @State private var postalCode: String = ""
     @State private var address: String = ""
     @State private var accreditationID: String? = nil
-    @State private var type: String = "Academic"
+    @State private var type: String = ""
     @State private var notes: String = ""
     @State private var interviewDate: Date = Date()
     @State private var hasInterviewDate: Bool = false
     @State private var showProgramSearch = false
-    @State private var showContactInfo = false
     @State private var showEnableCalendarSyncAlert = false
     @State private var pendingInterviewDate: Date? = nil
     @State private var previousInterviewDate: Date? = nil
     @State private var isInitialLoad = true
+    /// True after picking a program from search; false while typing a manual program (avoids swapping the form when hospital is filled).
+    @State private var didSelectProgramFromCatalog = false
+    @State private var showManualSpecialtySheet = false
+    @State private var showManualStateSheet = false
+    @State private var manualStateSearchText = ""
+    @State private var showMissingProgramNameAlert = false
+    @State private var highlightMissingProgramName = false
+    @State private var isEditingManualProgramDetails = false
+    @State private var didPerformInitialProgramLoad = false
     @State private var hasUnsavedChanges = false
     @State private var showUnsavedChangesAlert = false
     @State private var pendingDismissal = false
@@ -49,148 +65,163 @@ struct ProgramEntryView: View {
     @FocusState private var isNotesFocused: Bool
     @State private var showNotes: Bool = true
     @State private var keyboardHeight: CGFloat = 0
+    @State private var draftProgramId: String = UUID().uuidString
+    @State private var originalVoiceMemoReference: String?
     
     // Contact information
     @State private var websiteURL: String = ""
     @State private var contactEmail: String = ""
     @State private var contactPhone: String = ""
     @State private var programCoordinator: String = ""
+    @State private var programDirector: String = ""
     
     // IMG-friendly status
     @State private var isIMGFriendly: Bool? = nil
     
-    // Electronic Medical Record (EMR) used by this hospital (EMRSystem.rawValue)
+    // Electronic Medical Record (EMR) used by this hospital (EMRSystem.rawValue,
+    // or a free-typed name when the user picks Other and enters a custom system).
     @State private var emr: String? = nil
+    @State private var emrOtherDetail: String = ""
     
     // ERAS Signaling
     @State private var signalType: SignalType = .none
+    @State private var signalNote: String = ""
     @State private var showSignalLimitAlert = false
+    @State private var showSignalClearedAlert = false
     @State private var signalLimitMessage = ""
     @State private var showDatePickerSheet = false
+    @State private var interviewDateSnapshotBeforePicker: Date?
+    @State private var showUnansweredQuestionsSheet = false
     
     // New comprehensive questionnaire
     @State private var questionnaire: Questionnaire = Questionnaire()
     @State private var expandedSections: Set<String> = [] // Track which sections are expanded
-    @State private var scrollProxy: ScrollViewProxy? = nil // For auto-scrolling to next question
+    /// Bumped to run `scrollTo` from inside `ScrollViewReader` (stored `ScrollViewProxy` is unreliable).
+    @State private var programScrollToken = 0
+    @State private var pendingProgramScrollID: String?
+    @State private var pendingProgramScrollAnchor: UnitPoint = .top
+    /// Faint highlight when EMR still needs a selection (not bright teal).
+    private static let emrPromptFill = Color(red: 0.92, green: 0.95, blue: 0.99)
+    private static let emrPromptStroke = Color(red: 0.78, green: 0.86, blue: 0.96)
+    private static let emrPromptChevron = Color(red: 0.55, green: 0.68, blue: 0.88)
+
+    private static func sectionHeaderScrollID(_ sectionId: String) -> String {
+        "matchly-section-header-\(sectionId)"
+    }
+
+    /// First unanswered / jump targets: sit below pinned section headers.
+    private static let questionnaireQuestionScrollAnchor = UnitPoint(x: 0.5, y: 0.34)
+    /// After answering: bring the next question up without scrolling the previous one off-screen.
+    private static let questionnaireRevealNextAnchor = UnitPoint(x: 0.5, y: 0.88)
     
-    let programTypes = ["Academic", "Community", "Hybrid"]
-    
-    init(program: Program?) {
+    init(
+        program: Program?,
+        scrollToFirstMissing: Bool = false,
+        scrollToRedFlags: Bool = false,
+        preferredSpecialty: String? = nil,
+        onNewManualProgramSaved: (() -> Void)? = nil
+    ) {
         self.program = program
+        self.scrollToFirstMissing = scrollToFirstMissing
+        self.scrollToRedFlags = scrollToRedFlags
+        self.preferredSpecialty = preferredSpecialty
+        self.onNewManualProgramSaved = onNewManualProgramSaved
+
+        if program == nil,
+           let preferredSpecialty,
+           !preferredSpecialty.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            _specialty = State(initialValue: preferredSpecialty)
+        }
+    }
+
+    private var isManualDraftEntry: Bool {
+        program == nil && !didSelectProgramFromCatalog
+    }
+
+    private var shouldShowManualBasicsSection: Bool {
+        if program == nil {
+            return !didSelectProgramFromCatalog
+        }
+        return program?.isManuallyAdded ?? false
+    }
+
+    private var isSavedManualProgram: Bool {
+        program?.isManuallyAdded ?? false
+    }
+
+    private var showsCollapsedManualProgramSummary: Bool {
+        isSavedManualProgram && !isEditingManualProgramDetails
+    }
+
+    private var showsProgramSummaryHeader: Bool {
+        !isManualDraftEntry && !shouldShowManualBasicsSection && !hospital.isEmpty
+    }
+
+    private var manualEntryAllSpecialtyOptions: [String] {
+        SpecialtyFormatter.commonSpecialties
+    }
+
+    private var manualEntryOtherSpecialtyOptions: [String] {
+        let trimmed = specialty.trimmingCharacters(in: .whitespacesAndNewlines)
+        return manualEntryAllSpecialtyOptions
+            .filter { $0 != trimmed }
+            .sorted()
+    }
+
+    private var trimmedProgramName: String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var canSaveProgram: Bool {
+        !trimmedProgramName.isEmpty
+    }
+
+    private var manualEntrySpecialtyDisplayName: String {
+        let trimmed = specialty.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return "Select specialty"
+        }
+        return SpecialtyFormatter.displayNameWithAbbreviation(trimmed)
     }
     
     // MARK: - Form Content (now using ScrollView for better scrolling)
     private var formContent: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                // Basic Information Section (only show if hospital not selected)
-                if hospital.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Basic Information")
-                            .font(.arial(size: 20, weight: .semibold))
-                            .padding(.horizontal, 20)
-                            .padding(.top, 8)
-                        
-                        VStack(spacing: 12) {
-                            Button(action: {
-                                showProgramSearch = true
-                            }) {
-                                HStack {
-                                    Image(systemName: "magnifyingglass")
-                                        .foregroundColor(.blue)
-                                    Text("Search Programs")
-                                        .foregroundColor(.blue)
-                                    Spacer()
-                                    Image(systemName: "chevron.right")
-                                        .foregroundColor(.secondary)
-                                        .font(.caption)
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 12)
-                                .background(Color(.systemGray6))
-                                .cornerRadius(10)
-                            }
-                            
-                            TextField("Program Name", text: $name)
-                                .textFieldStyle(.roundedBorder)
-                                .padding(.horizontal, 16)
-                            
-                            TextField("Hospital / University", text: $hospital)
-                                .textFieldStyle(.roundedBorder)
-                                .padding(.horizontal, 16)
-                            
-                            TextField("Street Address (e.g., 123 Main St)", text: $address)
-                                .textFieldStyle(.roundedBorder)
-                                .autocapitalization(.words)
-                                .padding(.horizontal, 16)
-                            
-                            TextField("City", text: $city)
-                                .textFieldStyle(.roundedBorder)
-                                .padding(.horizontal, 16)
-                            
-                            TextField("State", text: $state)
-                                .textFieldStyle(.roundedBorder)
-                                .padding(.horizontal, 16)
-                            
-                            Picker("Type", selection: $type) {
-                                ForEach(programTypes, id: \.self) { type in
-                                    Text(type).tag(type)
-                                }
-                            }
-                            .pickerStyle(.menu)
-                            .padding(.horizontal, 16)
-                            
-                            Toggle("Set Interview Date", isOn: $hasInterviewDate)
-                                .padding(.horizontal, 16)
-                                .onChange(of: hasInterviewDate) { oldValue, newValue in
-                                    if newValue && !isInitialLoad {
-                                        handleInterviewDateChanged(newDate: interviewDate)
-                                    }
-                                }
-                            
-                            if hasInterviewDate {
-                                DatePicker("Interview Date & Time", selection: $interviewDate, displayedComponents: [.date, .hourAndMinute])
-                                    .padding(.horizontal, 16)
-                                    .onChange(of: interviewDate) { oldValue, newValue in
-                                        if hasInterviewDate && !isInitialLoad && oldValue != newValue {
-                                            pendingInterviewDate = newValue
-                                            handleInterviewDateChanged(newDate: newValue)
-                                        }
-                                    }
-                            }
-                        }
-                    }
-                    .padding(.bottom, 8)
-                } else {
+        ScrollViewReader { scrollProxy in
+        ScrollView(.vertical) {
+            LazyVStack(spacing: 16, pinnedViews: [.sectionHeaders]) {
+                if showsCollapsedManualProgramSummary {
+                    collapsedManualProgramSummary
+                } else if shouldShowManualBasicsSection {
+                    manualProgramBasicsSection
+                }
+
+                if !isManualDraftEntry {
                     // Combined Interview & Signaling Section - full width
                     VStack(spacing: 0) {
                         combinedInterviewAndSignalingSection
                             .frame(maxWidth: .infinity)
                             .padding(.horizontal, 20)
-                            .padding(.vertical, 12)
+                            .padding(.vertical, 14)
                     }
-                    .background(
-                        ZStack {
-                            // Adaptive background for light/dark mode
-                            RoundedRectangle(cornerRadius: 16)
-                                .fill(Color(.systemBackground))
-                                .shadow(color: Color.black.opacity(0.06), radius: 12, x: 0, y: 4)
-                                .shadow(color: Color.black.opacity(0.04), radius: 4, x: 0, y: 1)
-                            
-                            // Subtle border - adaptive for dark mode
-                            RoundedRectangle(cornerRadius: 16)
-                                .stroke(
-                                    Color(.separator),
-                                    lineWidth: 0.5
-                                )
-                        }
-                    )
+                    .id("program-entry-top")
+                    .glassEffect(.regular, in: .rect(cornerRadius: 16))
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
+
+                    if shouldShowSignalNoteSection {
+                        signalNoteSection
+                            .padding(.horizontal, 20)
+                            .padding(.top, 8)
+                    }
+
+                if canOpenInterviewPrep {
+                    interviewPrepReferenceCard
                 }
-                
-                // EMR selection - white card design
-                emrSelectionCard
+
+                if !isQuestionnaireComplete {
+                    questionnaireCompletionBanner
+                        .padding(.horizontal, 20)
+                }
 
                 // Standard questionnaire sections - white card design
                 questionnaireSections
@@ -226,7 +257,7 @@ struct ProgramEntryView: View {
                         
                         if showNotes {
                             HStack(alignment: .top, spacing: 8) {
-                                TextField("Notes...", text: $notes, axis: .vertical)
+                                ClearableTextField("Notes...", text: $notes, axis: .vertical)
                                     .textFieldStyle(.roundedBorder)
                                     .lineLimit(5...10)
                                     .focused($isNotesFocused)
@@ -249,13 +280,7 @@ struct ProgramEntryView: View {
                             }
                             .onChange(of: isNotesFocused) { oldValue, newValue in
                                 if newValue {
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                        if let proxy = scrollProxy {
-                                            withAnimation(.easeInOut(duration: 0.3)) {
-                                                proxy.scrollTo("notes-section", anchor: .center)
-                                            }
-                                        }
-                                    }
+                                    requestProgramScroll(to: "notes-section", anchor: .center)
                                 }
                             }
                         }
@@ -264,14 +289,26 @@ struct ProgramEntryView: View {
                     .padding(.vertical, 16)
                 }
                 .padding(.horizontal, 20)
-                
-                // Bottom padding for tab bar
-                Color.clear.frame(height: keyboardHeight > 0 ? 20 : 90)
+
+                whiteCardContainer {
+                    ProgramVoiceMemoCard(programId: draftProgramId) {
+                        hasUnsavedChanges = true
+                    }
+                }
+                .padding(.horizontal, 20)
+                }
+
+                // Extra clearance when the keyboard is open
+                Color.clear.frame(height: keyboardHeight > 0 ? 20 : 0)
             }
+            .frame(maxWidth: .infinity)
             .padding(.bottom, 8)
         }
+        .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+        .matchlyScrollTabBarClearance()
         .scrollDismissesKeyboard(.interactively)
-        .background(Color(.systemGroupedBackground).opacity(0.3))
+        .accessibilityIdentifier(MarketingAccessibilityID.programQuestionnaireRoot)
+        .background(AppColors.dashboardCanvas)
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { notification in
             if let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
                 withAnimation {
@@ -284,41 +321,63 @@ struct ProgramEntryView: View {
                 keyboardHeight = 0
             }
         }
+        .onChange(of: programScrollToken) { _, _ in
+            guard let scrollID = pendingProgramScrollID else { return }
+            performProgramScroll(
+                scrollID: scrollID,
+                anchor: pendingProgramScrollAnchor,
+                using: scrollProxy
+            )
+        }
+        }
     }
     
-    // MARK: - EMR Selection
-    private var emrSelectionCard: some View {
+    // MARK: - EMR Selection (Section E)
+    private var sectionEEmrPicker: some View {
         let preferred = dataManager.preferences.preferredEMR
         let selectedIsSpecific = emr.flatMap { EMRSystem(rawValue: $0)?.isSpecific } ?? false
         let preferredIsSpecific = preferred.flatMap { EMRSystem(rawValue: $0)?.isSpecific } ?? false
+        let isOtherSelected = EMRSystem.isOtherOrCustom(emr)
+        let isEMRNotApplicable = EMRSystem.isNotApplicable(emr)
+        let emrNeedsSelection = emr == nil || (emr?.isEmpty == true)
 
-        return whiteCardContainer {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
-                    Image(systemName: "waveform.path.ecg.rectangle")
-                        .font(.arial(size: 14))
-                        .foregroundColor(.blue)
-                    Text("Electronic Medical Record (EMR)")
-                        .font(.arial(size: 18, weight: .semibold))
-                        .foregroundColor(.primary)
-                    Spacer()
-                }
-
-                Text("Which EMR does this hospital use?")
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "waveform.path.ecg.rectangle")
                     .font(.arial(size: 13))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.teal)
+                Text("Electronic Medical Record (EMR)")
+                    .font(.arial(size: 14, weight: .semibold))
+                if preferredIsSpecific, emrNeedsSelection {
+                    Text("Required")
+                        .font(.arial(size: 10, weight: .bold))
+                        .foregroundColor(AppColors.pipelineNeedDate)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(AppColors.pipelineNeedDate.opacity(0.12))
+                        .clipShape(Capsule())
+                }
+            }
 
+            Text("Which EMR does this hospital use?")
+                .font(.arial(size: 12))
+                .foregroundColor(.secondary)
+
+            HStack(spacing: 8) {
                 Menu {
-                    Button(action: { emr = nil }) {
-                        if emr == nil {
+                    Button(action: {
+                        emr = nil
+                        emrOtherDetail = ""
+                    }) {
+                        if emrNeedsSelection {
                             Label("Not selected", systemImage: "checkmark")
                         } else {
                             Text("Not selected")
                         }
                     }
-                    ForEach(EMRSystem.allCases) { system in
-                        Button(action: { emr = system.rawValue }) {
-                            if emr == system.rawValue {
+                    ForEach(EMRSystem.menuChoices) { system in
+                        Button(action: { selectEMR(system) }) {
+                            if EMRSystem.matchesSelection(emr, system: system) {
                                 Label(system.displayName, systemImage: "checkmark")
                             } else {
                                 Text(system.displayName)
@@ -326,343 +385,518 @@ struct ProgramEntryView: View {
                         }
                     }
                 } label: {
-                    HStack {
-                        Text(emr ?? "Select EMR")
-                            .font(.arial(size: 15, weight: .medium))
-                            .foregroundColor(emr == nil ? .secondary : .primary)
-                        Spacer()
+                    HStack(spacing: 6) {
+                        Text(emrMenuLabel)
+                            .font(.arial(size: 13, weight: .medium))
+                            .foregroundColor(emrPickerMenuLabelColor(needsSelection: emrNeedsSelection, isNotApplicable: isEMRNotApplicable))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                        Spacer(minLength: 4)
                         Image(systemName: "chevron.up.chevron.down")
-                            .font(.arial(size: 12))
-                            .foregroundColor(.secondary)
+                            .font(.arial(size: 10))
+                            .foregroundColor(emrPickerChevronColor(needsSelection: emrNeedsSelection, isNotApplicable: isEMRNotApplicable))
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(Color(.systemGray6))
-                    .cornerRadius(10)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, minHeight: 36)
+                    .background {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(emrNeedsSelection && !isEMRNotApplicable ? Self.emrPromptFill : Color.clear)
+                    }
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(
+                                emrNeedsSelection && !isEMRNotApplicable ? Self.emrPromptStroke : Color.clear,
+                                lineWidth: emrNeedsSelection && !isEMRNotApplicable ? 1 : 0
+                            )
+                    }
+                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)
 
-                // Surface the scoring impact relative to the applicant's preferred EMR.
-                if preferredIsSpecific, selectedIsSpecific, let preferred = preferred {
-                    if emr == preferred {
-                        Label("Matches your preferred EMR", systemImage: "checkmark.circle.fill")
-                            .font(.arial(size: 12, weight: .medium))
-                            .foregroundColor(.green)
+                Button(action: {
+                    if isEMRNotApplicable {
+                        emr = nil
                     } else {
-                        Label("Differs from your preferred EMR (\(preferred))", systemImage: "exclamationmark.circle")
-                            .font(.arial(size: 12, weight: .medium))
-                            .foregroundColor(.orange)
+                        emr = EMRSystem.notApplicable.rawValue
+                        emrOtherDetail = ""
                     }
-                } else if !preferredIsSpecific {
-                    Text("Set your preferred EMR and its importance in Settings ▸ Section Weights to factor EMR into scoring.")
-                        .font(.arial(size: 11))
+                }) {
+                    Text("N/A")
+                        .font(.arial(size: 11, weight: .semibold))
+                        .foregroundColor(isEMRNotApplicable ? .white : .secondary)
+                        .frame(width: 44, height: 36)
+                        .background {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(isEMRNotApplicable ? Color.secondary : Color(.tertiarySystemFill))
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isEMRNotApplicable ? "EMR not applicable, selected" : "Mark EMR as not applicable")
+            }
+
+            if isEMRNotApplicable {
+                Text("EMR won't affect this program's score (same as N/A on other questions).")
+                    .font(.arial(size: 11))
+                    .foregroundColor(.secondary)
+            }
+
+            if isOtherSelected {
+                ClearableTextField("Type EMR name", text: $emrOtherDetail)
+                    .font(.arial(size: 14))
+                    .textInputAutocapitalization(.words)
+                    .autocorrectionDisabled()
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 10))
+                    .onChange(of: emrOtherDetail) { _, newValue in
+                        let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                        emr = trimmed.isEmpty ? EMRSystem.other.rawValue : trimmed
+                    }
+            }
+
+            if preferredIsSpecific, selectedIsSpecific, let preferred = preferred {
+                if emr == preferred {
+                    Label("Uses your preferred EMR", systemImage: "checkmark.circle.fill")
+                        .font(.arial(size: 11, weight: .medium))
+                        .foregroundColor(.green)
+                } else {
+                    Label("Uses \(emrMenuLabel) — you prefer \(preferred)", systemImage: "info.circle")
+                        .font(.arial(size: 11, weight: .medium))
                         .foregroundColor(.secondary)
                 }
+            } else if preferred == nil {
+                Text("Set your preferred EMR in Settings to score EMR fit.")
+                    .font(.arial(size: 11))
+                    .foregroundColor(.secondary)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
         }
+        .padding(.top, 4)
+        .id("matchly.section.e-emr")
+    }
+
+    private func emrPickerMenuLabelColor(needsSelection: Bool, isNotApplicable: Bool) -> Color {
+        if colorScheme == .dark {
+            return .black
+        }
+        if needsSelection && !isNotApplicable {
+            return .secondary
+        }
+        return .primary
+    }
+
+    private func emrPickerChevronColor(needsSelection: Bool, isNotApplicable: Bool) -> Color {
+        if colorScheme == .dark {
+            return Color.black.opacity(0.65)
+        }
+        if needsSelection && !isNotApplicable {
+            return Self.emrPromptChevron
+        }
+        return .secondary
+    }
+
+    private var emrMenuLabel: String {
+        if EMRSystem.isNotApplicable(emr) {
+            return "N/A"
+        }
+        guard let emr else { return "Select EMR" }
+        if EMRSystem.isOtherOrCustom(emr) {
+            let trimmed = emrOtherDetail.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? EMRSystem.other.displayName : trimmed
+        }
+        return emr
+    }
+
+    private func selectEMR(_ system: EMRSystem) {
+        if system == .notApplicable {
+            emr = EMRSystem.notApplicable.rawValue
+            emrOtherDetail = ""
+            return
+        }
+        if system == .other {
+            let trimmed = emrOtherDetail.trimmingCharacters(in: .whitespacesAndNewlines)
+            emr = trimmed.isEmpty ? EMRSystem.other.rawValue : trimmed
+        } else {
+            emr = system.rawValue
+            emrOtherDetail = ""
+        }
+    }
+
+    // MARK: - Interview Prep
+
+    private var canOpenInterviewPrep: Bool {
+        hasInterviewDate && !hospital.isEmpty
+    }
+
+    private var isQuestionnaireComplete: Bool {
+        questionnaire.questionnaireCompletionRatio(preferences: dataManager.preferences, programEMR: emr) >= 1.0
+    }
+
+    private var questionnaireCompletionPercent: Int {
+        Int((questionnaire.questionnaireCompletionRatio(preferences: dataManager.preferences, programEMR: emr) * 100).rounded())
+    }
+
+    private var questionnaireUnansweredCount: Int {
+        questionnaire.unansweredCount(preferences: dataManager.preferences, programEMR: emr)
+    }
+
+    private var questionnaireCompletionBanner: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Questionnaire \(questionnaireCompletionPercent)% complete")
+                        .font(.arial(size: 15, weight: .semibold))
+                    Text(questionnaireUnansweredCount == 1
+                         ? "1 question still needs an answer"
+                         : "\(questionnaireUnansweredCount) questions still need an answer")
+                        .font(.arial(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 8)
+
+                Button("View unanswered") {
+                    dismissProgramEntryKeyboard()
+                    showUnansweredQuestionsSheet = true
+                }
+                .font(.arial(size: 14, weight: .semibold))
+                .buttonStyle(.glassProminent)
+                .tint(AppColors.primaryBlue)
+            }
+
+            ProgressView(value: questionnaire.questionnaireCompletionRatio(preferences: dataManager.preferences, programEMR: emr))
+                .tint(AppColors.primaryBlue)
+        }
+        .padding(16)
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+        .id("program-questionnaire-start")
+    }
+
+    private var interviewPrepSummary: String {
+        let prep = dataManager.preferences.interviewPrepByProgram[currentProgramId]
+        if let prep, !prep.priorityQuestionIds.isEmpty {
+            let count = prep.priorityQuestionIds.count
+            return "\(count) must-ask question\(count == 1 ? "" : "s") saved"
+        }
+        if isQuestionnaireComplete {
+            return "Review your questions and day-before checklist"
+        }
+        return "Pick questions, star your top 5, and run the checklist"
+    }
+
+    private var currentProgramId: String {
+        program?.id ?? draftProgramId
+    }
+
+    private var interviewPrepReferenceCard: some View {
+        NavigationLink(destination: InterviewPrepView(program: currentProgramSnapshot(), presentationContext: .fromProgramEntry)) {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(AppColors.accentGreen.opacity(0.15))
+                        .frame(width: 40, height: 40)
+                    Image(systemName: "calendar.badge.clock")
+                        .font(.arial(size: 17, weight: .semibold))
+                        .foregroundColor(AppColors.accentGreen)
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(isQuestionnaireComplete ? "Interview Prep Reference" : "Interview Prep")
+                        .font(.arial(size: 16, weight: .semibold))
+                        .foregroundColor(.primary)
+                    Text(interviewPrepSummary)
+                        .font(.arial(size: 12))
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.leading)
+                }
+
+                Spacer(minLength: 8)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .glassEffect(.regular, in: .rect(cornerRadius: 16))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
         .padding(.horizontal, 20)
+    }
+
+    private func currentProgramSnapshot() -> Program {
+        let programId = currentProgramId
+        let normalizedSpecialty = SpecialtyFormatter.normalizedUserSpecialty(
+            !specialty.isEmpty
+                ? specialty
+                : (program?.specialty ?? dataManager.preferences.specialties.first ?? dataManager.preferences.specialty ?? "Unknown")
+        )
+
+        return Program(
+            id: programId,
+            specialty: normalizedSpecialty,
+            name: name,
+            hospital: hospital,
+            city: city,
+            state: state,
+            address: address.isEmpty ? nil : address,
+            type: type,
+            accreditationID: accreditationID,
+            programQuality: ProgramQuality(),
+            cultureFit: CultureFit(),
+            location: Location(),
+            logistics: Logistics(),
+            careerAlignment: CareerAlignment(),
+            redFlags: RedFlags(),
+            questionnaire: questionnaire,
+            notes: notes,
+            interviewDate: hasInterviewDate ? interviewDate : nil,
+            voiceMemoURL: currentVoiceMemoReference,
+            websiteURL: websiteURL.isEmpty ? nil : websiteURL,
+            contactEmail: contactEmail.isEmpty ? nil : contactEmail,
+            contactPhone: contactPhone.isEmpty ? nil : contactPhone,
+            programCoordinator: programCoordinator.isEmpty ? nil : programCoordinator,
+            programDirector: programDirector.isEmpty ? nil : programDirector,
+            isIMGFriendly: isIMGFriendly,
+            emr: emr,
+            signalType: signalType,
+            signalNote: trimmedSignalNote,
+            finalScore: questionnaire.totalWeightedScore(preferences: dataManager.preferences, programEMR: emr)
+        )
+    }
+
+    private var enabledStandardSections: [QuestionnaireSection] {
+        let enabledIDs = Set(questionnaire.enabledSections(preferences: dataManager.preferences).map(\.id))
+        return questionnaire.sections.filter { enabledIDs.contains($0.id) }
+    }
+
+    private var enabledCustomSections: [QuestionnaireSection] {
+        let enabledIDs = Set(questionnaire.enabledSections(preferences: dataManager.preferences).map(\.id))
+        var seen = Set<String>()
+        return questionnaire.customSections.filter { section in
+            guard enabledIDs.contains(section.id), !seen.contains(section.id) else { return false }
+            seen.insert(section.id)
+            return true
+        }
     }
 
     // MARK: - Questionnaire Sections
     private var questionnaireSections: some View {
-        ForEach(questionnaire.enabledSections(preferences: dataManager.preferences)) { section in
+        ForEach(enabledStandardSections) { section in
             let enabledItems = questionnaire.enabledItems(for: section, preferences: dataManager.preferences)
             if !enabledItems.isEmpty {
-                let sectionId = section.id
-                let isExpanded = expandedSections.contains(sectionId) || (section.title.contains("Section A") && expandedSections.isEmpty)
-                
-                whiteCardQuestionnaireSection(
-                    title: section.title,
-                    isExpanded: Binding(
-                        get: { isExpanded },
-                        set: { newValue in
-                            if newValue {
-                                expandedSections.insert(sectionId)
-                            } else {
-                                expandedSections.remove(sectionId)
-                            }
-                        }
-                    )
-                ) {
-                    VStack(spacing: 10) {
-                        ForEach(Array(enabledItems.enumerated()), id: \.element.id) { index, item in
-                            // Find the item in the questionnaire (could be in standard sections or custom questions merged in)
-                            if let sectionIndex = questionnaire.sections.firstIndex(where: { $0.id == section.id }),
-                               let itemIndex = questionnaire.sections[sectionIndex].items.firstIndex(where: { $0.id == item.id }) {
-                                DualRatingSlider(
-                                    question: item.question,
-                                    programRating: Binding(
-                                        get: { questionnaire.sections[sectionIndex].items[itemIndex].programRating },
-                                        set: { newValue in
-                                            let oldValue = questionnaire.sections[sectionIndex].items[itemIndex].programRating
-                                            questionnaire.sections[sectionIndex].items[itemIndex].programRating = newValue
-                                            
-                                            // Force layout refresh to prevent cutting off
-                                            withAnimation(.easeInOut(duration: 0.2)) {
-                                                checkAndExpandNextSection(currentSectionIndex: sectionIndex, currentItemIndex: itemIndex)
-                                            }
-                                            
-                                            // Auto-scroll to next question if this question was just answered (changed from 0 to non-zero)
-                                            if oldValue == 0 && newValue > 0 {
-                                                // Post notification to trigger scroll with a slight delay
-                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                                    NotificationCenter.default.post(name: NSNotification.Name("ScrollToNextQuestion"), object: nil, userInfo: ["currentSectionId": section.id, "currentItemId": item.id])
+                Section {
+                    if expandedSections.contains(section.id) {
+                        questionnaireSectionBody {
+                            VStack(spacing: 10) {
+                                ForEach(Array(enabledItems.enumerated()), id: \.element.id) { index, item in
+                                    if let sectionIndex = questionnaire.sections.firstIndex(where: { $0.id == section.id }),
+                                       let itemIndex = questionnaire.sections[sectionIndex].items.firstIndex(where: { $0.id == item.id }) {
+                                        DualRatingSlider(
+                                            question: item.question,
+                                            programRating: Binding(
+                                                get: { questionnaire.sections[sectionIndex].items[itemIndex].programRating },
+                                                set: { newValue in
+                                                    let previousRating = questionnaire.sections[sectionIndex].items[itemIndex].programRating
+                                                    var transaction = Transaction()
+                                                    transaction.disablesAnimations = true
+                                                    withTransaction(transaction) {
+                                                        var updated = questionnaire
+                                                        updated.sections[sectionIndex].items[itemIndex].programRating = newValue
+                                                        questionnaire = updated
+                                                        checkAndExpandNextSection(currentSectionIndex: sectionIndex, currentItemIndex: itemIndex)
+                                                    }
+                                                    scrollToNextQuestionIfNeeded(
+                                                        fromSectionId: section.id,
+                                                        itemId: item.id,
+                                                        previousRating: previousRating,
+                                                        newRating: newValue
+                                                    )
                                                 }
-                                            }
-                                        }
-                                    ),
-                                    notes: Binding(
-                                        get: { questionnaire.sections[sectionIndex].items[itemIndex].notes },
-                                        set: { questionnaire.sections[sectionIndex].items[itemIndex].notes = $0 }
-                                    ),
-                                    isYesNo: section.title.contains("Red flags"),
-                                    isPositiveYesNo: item.question.contains("Do you feel you could see yourself living"),
-                                    showLabels: index == 0 // Show labels only on first question
-                                )
-                                .id("\(section.id)-\(item.id)") // For scrolling
+                                            ),
+                                            notes: Binding(
+                                                get: { questionnaire.sections[sectionIndex].items[itemIndex].notes },
+                                                set: { newValue in
+                                                    var updated = questionnaire
+                                                    updated.sections[sectionIndex].items[itemIndex].notes = newValue
+                                                    questionnaire = updated
+                                                }
+                                            ),
+                                            isYesNo: section.title.contains("Red flags"),
+                                            isPositiveYesNo: item.question.contains("Do you feel you could see yourself living"),
+                                            showLabels: index == 0,
+                                            isUnanswered: item.programRating == 0
+                                        )
+                                        .id("\(section.id)-\(item.id)")
+                                    }
+                                }
+
+                                if section.id == SectionWeighting.sectionEId {
+                                    sectionEEmrPicker
+                                }
                             }
+                            .padding(.bottom, 4)
                         }
                     }
-                    .padding(.bottom, 4)
+                } header: {
+                    questionnaireSectionHeader(
+                        title: section.title,
+                        sectionId: section.id,
+                        unansweredCount: sectionUnansweredCount(section),
+                        accentColor: questionnaireSectionColor(title: section.title, sectionId: section.id),
+                        isExpanded: sectionExpansionBinding(for: section.id)
+                    )
                 }
-                .padding(.horizontal, 20)
             }
         }
     }
                     
     // MARK: - Custom Questionnaire Sections
     private var customQuestionnaireSections: some View {
-        ForEach(questionnaire.customSections) { customSection in
+        ForEach(enabledCustomSections) { customSection in
             let enabledItems = questionnaire.enabledItems(for: customSection, preferences: dataManager.preferences)
             if !enabledItems.isEmpty {
-                let sectionId = customSection.id
-                let isExpanded = expandedSections.contains(sectionId)
-                
-                whiteCardQuestionnaireSection(
-                    title: customSection.title,
-                    isExpanded: Binding(
-                        get: { isExpanded },
-                        set: { newValue in
-                            if newValue {
-                                expandedSections.insert(sectionId)
-                            } else {
-                                expandedSections.remove(sectionId)
-                            }
-                        }
-                    )
-                ) {
-                    VStack(spacing: 12) {
-                        ForEach(enabledItems) { item in
-                            if let sectionIndex = questionnaire.customSections.firstIndex(where: { $0.id == customSection.id }),
-                               let itemIndex = questionnaire.customSections[sectionIndex].items.firstIndex(where: { $0.id == item.id }) {
-                                DualRatingSlider(
-                                    question: item.question,
-                                    programRating: Binding(
-                                        get: { questionnaire.customSections[sectionIndex].items[itemIndex].programRating },
-                                        set: { newValue in
-                                            let oldValue = questionnaire.customSections[sectionIndex].items[itemIndex].programRating
-                                            questionnaire.customSections[sectionIndex].items[itemIndex].programRating = newValue
-                                            
-                                            // Auto-scroll to next question if this question was just answered (changed from 0 to non-zero)
-                                            if oldValue == 0 && newValue > 0 {
-                                                // Post notification to trigger scroll with a slight delay
-                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                                    NotificationCenter.default.post(name: NSNotification.Name("ScrollToNextQuestion"), object: nil, userInfo: ["currentSectionId": customSection.id, "currentItemId": item.id])
+                Section {
+                    if expandedSections.contains(customSection.id) {
+                        questionnaireSectionBody {
+                            VStack(spacing: 12) {
+                                ForEach(enabledItems) { item in
+                                    if let sectionIndex = questionnaire.customSections.firstIndex(where: { $0.id == customSection.id }),
+                                       let itemIndex = questionnaire.customSections[sectionIndex].items.firstIndex(where: { $0.id == item.id }) {
+                                        DualRatingSlider(
+                                            question: item.question,
+                                            programRating: Binding(
+                                                get: { questionnaire.customSections[sectionIndex].items[itemIndex].programRating },
+                                                set: { newValue in
+                                                    let previousRating = questionnaire.customSections[sectionIndex].items[itemIndex].programRating
+                                                    var transaction = Transaction()
+                                                    transaction.disablesAnimations = true
+                                                    withTransaction(transaction) {
+                                                        var updated = questionnaire
+                                                        updated.customSections[sectionIndex].items[itemIndex].programRating = newValue
+                                                        questionnaire = updated
+                                                    }
+                                                    scrollToNextQuestionIfNeeded(
+                                                        fromSectionId: customSection.id,
+                                                        itemId: item.id,
+                                                        previousRating: previousRating,
+                                                        newRating: newValue
+                                                    )
                                                 }
-                                            }
-                                        }
-                                    ),
-                                    notes: Binding(
-                                        get: { questionnaire.customSections[sectionIndex].items[itemIndex].notes },
-                                        set: { questionnaire.customSections[sectionIndex].items[itemIndex].notes = $0 }
-                                    ),
-                                    isYesNo: false
-                                )
-                                .id("\(customSection.id)-\(item.id)") // For scrolling
+                                            ),
+                                            notes: Binding(
+                                                get: { questionnaire.customSections[sectionIndex].items[itemIndex].notes },
+                                                set: { newValue in
+                                                    var updated = questionnaire
+                                                    updated.customSections[sectionIndex].items[itemIndex].notes = newValue
+                                                    questionnaire = updated
+                                                }
+                                            ),
+                                            isYesNo: false,
+                                            isUnanswered: item.programRating == 0
+                                        )
+                                        .id("\(customSection.id)-\(item.id)")
+                                    }
+                                }
                             }
                         }
                     }
+                } header: {
+                    questionnaireSectionHeader(
+                        title: customSection.title,
+                        sectionId: customSection.id,
+                        unansweredCount: sectionUnansweredCount(customSection),
+                        accentColor: questionnaireSectionColor(title: customSection.title, sectionId: customSection.id),
+                        isExpanded: sectionExpansionBinding(for: customSection.id)
+                    )
                 }
-                .padding(.horizontal, 20)
             }
         }
+    }
+
+    private func sectionExpansionBinding(for sectionId: String) -> Binding<Bool> {
+        Binding(
+            get: { expandedSections.contains(sectionId) },
+            set: { isExpanded in
+                if isExpanded {
+                    expandedSections.insert(sectionId)
+                } else {
+                    expandedSections.remove(sectionId)
+                }
+            }
+        )
     }
     
     var body: some View {
         contentWithSheets
-            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("TabBarNavigationRequested"))) { notification in
-                // Check if we should block navigation due to unsaved changes
-                if hasUnsavedChanges, let userInfo = notification.userInfo, let _ = userInfo["targetTab"] as? Int {
-                    showUnsavedChangesAlert = true
-                    // Store the target tab to navigate after save/discard
-                    pendingDismissal = true
-                }
-            }
     }
     
     private var contentWithSheets: some View {
         contentWithAlerts
         .sheet(isPresented: $showProgramSearch) {
             ProgramSearchView(onSelect: { programInfo in
-                specialty = programInfo.specialty
-                name = programInfo.name
-                hospital = HospitalNameFormatter.format(programInfo.hospital)
-                city = programInfo.city
-                state = programInfo.state
-                address = programInfo.address ?? ""
-                accreditationID = programInfo.accreditationID
-                type = programInfo.type
-                // Auto-populate contact information from ERAS
-                if let website = programInfo.websiteURL {
-                    websiteURL = website
-                }
-                if let email = programInfo.contactEmail {
-                    contactEmail = email
-                }
-                if let phone = programInfo.contactPhone {
-                    contactPhone = phone
-                }
-                if let coordinator = programInfo.programCoordinator {
-                    programCoordinator = coordinator
-                }
-                // Set IMG-friendly status from program info
-                isIMGFriendly = programInfo.isIMGFriendly
+                didSelectProgramFromCatalog = true
+                let mapped = CatalogProgramMapper.toSavedProgram(programInfo)
+                specialty = mapped.specialty
+                name = mapped.name
+                hospital = mapped.hospital
+                city = mapped.city
+                state = mapped.state
+                address = mapped.address ?? ""
+                accreditationID = mapped.accreditationID
+                type = mapped.type
+                websiteURL = mapped.websiteURL ?? ""
+                contactEmail = mapped.contactEmail ?? ""
+                contactPhone = mapped.contactPhone ?? ""
+                programCoordinator = mapped.programCoordinator ?? ""
+                programDirector = mapped.programDirector ?? ""
+                isIMGFriendly = mapped.isIMGFriendly
+                revalidateSignalAssignment()
                 showProgramSearch = false
             })
+            .matchlyExpandedSheet()
         }
-        .sheet(isPresented: $showDatePickerSheet) {
-            NavigationView {
-                VStack(spacing: 20) {
-                    DatePicker("Interview Date & Time", selection: $interviewDate, displayedComponents: [.date, .hourAndMinute])
-                        .datePickerStyle(.wheel)
-                        .labelsHidden()
-                        .padding()
-                        .onChange(of: interviewDate) { oldValue, newValue in
-                            // Update pending date when picker changes
-                            pendingInterviewDate = newValue
-                        }
-                    
-                    Spacer()
-                }
+        .fullScreenCover(isPresented: $showDatePickerSheet) {
+            MatchlyNavigationView {
+                InterviewDateSchedulingContent(
+                    programTitle: interviewSchedulingProgramTitle,
+                    institutionSubtitle: interviewSchedulingInstitution,
+                    locationLine: interviewSchedulingLocation,
+                    interviewDate: $interviewDate
+                )
+                .appCanvasBackground()
                 .navigationTitle("Interview Date")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .navigationBarLeading) {
                         Button("Cancel") {
-                            showDatePickerSheet = false
+                            if let snapshot = interviewDateSnapshotBeforePicker {
+                                interviewDate = snapshot
+                            }
                             pendingInterviewDate = nil
-                        }
-                    }
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("Done") {
-                            hasInterviewDate = true
-                            // Set pending date before dismissing sheet
-                            pendingInterviewDate = interviewDate
+                            interviewDateSnapshotBeforePicker = nil
                             showDatePickerSheet = false
-                            
-                            if !isInitialLoad {
-                                // Delay to ensure sheet is fully dismissed before showing alert
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                    handleInterviewDateChanged(newDate: interviewDate)
-                                }
-                                
-                                // Auto-save the program with the interview date without dismissing
-                                let finalSpecialty = specialty.isEmpty ? (program?.specialty ?? dataManager.preferences.specialties.first ?? "Unknown") : specialty
-                                let finalScore = questionnaire.totalWeightedScore(preferences: dataManager.preferences, programEMR: emr)
-                                let updatedProgram = Program(
-                                    id: program?.id ?? UUID().uuidString,
-                                    specialty: finalSpecialty,
-                                    name: name,
-                                    hospital: hospital,
-                                    city: city,
-                                    state: state,
-                                    address: address.isEmpty ? nil : address,
-                                    type: type,
-                                    accreditationID: accreditationID,
-                                    programQuality: ProgramQuality(),
-                                    cultureFit: CultureFit(),
-                                    location: Location(),
-                                    logistics: Logistics(),
-                                    careerAlignment: CareerAlignment(),
-                                    redFlags: RedFlags(),
-                                    questionnaire: questionnaire,
-                                    notes: notes,
-                                    interviewDate: interviewDate,
-                                    voiceMemoURL: nil,
-                                    websiteURL: websiteURL.isEmpty ? nil : websiteURL,
-                                    contactEmail: contactEmail.isEmpty ? nil : contactEmail,
-                                    contactPhone: contactPhone.isEmpty ? nil : contactPhone,
-                                    programCoordinator: programCoordinator.isEmpty ? nil : programCoordinator,
-                                    isIMGFriendly: isIMGFriendly,
-                                    emr: emr,
-                                    signalType: signalType,
-                                    finalScore: finalScore
-                                )
-                                if program == nil {
-                                    dataManager.addProgram(updatedProgram)
-                                } else {
-                                    dataManager.updateProgram(updatedProgram)
-                                }
-                                dataManager.saveProgramsImmediately()
-                            }
                         }
                     }
-                }
-            }
-            .presentationDetents([.medium])
-        }
-        .sheet(isPresented: $showContactInfo) {
-            NavigationView {
-                Form {
-                    Section("Address") {
-                        TextField("Street Address", text: $address)
-                            .autocapitalization(.words)
-                    }
-                    
-                    Section("Contact Information") {
-                        // Website URL with open button
-                        HStack {
-                            TextField("Website URL", text: $websiteURL)
-                                .keyboardType(.URL)
-                                .autocapitalization(.none)
-                                if !websiteURL.isEmpty, let url = URL(string: websiteURL) {
-                                Button(action: {
-                                    UIApplication.shared.open(url)
-                                }) {
-                                    Image(systemName: "arrow.up.right.square")
-                                        .foregroundColor(.blue)
-                                }
-                            }
-                        }
-                        
-                        TextField("Contact Email", text: $contactEmail)
-                            .keyboardType(.emailAddress)
-                            .autocapitalization(.none)
-                        
-                        TextField("Contact Phone", text: $contactPhone)
-                            .keyboardType(.phonePad)
-                        
-                        TextField("Program Coordinator", text: $programCoordinator)
-                                .autocapitalization(.words)
-                    }
-                }
-                .navigationTitle("Contact Information")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
                     ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("Done") {
-                            showContactInfo = false
+                        Button("Save") {
+                            commitInterviewDateFromPicker()
                         }
-                    }
+                        .fontWeight(.semibold)
                     }
                 }
             }
+        }
+        .sheet(isPresented: $showUnansweredQuestionsSheet) {
+            UnansweredQuestionsSheet(
+                questionnaire: $questionnaire,
+                emr: $emr,
+                preferences: dataManager.preferences,
+                emrContent: { sectionEEmrPicker }
+            )
+        }
     }
     
     private var contentWithAlerts: some View {
         contentWithChangeTracking
+            .interactiveDismissDisabled(hasUnsavedChanges)
             .alert("Unsaved Changes", isPresented: $showUnsavedChangesAlert) {
                 Button("Discard", role: .destructive) {
                     hasUnsavedChanges = false
@@ -675,6 +909,7 @@ struct ProgramEntryView: View {
                 }
                 Button("Cancel", role: .cancel) {
                     pendingDismissal = false
+                    NotificationCenter.default.post(name: NSNotification.Name("TabNavigationCancelled"), object: nil)
                 }
                 Button("Save") {
                     saveProgram()
@@ -692,8 +927,31 @@ struct ProgramEntryView: View {
             } message: {
                 Text(signalLimitMessage)
             }
+            .alert("Signal Updated", isPresented: $showSignalClearedAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(signalLimitMessage)
+            }
+            .alert("Program Name Required", isPresented: $showMissingProgramNameAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("Enter a program name before saving. Address search only fills location fields.")
+            }
+            .alert(
+                "Already in List",
+                isPresented: Binding(
+                    get: { dataManager.lastAddProgramNotice != nil },
+                    set: { if !$0 { dataManager.lastAddProgramNotice = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) {
+                    dataManager.lastAddProgramNotice = nil
+                }
+            } message: {
+                Text(dataManager.lastAddProgramNotice ?? "")
+            }
             .alert("Add to Calendar", isPresented: $showEnableCalendarSyncAlert) {
-                Button("Cancel", role: .cancel) {
+                Button("Not Now", role: .cancel) {
                     pendingInterviewDate = nil
                 }
                 Button("Add Event") {
@@ -710,176 +968,232 @@ struct ProgramEntryView: View {
             } message: {
                 Text("Would you like to add this interview to your calendar?")
             }
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("TabBarNavigationRequested"))) { notification in
+                guard hasUnsavedChanges,
+                      let targetTab = notification.userInfo?["targetTab"] as? Int else { return }
+
+                showUnsavedChangesAlert = true
+                pendingDismissal = true
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("TabNavigationBlocked"),
+                    object: nil,
+                    userInfo: ["targetTab": targetTab]
+                )
+            }
     }
     
     private var contentWithChangeTracking: some View {
         contentWithLifecycle
-            .onChange(of: name) { _, _ in debouncedCheckForUnsavedChanges() }
+            .onChange(of: name) { _, _ in
+                if !trimmedProgramName.isEmpty {
+                    highlightMissingProgramName = false
+                }
+                debouncedCheckForUnsavedChanges()
+            }
             .onChange(of: hospital) { _, _ in debouncedCheckForUnsavedChanges() }
             .onChange(of: city) { _, _ in debouncedCheckForUnsavedChanges() }
             .onChange(of: state) { _, _ in debouncedCheckForUnsavedChanges() }
+            .onChange(of: postalCode) { _, newValue in
+                let digits = newValue.filter(\.isNumber)
+                let clipped = String(digits.prefix(5))
+                if clipped != newValue {
+                    postalCode = clipped
+                }
+                debouncedCheckForUnsavedChanges()
+            }
             .onChange(of: notes) { _, _ in debouncedCheckForUnsavedChanges() }
             .onChange(of: interviewDate) { _, _ in debouncedCheckForUnsavedChanges() }
             .onChange(of: hasInterviewDate) { _, _ in debouncedCheckForUnsavedChanges() }
-            .onChange(of: signalType) { _, _ in debouncedCheckForUnsavedChanges() }
+            .onChange(of: signalType) { _, _ in
+                hasUnsavedChanges = checkForUnsavedChanges()
+            }
+            .onChange(of: signalNote) { _, _ in debouncedCheckForUnsavedChanges() }
+            .onChange(of: specialty) { _, _ in
+                revalidateSignalAssignment()
+                debouncedCheckForUnsavedChanges()
+            }
             .onChange(of: questionnaire) { _, _ in debouncedCheckForUnsavedChanges() }
             .onChange(of: emr) { _, _ in debouncedCheckForUnsavedChanges() }
     }
     
     // Debounced version to avoid expensive checks on every keystroke
     private func debouncedCheckForUnsavedChanges() {
-        // Cancel previous task
         changeCheckTask?.cancel()
-        
-        // Create new task with delay
+
         changeCheckTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 300_000_000) // 0.3 seconds
+            try? await Task.sleep(nanoseconds: 300_000_000)
             guard !Task.isCancelled else { return }
             hasUnsavedChanges = checkForUnsavedChanges()
         }
     }
-    
+
     private var contentWithLifecycle: some View {
         mainContentView
             .onAppear {
-                if let program = program {
-                    loadProgram(program)
-                } else {
-                    // For new programs, mark initial load complete immediately
-                    isInitialLoad = false
-                }
-                // Expand Section A by default
+                let isInitialAppearance = !didPerformInitialProgramLoad
+                reloadProgramFromStoreIfNeeded(isInitialAppearance: isInitialAppearance)
+                didPerformInitialProgramLoad = true
+
                 if let sectionA = questionnaire.sections.first(where: { $0.title.contains("Section A") }) {
                     expandedSections.insert(sectionA.id)
                 }
+
+                if scrollToRedFlags {
+                    revealFirstRedFlagSection()
+                } else if scrollToFirstMissing {
+                    revealFirstUnansweredQuestionSection()
+                } else if isInitialAppearance {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        requestProgramScroll(to: "program-entry-top", anchor: .top)
+                    }
+                }
             }
+            .onDisappear {
+                autopPersistProgramChangesIfNeeded()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .matchlyFocusProgramQuestionnaire)) { notification in
+                guard let programId = notification.userInfo?[MatchlyNotificationKey.programId] as? String,
+                      programId == currentProgramId else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    focusQuestionnaireOnProgram()
+                }
+            }
+    }
+
+    @ViewBuilder
+    private var programHeaderActionButtons: some View {
+        HStack(spacing: 8) {
+            if !websiteURL.isEmpty, let url = URL(string: websiteURL) {
+                Button(action: {
+                    UIApplication.shared.open(url)
+                }) {
+                    Image(systemName: "link")
+                        .font(.arial(size: 16))
+                        .foregroundColor(.blue)
+                }
+                .buttonStyle(.plain)
+            }
+
+            if !city.isEmpty && !state.isEmpty {
+                Button(action: {
+                    openInMaps()
+                }) {
+                    Image(systemName: "map.fill")
+                        .font(.arial(size: 16))
+                        .foregroundColor(.blue)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func locationSubtitle(city: String, state: String) -> String {
+        let zip = postalCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        if zip.isEmpty {
+            return "\(city), \(state)"
+        }
+        return "\(city), \(state) \(zip)"
+    }
+
+    private var programHeaderMetadataRow: some View {
+        let resolved = AddressFormatter.resolved(
+            hospital: hospital,
+            address: address.isEmpty ? nil : address,
+            city: city,
+            state: state,
+            accreditationID: accreditationID
+        )
+
+        return HStack(spacing: 8) {
+            if !resolved.city.isEmpty && !resolved.state.isEmpty {
+                HStack(spacing: 3) {
+                    Image(systemName: "mappin.circle.fill")
+                        .font(.arial(size: 9))
+                    Text(locationSubtitle(city: resolved.city, state: resolved.state))
+                        .font(.arial(size: 11))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                }
+                .foregroundColor(.secondary)
+            }
+
+            if let acgmeID = accreditationID, !acgmeID.isEmpty {
+                HStack(spacing: 2) {
+                    Image(systemName: "number.circle.fill")
+                        .font(.arial(size: 9))
+                    Text("ID:")
+                        .font(.arial(size: 10, weight: .medium))
+                    Text(acgmeID)
+                        .font(.arial(size: 11, weight: .medium))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                }
+                .foregroundColor(.secondary)
+            }
+
+            if !specialty.isEmpty {
+                MatchlyProgramSpecialtyBadge(specialty: specialty)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
     
     private var mainContentView: some View {
-        NavigationView {
-            VStack(spacing: 0) {
-                // Compact Header (if program is selected)
-                if !hospital.isEmpty {
+        VStack(spacing: 0) {
+                if showsProgramSummaryHeader {
                     VStack(alignment: .leading, spacing: 8) {
-                        HStack(alignment: .top, spacing: 12) {
-                            VStack(alignment: .leading, spacing: 6) {
-                                // Hospital Name - formatted, allow more lines
-                                Text(HospitalNameFormatter.format(hospital))
-                                    .font(.arial(size: 18, weight: .semibold))
-                                    .foregroundColor(.primary)
-                                    .lineLimit(3)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                
-                                // Address (below name)
-                                if !address.isEmpty {
-                                    Text(address)
-                                        .font(.arial(size: 13, weight: .medium))
-                                        .foregroundColor(.primary)
-                                }
-                                
-                                // Location and Accreditation ID
-                                HStack(spacing: 8) {
-                                    if !city.isEmpty && !state.isEmpty {
-                                        HStack(spacing: 4) {
-                                            Image(systemName: "location.fill")
-                                                .font(.arial(size: 10))
-                                            Text("\(city), \(state)")
-                                                .font(.arial(size: 13))
-                                        }
-                                        .foregroundColor(.secondary)
-                                    }
-                                    
-                                    // Accreditation ID - subtle, no background
-                                    if let acgmeID = accreditationID {
-                                        HStack(spacing: 2) {
-                                            Image(systemName: "number.circle.fill")
-                                                .font(.arial(size: 10))
-                                            Text("ID:")
-                                                .font(.arial(size: 11, weight: .medium))
-                                            Text(acgmeID)
-                                                .font(.arial(size: 12, weight: .medium))
-                                        }
-                                        .foregroundColor(.secondary)
-                                    }
-                                }
-                            }
-                            
-                            Spacer()
-                            
-                            HStack(spacing: 8) {
-                                // Website Link Button - show if we have a website URL
-                                if !websiteURL.isEmpty, let url = URL(string: websiteURL) {
-                                    Button(action: {
-                                        UIApplication.shared.open(url)
-                                    }) {
-                                        Image(systemName: "link")
-                                            .font(.arial(size: 16))
-                                            .foregroundColor(.blue)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                                
-                                // Map Button - show if we have location data
-                                if !city.isEmpty && !state.isEmpty {
-                                    Button(action: {
-                                        openInMaps()
-                                    }) {
-                                        Image(systemName: "map.fill")
-                                            .font(.arial(size: 16))
-                                            .foregroundColor(.blue)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                                
-                                // Contact Info Button - small "i" icon (always show if there's any contact info or address)
-                                if !address.isEmpty || !websiteURL.isEmpty || !contactEmail.isEmpty || !contactPhone.isEmpty || !programCoordinator.isEmpty {
-                                    Button(action: {
-                                        showContactInfo = true
-                                    }) {
-                                        Image(systemName: "info.circle")
-                                            .font(.arial(size: 16))
-                                            .foregroundColor(.blue)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
+                        HStack(alignment: .top, spacing: 10) {
+                            Text(HospitalNameFormatter.format(hospital))
+                                .font(.arial(size: 18, weight: .semibold))
+                                .foregroundColor(.primary)
+                                .lineLimit(3)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            programHeaderActionButtons
                         }
+
+                        let streetLine = AddressFormatter.resolved(
+                            hospital: hospital,
+                            address: address.isEmpty ? nil : address,
+                            city: city,
+                            state: state,
+                            accreditationID: accreditationID
+                        ).street
+                        if !streetLine.isEmpty {
+                            Text(streetLine)
+                                .font(.arial(size: 13, weight: .medium))
+                                .foregroundColor(.primary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        programHeaderMetadataRow
                         
-                        // Program Type and IMG tags
+                        // IMG tag
                         HStack(spacing: 8) {
-                            // Program Type
-                            if !type.isEmpty {
-                                HStack(spacing: 3) {
-                                    Image(systemName: programTypeIcon(type))
-                                        .font(.arial(size: 10))
-                                    Text(type)
-                                        .font(.arial(size: 12, weight: .medium))
-                                }
-                                .foregroundColor(programTypeColor(type))
-                            }
-                            
-                            // IMG-Friendly
-                            let imgStatus = isIMGFriendly ?? IMGFriendlyHelper.shared.assessIMGFriendlinessForProgram(
+                            let imgDisplay = IMGStatusDisplay.forSavedProgram(
                                 Program(
                                     specialty: specialty,
                                     name: name,
                                     hospital: hospital,
                                     city: city,
                                     state: state,
-                                    address: address,
+                                    address: address.isEmpty ? nil : address,
                                     type: type,
                                     accreditationID: accreditationID,
                                     isIMGFriendly: isIMGFriendly
                                 )
                             )
-                            if imgStatus == true {
+                            if imgDisplay != .none {
                                 HStack(spacing: 3) {
                                     Image(systemName: "globe.americas.fill")
                                         .font(.arial(size: 10))
-                                    Text("IMG")
+                                    Text(imgDisplay.label)
                                         .font(.arial(size: 12, weight: .medium))
                                 }
-                                .foregroundColor(.purple)
+                                .foregroundColor(imgDisplay.color)
                             }
                         }
                         
@@ -887,7 +1201,11 @@ struct ProgramEntryView: View {
                         HStack(spacing: 8) {
                             // Signal indicator
                             if signalType != .none {
-                                let isTiered = SignalLimits.isTiered(for: specialty.isEmpty ? "Unknown" : specialty)
+                                let signalAccreditationID = currentSignalAccreditationID
+                                let isTiered = SignalLimits.isTiered(
+                                    for: specialty.isEmpty ? "Unknown" : specialty,
+                                    accreditationID: signalAccreditationID
+                                )
                                 let signalText = isTiered 
                                     ? (signalType == .gold ? "Gold Signal" : "Silver Signal")
                                     : "Signal"
@@ -926,87 +1244,427 @@ struct ProgramEntryView: View {
                                 }
                                 .foregroundColor(.red)
                             }
+
+                            if VoiceMemoStorage.programHasVoiceMemo(
+                                id: draftProgramId,
+                                reference: program?.voiceMemoURL ?? currentVoiceMemoReference
+                            ) {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "waveform")
+                                        .font(.arial(size: 10))
+                                    Text("Voice Memo")
+                                        .font(.arial(size: 12, weight: .medium))
+                                }
+                                .foregroundColor(.purple)
+                            }
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal)
                     .padding(.vertical, 10)
-                    .background(Color(.systemGray6))
+                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 10))
                 }
                 
-                // Questionnaire with ScrollViewReader for auto-scrolling
-                ScrollViewReader { proxy in
-                    formContent
-                        .onAppear {
-                            scrollProxy = proxy
-                        }
-                        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ScrollToNextQuestion"))) { notification in
-                            if let userInfo = notification.userInfo,
-                               let currentSectionId = userInfo["currentSectionId"] as? String,
-                               let currentItemId = userInfo["currentItemId"] as? String {
-                                // Delay to ensure view updates are complete, then scroll
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                    scrollToNextQuestion(currentSectionId: currentSectionId, currentItemId: currentItemId)
-                                }
-                            }
-                        }
-                }
+                formContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .navigationTitle(program == nil ? (hospital.isEmpty ? "Add Program" : "") : "Edit Program")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
+            .navigationTitle(program == nil ? "Add Program" : "Edit Program")
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(hasUnsavedChanges)
+            .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel") {
                         if hasUnsavedChanges {
                             showUnsavedChangesAlert = true
                         } else {
-                        dismiss()
+                            dismiss()
+                        }
                     }
-                }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    HStack(spacing: 8) {
-                        // Menu for additional actions (including delete) - only show when editing
-                        if program != nil {
-                            Menu {
-                                Button(role: .destructive, action: {
-                                    if let program = program {
-                                        dataManager.deleteProgram(program)
-                                        dismiss()
-                                    }
-                                }) {
-                                    Label("Delete Program", systemImage: "trash")
-                                }
-                            } label: {
-                                Image(systemName: "ellipsis.circle")
-                                    .foregroundColor(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        
-                        // Save button as blue pill
-                        Button("Save") {
-                            saveProgram()
-                        }
-                        .font(.arial(size: 16, weight: .medium))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.blue)
-                        .cornerRadius(8)
-                        .buttonStyle(.plain)
+                    Button("Save") {
+                        saveProgram()
                     }
-                    .background(Color.clear)
+                    .font(.arial(size: 16, weight: .medium))
+                    .buttonStyle(.glassProminent)
+                    .tint(.blue)
+                    .disabled(!canSaveProgram)
+                }
+            }
+            .background(NavigationPopGestureBlocker(isBlocked: hasUnsavedChanges))
+    }
+    
+    private var collapsedManualProgramSummary: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(trimmedProgramName.isEmpty ? "Program" : name)
+                        .font(.arial(size: 18, weight: .semibold))
+                        .foregroundColor(.primary)
+                        .lineLimit(2)
+                    if !hospital.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text(hospital)
+                            .font(.arial(size: 13, weight: .medium))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    } else if !city.isEmpty && !state.isEmpty {
+                        Text(locationSubtitle(city: city, state: USState.abbreviation(for: state)))
+                            .font(.arial(size: 13, weight: .medium))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Button("Edit") {
+                    isEditingManualProgramDetails = true
+                }
+                .font(.arial(size: 15, weight: .semibold))
+                .buttonStyle(.glassProminent)
+                .tint(.blue)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+        }
+        .glassEffect(.regular, in: .rect(cornerRadius: 12))
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+    }
+
+    private var manualProgramBasicsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center) {
+                Text("Basic Information")
+                    .font(.arial(size: 20, weight: .semibold))
+                Spacer(minLength: 8)
+                if isSavedManualProgram {
+                    Button("Done") {
+                        isEditingManualProgramDetails = false
+                    }
+                    .font(.arial(size: 15, weight: .medium))
+                }
+            }
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+
+            VStack(spacing: 12) {
+                Button(action: {
+                    showProgramSearch = true
+                }) {
+                    HStack {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundColor(.blue)
+                        Text("Search Programs")
+                            .foregroundColor(.blue)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .foregroundColor(.secondary)
+                            .font(.caption)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 10))
+                }
+                .padding(.horizontal, 20)
+
+                VStack(spacing: 0) {
+                    manualFormRow {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ClearableTextField("Program Name (required)", text: $name)
+                                .font(.arial(size: 16))
+                                .textContentType(.organizationName)
+                                .autocorrectionDisabled()
+                            if highlightMissingProgramName && trimmedProgramName.isEmpty {
+                                Text("Enter a program name to save.")
+                                    .font(.arial(size: 11, weight: .medium))
+                                    .foregroundColor(.red)
+                            }
+                        }
+                    }
+                    manualFormDivider
+                    manualFormRow {
+                        ClearableTextField("Hospital / University", text: $hospital)
+                            .font(.arial(size: 16))
+                            .textContentType(.organizationName)
+                            .autocorrectionDisabled()
+                    }
+                    manualFormDivider
+                    manualFormRow {
+                        manualEntrySpecialtyPicker
+                    }
+                    manualFormDivider
+                    manualFormRow {
+                        ManualAddressSearchField(
+                            address: $address,
+                            city: $city,
+                            state: $state,
+                            postalCode: $postalCode
+                        )
+                    }
+                    manualFormDivider
+                    manualFormRow {
+                        ClearableTextField("Street Address (e.g., 123 Main St)", text: $address)
+                            .font(.arial(size: 16))
+                            .autocapitalization(.words)
+                    }
+                    manualFormDivider
+                    manualFormRow {
+                        ClearableTextField("City", text: $city)
+                            .font(.arial(size: 16))
+                    }
+                    manualFormDivider
+                    manualFormRow {
+                        manualEntryStatePicker
+                    }
+                    manualFormDivider
+                    manualFormRow {
+                        ClearableTextField("ZIP Code", text: $postalCode)
+                            .font(.arial(size: 16))
+                            .keyboardType(.numberPad)
+                            .textContentType(.postalCode)
+                    }
+                }
+                .glassEffect(.regular, in: .rect(cornerRadius: 12))
+                .padding(.horizontal, 20)
+
+                if isManualDraftEntry {
+                    VStack(spacing: 0) {
+                        manualFormRow {
+                            Toggle("Set Interview Date", isOn: $hasInterviewDate)
+                                .font(.arial(size: 16))
+                                .onChange(of: hasInterviewDate) { oldValue, newValue in
+                                    if newValue && !isInitialLoad {
+                                        handleInterviewDateChanged(newDate: interviewDate)
+                                    }
+                                }
+                        }
+
+                        if hasInterviewDate {
+                            manualFormDivider
+                            manualFormRow {
+                                DatePicker("Interview Date & Time", selection: $interviewDate, displayedComponents: [.date, .hourAndMinute])
+                                    .font(.arial(size: 16))
+                                    .onChange(of: interviewDate) { oldValue, newValue in
+                                        if hasInterviewDate && !isInitialLoad && oldValue != newValue {
+                                            pendingInterviewDate = newValue
+                                            handleInterviewDateChanged(newDate: newValue)
+                                        }
+                                    }
+                            }
+                        }
+                    }
+                    .glassEffect(.regular, in: .rect(cornerRadius: 12))
+                    .padding(.horizontal, 20)
+
+                    if !hospital.isEmpty {
+                        combinedInterviewAndSignalingSection
+                            .padding(.horizontal, 20)
+                            .padding(.top, 4)
+                    }
                 }
             }
         }
+        .padding(.bottom, 8)
+        .sheet(isPresented: $showManualSpecialtySheet) {
+            manualEntrySpecialtySheet
+        }
+        .sheet(isPresented: $showManualStateSheet) {
+            manualEntryStateSheet
+        }
     }
-    
+
+    private func manualFormRow<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+    }
+
+    private var manualFormDivider: some View {
+        Divider()
+            .padding(.leading, 14)
+    }
+
+    private var manualEntrySpecialtyPicker: some View {
+        Button {
+            showManualSpecialtySheet = true
+        } label: {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Specialty")
+                        .font(.arial(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
+                    Text(manualEntrySpecialtyDisplayName)
+                        .font(.arial(size: 16, weight: .medium))
+                        .foregroundColor(specialty.isEmpty ? .secondary : .blue)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var manualEntrySpecialtySheet: some View {
+        MatchlyNavigationView {
+            List {
+                if !specialty.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Section("Selected") {
+                        manualEntrySpecialtySheetRow(specialty, isSelected: true)
+                    }
+                }
+
+                Section(specialty.isEmpty ? "Specialty" : "Other specialties") {
+                    ForEach(manualEntryOtherSpecialtyOptions, id: \.self) { option in
+                        manualEntrySpecialtySheetRow(option, isSelected: false)
+                    }
+                }
+            }
+            .navigationTitle("Specialty")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        showManualSpecialtySheet = false
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private var manualEntryStateDisplayName: String {
+        let trimmed = state.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return "Select state"
+        }
+        return USState.abbreviation(for: trimmed)
+    }
+
+    private var filteredManualEntryStates: [String] {
+        let query = manualStateSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if query.isEmpty {
+            return USState.selectableAbbreviations
+        }
+        let upper = query.uppercased()
+        return USState.selectableAbbreviations.filter { abbrev in
+            abbrev.contains(upper) || abbrev.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    private var manualEntryStatePicker: some View {
+        Button {
+            manualStateSearchText = ""
+            showManualStateSheet = true
+        } label: {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("State")
+                        .font(.arial(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
+                    Text(manualEntryStateDisplayName)
+                        .font(.arial(size: 16, weight: .medium))
+                        .foregroundColor(state.isEmpty ? .secondary : .primary)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var manualEntryStateSheet: some View {
+        MatchlyNavigationView {
+            List {
+                if !state.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Section("Selected") {
+                        manualEntryStateSheetRow(USState.abbreviation(for: state), isSelected: true)
+                    }
+                }
+
+                Section(state.isEmpty ? "State" : "Other states") {
+                    ForEach(filteredManualEntryStates.filter {
+                        USState.abbreviation(for: state) != $0
+                    }, id: \.self) { abbrev in
+                        manualEntryStateSheetRow(abbrev, isSelected: false)
+                    }
+                }
+            }
+            .searchable(text: $manualStateSearchText, prompt: "Search states")
+            .navigationTitle("State")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        showManualStateSheet = false
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func manualEntryStateSheetRow(_ abbrev: String, isSelected: Bool) -> some View {
+        Button {
+            state = abbrev
+            showManualStateSheet = false
+        } label: {
+            HStack {
+                Text(abbrev)
+                    .foregroundColor(.primary)
+                Spacer()
+                if isSelected || USState.abbreviation(for: state) == abbrev {
+                    Image(systemName: "checkmark")
+                        .foregroundColor(.blue)
+                        .font(.body.weight(.semibold))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func manualEntrySpecialtySheetRow(_ option: String, isSelected: Bool) -> some View {
+        Button {
+            specialty = option
+            revalidateSignalAssignment()
+            showManualSpecialtySheet = false
+        } label: {
+            HStack {
+                Text(SpecialtyFormatter.displayNameWithAbbreviation(option))
+                    .foregroundColor(.primary)
+                Spacer()
+                if isSelected || specialty == option {
+                    Image(systemName: "checkmark")
+                        .foregroundColor(.blue)
+                        .font(.body.weight(.semibold))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
     private func loadProgram(_ program: Program) {
+        didSelectProgramFromCatalog = !program.isManuallyAdded
+        isEditingManualProgramDetails = false
         name = program.name
         hospital = program.hospital
         city = program.city
         state = program.state
+        postalCode = program.postalCode ?? ""
         address = program.address ?? ""
         accreditationID = program.accreditationID
         type = program.type
@@ -1028,44 +1686,76 @@ struct ProgramEntryView: View {
         contactEmail = program.contactEmail ?? ""
         contactPhone = program.contactPhone ?? ""
         programCoordinator = program.programCoordinator ?? ""
+        programDirector = program.programDirector ?? ""
         
         // Load IMG-friendly status
         isIMGFriendly = program.isIMGFriendly
         
         // Load EMR selection
         emr = program.emr
+        if let stored = program.emr, EMRSystem.isOtherOrCustom(stored) {
+            emrOtherDetail = stored == EMRSystem.other.rawValue ? "" : stored
+        } else {
+            emrOtherDetail = ""
+        }
         
         // Load signal type
         signalType = program.signalType
-        
+        signalNote = program.signalNote ?? ""
         
         // Load questionnaire
         questionnaire = program.questionnaire
+        questionnaire.mergeCustomization(from: dataManager.preferences)
+
+        originalVoiceMemoReference = VoiceMemoStorage.normalizedReference(
+            from: program.voiceMemoURL,
+            programId: program.id
+        )
     }
-    
-    private func saveProgram() {
-        // Use stored specialty, or program's specialty if editing, otherwise use first preference specialty, or "Unknown"
-        let finalSpecialty: String
-        if !specialty.isEmpty {
-            finalSpecialty = specialty
-        } else if let existingProgram = program {
-            finalSpecialty = existingProgram.specialty
-        } else if let firstSpecialty = dataManager.preferences.specialties.first {
-            finalSpecialty = firstSpecialty
-        } else {
-            finalSpecialty = dataManager.preferences.specialty ?? "Unknown"
+
+    private var currentVoiceMemoReference: String? {
+        VoiceMemoStorage.referenceIfMemoExists(forProgramId: draftProgramId)
+    }
+
+    private func reloadProgramFromStoreIfNeeded(isInitialAppearance: Bool) {
+        if let program {
+            draftProgramId = program.id
+            let latest = dataManager.programs.first(where: { $0.id == program.id }) ?? program
+            if isInitialAppearance || !checkForUnsavedChanges() {
+                loadProgram(latest)
+                hasUnsavedChanges = false
+            }
+        } else if isInitialAppearance {
+            draftProgramId = UUID().uuidString
+            questionnaire.mergeCustomization(from: dataManager.preferences)
+            if specialty.isEmpty {
+                if let preferredSpecialty,
+                   !preferredSpecialty.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    specialty = preferredSpecialty
+                } else if let defaultSpecialty = dataManager.preferences.specialties.first {
+                    specialty = defaultSpecialty
+                }
+            }
+            isInitialLoad = false
         }
-        
-        // Calculate final score from questionnaire using enabled sections/questions
-        let finalScore = questionnaire.totalWeightedScore(preferences: dataManager.preferences, programEMR: emr)
-        
-        let newProgram = Program(
-            id: program?.id ?? UUID().uuidString,
-            specialty: finalSpecialty,
-            name: name,
-            hospital: hospital,
+    }
+
+    private func buildProgramDraft() -> Program {
+        let programId = program?.id ?? draftProgramId
+        let normalizedSpecialty = SpecialtyFormatter.normalizedUserSpecialty(
+            !specialty.isEmpty ? specialty : (program?.specialty ?? dataManager.preferences.specialties.first ?? dataManager.preferences.specialty ?? "Unknown")
+        )
+
+        return Program(
+            id: programId,
+            specialty: normalizedSpecialty,
+            name: trimmedProgramName,
+            hospital: hospital.trimmingCharacters(in: .whitespacesAndNewlines),
             city: city,
-            state: state,
+            state: USState.abbreviation(for: state),
+            postalCode: postalCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? nil
+                : postalCode.trimmingCharacters(in: .whitespacesAndNewlines),
             address: address.isEmpty ? nil : address,
             type: type,
             accreditationID: accreditationID,
@@ -1078,43 +1768,84 @@ struct ProgramEntryView: View {
             questionnaire: questionnaire,
             notes: notes,
             interviewDate: hasInterviewDate ? interviewDate : nil,
-            voiceMemoURL: nil,
+            voiceMemoURL: currentVoiceMemoReference,
             websiteURL: websiteURL.isEmpty ? nil : websiteURL,
             contactEmail: contactEmail.isEmpty ? nil : contactEmail,
             contactPhone: contactPhone.isEmpty ? nil : contactPhone,
             programCoordinator: programCoordinator.isEmpty ? nil : programCoordinator,
+            programDirector: programDirector.isEmpty ? nil : programDirector,
             isIMGFriendly: isIMGFriendly,
             emr: emr,
             signalType: signalType,
-            finalScore: finalScore
+            signalNote: trimmedSignalNote,
+            finalScore: questionnaire.totalWeightedScore(preferences: dataManager.preferences, programEMR: emr)
         )
-        
-        // Update or add program - this calculates score and updates immediately
+    }
+
+    @discardableResult
+    private func persistProgramChanges() -> Bool {
+        guard validateProgramNameForSave() else { return false }
+        let newProgram = buildProgramDraft()
+
         if program == nil {
-            dataManager.addProgram(newProgram)
+            guard dataManager.addProgram(newProgram) == .added else { return false }
         } else {
             dataManager.updateProgram(newProgram)
         }
-        
-        // Force immediate save (bypass debounce for critical updates)
+
         dataManager.saveProgramsImmediately()
-        
+        return true
+    }
+
+    private func autopPersistProgramChangesIfNeeded() {
+        changeCheckTask?.cancel()
+        guard program != nil else { return }
+        guard checkForUnsavedChanges() else { return }
+        guard persistProgramChanges() else { return }
+        hasUnsavedChanges = false
+    }
+
+    private func validateProgramNameForSave() -> Bool {
+        guard !trimmedProgramName.isEmpty else {
+            highlightMissingProgramName = true
+            showMissingProgramNameAlert = true
+            return false
+        }
+        highlightMissingProgramName = false
+        return true
+    }
+
+    private func saveProgram() {
+        let isNewManualProgram = program == nil && (accreditationID ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        guard persistProgramChanges() else { return }
+
         // Note: Calendar sync is handled through alerts when interview date is set/changed
         // No need to sync here as it's already handled in handleInterviewDateChanged
-        
-        // Mark as saved
+
         hasUnsavedChanges = false
-        
-        // Dismiss after ensuring data is saved
+        if isSavedManualProgram {
+            isEditingManualProgramDetails = false
+        }
+        if isNewManualProgram {
+            onNewManualProgramSaved?()
+        }
         dismiss()
     }
     
+    /// Latest persisted copy used for dirty-state checks (not the snapshot passed at navigation time).
+    private func persistedProgramBaseline() -> Program? {
+        guard let id = program?.id else { return nil }
+        return dataManager.programs.first(where: { $0.id == id })
+    }
+
     // Check if there are unsaved changes - optimized to avoid expensive comparisons
     private func checkForUnsavedChanges() -> Bool {
-        guard let program = program else {
+        guard let program = persistedProgramBaseline() ?? program else {
             // For new programs, check if any fields are filled (quick checks)
-            return !name.isEmpty || !hospital.isEmpty || !city.isEmpty || !state.isEmpty || 
-                   !notes.isEmpty || hasInterviewDate || signalType != .none || emr != nil ||
+            return !name.isEmpty || !hospital.isEmpty || !city.isEmpty || !state.isEmpty ||
+                   !postalCode.isEmpty ||
+                   !notes.isEmpty || hasInterviewDate || signalType != .none || !signalNote.isEmpty || emr != nil ||
+                   currentVoiceMemoReference != nil ||
                    questionnaire.sections.contains { section in
                        section.items.contains { $0.programRating > 0 }
                    }
@@ -1129,9 +1860,12 @@ struct ProgramEntryView: View {
         }
         
         // Quick string comparisons first
-        if program.name != name || program.hospital != hospital || program.city != city || 
-           program.state != state || program.notes != notes || program.signalType != signalType ||
-           program.emr != emr {
+        if program.name != name || program.hospital != hospital || program.city != city ||
+           program.state != USState.abbreviation(for: state) ||
+           (program.postalCode ?? "") != postalCode.trimmingCharacters(in: .whitespacesAndNewlines) ||
+           program.notes != notes || program.signalType != signalType ||
+           program.signalNote != trimmedSignalNote || program.emr != emr ||
+           program.voiceMemoURL != currentVoiceMemoReference {
             return true
         }
         
@@ -1157,6 +1891,106 @@ struct ProgramEntryView: View {
         return false
     }
     
+    private func revealFirstUnansweredQuestionSection() {
+        guard let target = questionnaire.firstUnansweredQuestion(
+            preferences: dataManager.preferences,
+            programEMR: emr
+        ) else { return }
+        dismissProgramEntryKeyboard()
+        revealQuestionnaireSection(target.sectionId)
+        requestProgramScroll(to: target.scrollID, anchor: Self.questionnaireQuestionScrollAnchor)
+    }
+
+    private func focusQuestionnaireOnProgram() {
+        dismissProgramEntryKeyboard()
+        if questionnaire.firstUnansweredQuestion(
+            preferences: dataManager.preferences,
+            programEMR: emr
+        ) != nil {
+            revealFirstUnansweredQuestionSection()
+        } else {
+            requestProgramScroll(to: "program-questionnaire-start", anchor: .top)
+        }
+    }
+
+    private func dismissProgramEntryKeyboard() {
+        isNotesFocused = false
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+        )
+    }
+
+    private func revealFirstRedFlagSection() {
+        guard let target = questionnaire.firstFlaggedRedFlagQuestion() else { return }
+        revealQuestionnaireSection(target.sectionId)
+    }
+
+    private func revealQuestionnaireSection(_ sectionId: String) {
+        var expandTransaction = Transaction()
+        expandTransaction.disablesAnimations = true
+        _ = withTransaction(expandTransaction) {
+            expandedSections.insert(sectionId)
+        }
+    }
+
+    private func requestProgramScroll(
+        to scrollID: String,
+        anchor: UnitPoint
+    ) {
+        pendingProgramScrollID = scrollID
+        pendingProgramScrollAnchor = anchor
+        programScrollToken += 1
+    }
+
+    private func scrollProgramContent(
+        _ proxy: ScrollViewProxy,
+        to scrollID: String,
+        anchor: UnitPoint
+    ) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            proxy.scrollTo(scrollID, anchor: anchor)
+        }
+    }
+
+    private func performProgramScroll(
+        scrollID: String,
+        anchor: UnitPoint,
+        using proxy: ScrollViewProxy
+    ) {
+        DispatchQueue.main.async {
+            scrollProgramContent(proxy, to: scrollID, anchor: anchor)
+        }
+    }
+
+    private func scrollToNextQuestionIfNeeded(
+        fromSectionId: String,
+        itemId: String,
+        previousRating: Double,
+        newRating: Double
+    ) {
+        guard previousRating == 0, newRating > 0 else { return }
+        let current = QuestionnaireQuestionRef(sectionId: fromSectionId, itemId: itemId)
+        guard let next = questionnaire.nextQuestion(
+            after: current,
+            preferences: dataManager.preferences
+        ) else { return }
+        if next.sectionId != fromSectionId {
+            revealQuestionnaireSection(next.sectionId)
+        }
+        requestProgramScroll(to: next.scrollID, anchor: Self.questionnaireRevealNextAnchor)
+    }
+
+    private func sectionUnansweredCount(_ section: QuestionnaireSection) -> Int {
+        questionnaire.unansweredQuestions(preferences: dataManager.preferences, programEMR: emr)
+            .filter { $0.sectionId == section.id }
+            .count
+    }
+
     // Helper function to check if we should auto-expand next section
     private func checkAndExpandNextSection(currentSectionIndex: Int, currentItemIndex: Int) {
         guard currentSectionIndex < questionnaire.sections.count else { return }
@@ -1172,12 +2006,87 @@ struct ProgramEntryView: View {
                 let nextSection = questionnaire.sections[nextSectionIndex]
                 let nextEnabledItems = questionnaire.enabledItems(for: nextSection, preferences: dataManager.preferences)
                 if !nextEnabledItems.isEmpty {
-                    expandedSections.insert(nextSection.id)
+                    var expandTransaction = Transaction()
+                    expandTransaction.disablesAnimations = true
+                    _ = withTransaction(expandTransaction) {
+                        expandedSections.insert(nextSection.id)
+                    }
                 }
             }
         }
     }
     
+    private var interviewSchedulingProgramTitle: String {
+        ProgramListLabel.primaryTitle(for: currentProgramSnapshot())
+    }
+
+    private var interviewSchedulingInstitution: String? {
+        ProgramListLabel.secondarySubtitle(for: currentProgramSnapshot())
+    }
+
+    private var interviewSchedulingLocation: String? {
+        let snapshot = currentProgramSnapshot()
+        return snapshot.hasDisplayLocation ? snapshot.displayCityState : nil
+    }
+
+    private func commitInterviewDateFromPicker() {
+        hasInterviewDate = true
+        pendingInterviewDate = interviewDate
+        interviewDateSnapshotBeforePicker = nil
+        showDatePickerSheet = false
+
+        guard !isInitialLoad else { return }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            handleInterviewDateChanged(newDate: interviewDate)
+        }
+
+        let finalSpecialty = specialty.isEmpty
+            ? (program?.specialty ?? dataManager.preferences.specialties.first ?? "Unknown")
+            : specialty
+        let finalScore = questionnaire.totalWeightedScore(
+            preferences: dataManager.preferences,
+            programEMR: emr
+        )
+        let updatedProgram = Program(
+            id: program?.id ?? draftProgramId,
+            specialty: finalSpecialty,
+            name: name,
+            hospital: hospital,
+            city: city,
+            state: state,
+            address: address.isEmpty ? nil : address,
+            type: type,
+            accreditationID: accreditationID,
+            programQuality: ProgramQuality(),
+            cultureFit: CultureFit(),
+            location: Location(),
+            logistics: Logistics(),
+            careerAlignment: CareerAlignment(),
+            redFlags: RedFlags(),
+            questionnaire: questionnaire,
+            notes: notes,
+            interviewDate: interviewDate,
+            voiceMemoURL: currentVoiceMemoReference,
+            websiteURL: websiteURL.isEmpty ? nil : websiteURL,
+            contactEmail: contactEmail.isEmpty ? nil : contactEmail,
+            contactPhone: contactPhone.isEmpty ? nil : contactPhone,
+            programCoordinator: programCoordinator.isEmpty ? nil : programCoordinator,
+            programDirector: programDirector.isEmpty ? nil : programDirector,
+            isIMGFriendly: isIMGFriendly,
+            emr: emr,
+            signalType: signalType,
+            signalNote: trimmedSignalNote,
+            finalScore: finalScore
+        )
+        if program == nil {
+            guard dataManager.addProgram(updatedProgram) == .added else { return }
+        } else {
+            dataManager.updateProgram(updatedProgram)
+        }
+        dataManager.saveProgramsImmediately()
+    }
+
     // Handle interview date change and prompt for calendar sync
     private func handleInterviewDateChanged(newDate: Date) {
         pendingInterviewDate = newDate
@@ -1203,93 +2112,32 @@ struct ProgramEntryView: View {
         
         Task {
             do {
-                let calendarManager = CalendarManager.shared
-                
-                // Request access if not already granted
-                if calendarManager.authorizationStatus == .notDetermined {
-                    let granted = await calendarManager.requestAccess()
-                    if !granted {
-                        programEntryLogger.warning("Calendar access denied")
-                        return
-                    }
-                } else {
-                    calendarManager.checkAuthorizationStatus()
-                }
-                
-                if calendarManager.calendarAccessGranted {
-                    // Create program with current data for calendar event
-                    let finalSpecialty = specialty.isEmpty ? (program?.specialty ?? dataManager.preferences.specialties.first ?? "Unknown") : specialty
-                    let tempProgram = Program(
-                        id: program?.id ?? UUID().uuidString,
-                        specialty: finalSpecialty,
-                        name: name,
-                        hospital: hospital,
-                        city: city,
-                        state: state,
-                        address: address.isEmpty ? nil : address,
-                        type: type,
-                        accreditationID: accreditationID,
-                        interviewDate: date,
-                        websiteURL: websiteURL.isEmpty ? nil : websiteURL,
-                        contactEmail: contactEmail.isEmpty ? nil : contactEmail,
-                        contactPhone: contactPhone.isEmpty ? nil : contactPhone,
-                        programCoordinator: programCoordinator.isEmpty ? nil : programCoordinator
-                    )
-                    
-                    try await calendarManager.createEventsForInterviews([tempProgram])
-                    programEntryLogger.info("Successfully created calendar event for interview")
-                } else {
-                    programEntryLogger.warning("Calendar access not granted")
-                }
+                let finalSpecialty = specialty.isEmpty ? (program?.specialty ?? dataManager.preferences.specialties.first ?? "Unknown") : specialty
+                let tempProgram = Program(
+                    id: program?.id ?? UUID().uuidString,
+                    specialty: finalSpecialty,
+                    name: name,
+                    hospital: hospital,
+                    city: city,
+                    state: state,
+                    address: address.isEmpty ? nil : address,
+                    type: type,
+                    accreditationID: accreditationID,
+                    interviewDate: date,
+                    websiteURL: websiteURL.isEmpty ? nil : websiteURL,
+                    contactEmail: contactEmail.isEmpty ? nil : contactEmail,
+                    contactPhone: contactPhone.isEmpty ? nil : contactPhone,
+                    programCoordinator: programCoordinator.isEmpty ? nil : programCoordinator,
+                    programDirector: programDirector.isEmpty ? nil : programDirector
+                )
+
+                try await CalendarManager.shared.createEventsForInterviews([tempProgram])
+                programEntryLogger.info("Successfully created calendar event for interview")
             } catch {
                 programEntryLogger.error("Failed to create calendar event: \(error.localizedDescription, privacy: .public)")
             }
         }
     }
-    
-    // Helper function to scroll to the next question after answering
-    private func scrollToNextQuestion(currentSectionId: String, currentItemId: String) {
-        // Get all enabled sections and items in order (enabledSections already includes both standard and custom sections)
-        let allSections = questionnaire.enabledSections(preferences: dataManager.preferences)
-        var allQuestions: [(sectionId: String, itemId: String)] = []
-        
-        for section in allSections {
-            let enabledItems = questionnaire.enabledItems(for: section, preferences: dataManager.preferences)
-            for item in enabledItems {
-                allQuestions.append((sectionId: section.id, itemId: item.id))
-            }
-        }
-        
-        // Find current question index
-        guard let currentIndex = allQuestions.firstIndex(where: { $0.sectionId == currentSectionId && $0.itemId == currentItemId }) else {
-            return
-        }
-        
-        // Get next question
-        let nextIndex = currentIndex + 1
-        guard nextIndex < allQuestions.count else {
-            return // No more questions
-        }
-        
-        let nextQuestion = allQuestions[nextIndex]
-        let nextQuestionId = "\(nextQuestion.sectionId)-\(nextQuestion.itemId)"
-        
-        // Expand the section if it's collapsed
-        if !expandedSections.contains(nextQuestion.sectionId) {
-            expandedSections.insert(nextQuestion.sectionId)
-        }
-        
-        // Use ScrollViewReader (now that we're using ScrollView instead of Form)
-        // Scroll to top of next question for better visibility
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            if let proxy = self.scrollProxy {
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    proxy.scrollTo(nextQuestionId, anchor: .top)
-                }
-            }
-        }
-    }
-    
     
     // Helper function for rating colors (matching DualRatingSlider)
     private func ratingColor(for rating: Int) -> Color {
@@ -1303,19 +2151,6 @@ struct ProgramEntryView: View {
         }
     }
     
-    private func programTypeColor(_ type: String) -> Color {
-        switch type {
-        case "Academic":
-            return .blue
-        case "Community":
-            return .green
-        case "Hybrid":
-            return .orange
-        default:
-            return .gray
-        }
-    }
-    
     // Helper function to format interview date compactly
     private func formatInterviewDate(_ date: Date) -> String {
         let formatter = DateFormatter()
@@ -1326,117 +2161,118 @@ struct ProgramEntryView: View {
     }
     
     // MARK: - Combined Interview & Signaling Section
-    
-    private var combinedInterviewAndSignalingSection: some View {
-        let finalSpecialty = specialty.isEmpty ? (program?.specialty ?? dataManager.preferences.specialties.first ?? "Unknown") : specialty
-        let isTiered = !finalSpecialty.isEmpty && finalSpecialty != "Unknown" ? SignalLimits.isTiered(for: finalSpecialty) : true
-        
-        return HStack(alignment: .center, spacing: 10) {
-            // Interview Date - flexible width that can shrink
-            HStack(alignment: .center, spacing: 8) {
-                Image(systemName: "calendar")
-                    .font(.arial(size: 13))
-                    .foregroundColor(.secondary)
-                    .frame(width: 15, height: 15)
-                
+
+    private var interviewSchedulingRow: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "calendar")
+                .font(.arial(size: 15))
+                .foregroundColor(.secondary)
+                .frame(width: 18, height: 18)
+                .padding(.top, 2)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
                 Text("Interview")
-                    .font(.arial(size: 13, weight: .semibold))
+                    .font(.arial(size: 16, weight: .semibold))
                     .foregroundColor(.primary)
-                    .lineLimit(1)
-                
-                Button(action: {
+
+                Button {
+                    interviewDateSnapshotBeforePicker = interviewDate
                     showDatePickerSheet = true
-                }) {
+                } label: {
                     if hasInterviewDate {
                         Text(formatInterviewDate(interviewDate))
-                            .font(.arial(size: 13, weight: .medium))
+                            .font(.arial(size: 15, weight: .medium))
                             .foregroundColor(.primary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
                     } else {
                         Text("Set Date")
-                            .font(.arial(size: 13, weight: .medium))
+                            .font(.arial(size: 15, weight: .medium))
                             .foregroundColor(.blue)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var combinedInterviewAndSignalingSection: some View {
+        let finalSpecialty = specialty.isEmpty ? (program?.specialty ?? dataManager.preferences.specialties.first ?? "Unknown") : specialty
+        let signalAccreditationID = currentSignalAccreditationID
+        let signalConfig = SignalLimits.configuration(for: finalSpecialty, accreditationID: signalAccreditationID)
+
+        return VStack(alignment: .leading, spacing: 8) {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 12) {
+                    interviewSchedulingRow
+
+                    if signalConfig.participates {
+                        Rectangle()
+                            .fill(Color(.separator))
+                            .frame(width: 1, height: 22)
+
+                        signalingControls(
+                            finalSpecialty: finalSpecialty,
+                            signalAccreditationID: signalAccreditationID,
+                            signalConfig: signalConfig
+                        )
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    interviewSchedulingRow
+
+                    if signalConfig.participates {
+                        signalingControls(
+                            finalSpecialty: finalSpecialty,
+                            signalAccreditationID: signalAccreditationID,
+                            signalConfig: signalConfig
+                        )
                     }
                 }
             }
-            .layoutPriority(1)
-            
-            // Divider
-            Rectangle()
-                .fill(Color(.separator))
-                .frame(width: 1, height: 18)
-            
-            // ERAS Signaling - compact single line with proper constraints
-            HStack(alignment: .center, spacing: 5) {
-                Image(systemName: "star.fill")
-                    .font(.arial(size: 12))
-                    .foregroundColor(
-                        signalType == .gold ? (isTiered ? .yellow : .blue) : 
-                        (signalType == .silver ? Color(white: 0.6) : .secondary)
-                    )
-                    .frame(width: 14, height: 14)
-                
-                if isTiered {
-                    HStack(spacing: 3) {
-                        Button(action: {
-                            if signalType == .gold {
-                                signalType = .none
-                            } else {
-                                let result = dataManager.canAssignSignal(type: .gold, specialty: finalSpecialty, excludingProgramId: program?.id)
-                                if result.canAssign {
-                                    signalType = .gold
-                                    dataManager.objectWillChange.send()
-                                } else {
-                                    signalLimitMessage = result.reason ?? "Signal limit reached"
-                                    showSignalLimitAlert = true
-                                }
-                            }
-                        }) {
-                            Text("Gold")
-                                .font(.arial(size: 10, weight: .semibold))
-                                .foregroundColor(signalType == .gold ? .white : .secondary)
-                                .fixedSize(horizontal: true, vertical: false)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 3)
-                                .background(signalType == .gold ? Color.yellow : Color(.systemGray5))
-                                .cornerRadius(5)
-                        }
-                        .buttonStyle(.plain)
-                        
-                        Button(action: {
-                            if signalType == .silver {
-                                signalType = .none
-                            } else {
-                                let result = dataManager.canAssignSignal(type: .silver, specialty: finalSpecialty, excludingProgramId: program?.id)
-                                if result.canAssign {
-                                    signalType = .silver
-                                    dataManager.objectWillChange.send()
-                                } else {
-                                    signalLimitMessage = result.reason ?? "Signal limit reached"
-                                    showSignalLimitAlert = true
-                                }
-                            }
-                        }) {
-                            Text("Silver")
-                                .font(.arial(size: 10, weight: .semibold))
-                                .foregroundColor(signalType == .silver ? .white : .secondary)
-                                .fixedSize(horizontal: true, vertical: false)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 3)
-                                .background(signalType == .silver ? Color.gray : Color(.systemGray5))
-                                .cornerRadius(5)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                } else {
+
+            if signalConfig.usesResidencyCAS {
+                Text("Signals are tracked for planning. EM and OB/GYN apply through ResidencyCAS—verify limits in your portal.")
+                    .font(.arial(size: 11))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func signalingControls(
+        finalSpecialty: String,
+        signalAccreditationID: String?,
+        signalConfig: SignalConfiguration
+    ) -> some View {
+        let isTiered = signalConfig.isTiered
+
+        HStack(alignment: .center, spacing: 5) {
+            Image(systemName: "star.fill")
+                .font(.arial(size: 14))
+                .foregroundColor(
+                    signalType == .gold ? (isTiered ? .yellow : .blue) :
+                    (signalType == .silver ? Color(white: 0.6) : .secondary)
+                )
+                .frame(width: 16, height: 16)
+
+            if isTiered {
+                HStack(spacing: 3) {
                     Button(action: {
                         if signalType == .gold {
                             signalType = .none
                         } else {
-                            let result = dataManager.canAssignSignal(type: .gold, specialty: finalSpecialty, excludingProgramId: program?.id)
+                            let result = dataManager.canAssignSignal(
+                                type: .gold,
+                                specialty: finalSpecialty,
+                                excludingProgramId: program?.id,
+                                accreditationID: signalAccreditationID
+                            )
                             if result.canAssign {
                                 signalType = .gold
                                 dataManager.objectWillChange.send()
@@ -1446,35 +2282,170 @@ struct ProgramEntryView: View {
                             }
                         }
                     }) {
-                        Text("Signal")
-                            .font(.arial(size: 10, weight: .semibold))
-                            .foregroundColor(signalType == .gold ? .white : .secondary)
+                        Text("Gold")
+                            .font(.arial(size: 12, weight: .semibold))
+                            .foregroundColor(signalType == .gold ? .yellow : .secondary)
+                            .fixedSize(horizontal: true, vertical: false)
                             .padding(.horizontal, 7)
                             .padding(.vertical, 3)
-                            .background(signalType == .gold ? Color.blue : Color(.systemGray5))
-                            .cornerRadius(5)
+                            .glassChipStyle(
+                                tint: signalType == .gold ? .yellow : nil,
+                                interactive: true
+                            )
+                    }
+                    .buttonStyle(.plain)
+
+                    Button(action: {
+                        if signalType == .silver {
+                            signalType = .none
+                        } else {
+                            let result = dataManager.canAssignSignal(
+                                type: .silver,
+                                specialty: finalSpecialty,
+                                excludingProgramId: program?.id,
+                                accreditationID: signalAccreditationID
+                            )
+                            if result.canAssign {
+                                signalType = .silver
+                                dataManager.objectWillChange.send()
+                            } else {
+                                signalLimitMessage = result.reason ?? "Signal limit reached"
+                                showSignalLimitAlert = true
+                            }
+                        }
+                    }) {
+                        Text("Silver")
+                            .font(.arial(size: 12, weight: .semibold))
+                            .foregroundColor(signalType == .silver ? .primary : .secondary)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .glassChipStyle(
+                                tint: signalType == .silver ? .gray : nil,
+                                interactive: true
+                            )
                     }
                     .buttonStyle(.plain)
                 }
+            } else {
+                Button(action: {
+                    if signalType == .gold {
+                        signalType = .none
+                    } else {
+                        let result = dataManager.canAssignSignal(
+                            type: .gold,
+                            specialty: finalSpecialty,
+                            excludingProgramId: program?.id,
+                            accreditationID: signalAccreditationID
+                        )
+                        if result.canAssign {
+                            signalType = .gold
+                            dataManager.objectWillChange.send()
+                        } else {
+                            signalLimitMessage = result.reason ?? "Signal limit reached"
+                            showSignalLimitAlert = true
+                        }
+                    }
+                }) {
+                    Text("Signal")
+                        .font(.arial(size: 12, weight: .semibold))
+                        .foregroundColor(signalType == .gold ? AppColors.primaryBlue : .secondary)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .glassChipStyle(
+                            tint: signalType == .gold ? AppColors.primaryBlue : nil,
+                            interactive: true
+                        )
+                }
+                .buttonStyle(.plain)
             }
-            .layoutPriority(2)
-            
-            // Compact usage display - single line with proper spacing
+
             if !finalSpecialty.isEmpty && finalSpecialty != "Unknown" {
-                let usage = calculateSignalUsage(for: finalSpecialty)
+                let usage = calculateSignalUsage(for: finalSpecialty, accreditationID: signalAccreditationID)
                 Text(isTiered ? "\(usage.goldUsed)/\(usage.goldLimit)G \(usage.silverUsed)/\(usage.silverLimit)S" : "\(usage.goldUsed)/\(usage.goldLimit)")
-                    .font(.arial(size: 8, weight: .medium))
+                    .font(.arial(size: 11, weight: .medium))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                     .padding(.leading, 3)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var trimmedSignalNote: String? {
+        let trimmed = signalNote.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private var currentSignalAccreditationID: String? {
+        if let accreditationID, !accreditationID.isEmpty { return accreditationID }
+        return program?.accreditationID
+    }
+
+    private var shouldShowSignalNoteSection: Bool {
+        let finalSpecialty = specialty.isEmpty ? (program?.specialty ?? "") : specialty
+        let config = SignalLimits.configuration(for: finalSpecialty, accreditationID: currentSignalAccreditationID)
+        return config.participates && (config.requiresSignalStatement || signalType != .none)
+    }
+
+    private var signalNoteSection: some View {
+        let finalSpecialty = specialty.isEmpty ? (program?.specialty ?? "") : specialty
+        let config = SignalLimits.configuration(for: finalSpecialty, accreditationID: currentSignalAccreditationID)
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "text.quote")
+                    .foregroundColor(.secondary)
+                Text(config.requiresSignalStatement ? "Signal Statement" : "Signal Notes")
+                    .font(.arial(size: 14, weight: .semibold))
+                if config.requiresSignalStatement {
+                    Text("Required")
+                        .font(.arial(size: 10, weight: .bold))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.orange.opacity(0.15))
+                        .foregroundColor(.orange)
+                        .clipShape(Capsule())
+                }
+            }
+
+            ClearableTextField(
+                "Why this program? (for your ERAS / ResidencyCAS application)",
+                text: $signalNote,
+                axis: .vertical
+            )
+            .lineLimit(3...6)
+            .font(.arial(size: 14))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+    }
+
+    private func revalidateSignalAssignment() {
+        let finalSpecialty = specialty.isEmpty ? (program?.specialty ?? dataManager.preferences.specialties.first ?? "Unknown") : specialty
+        let sanitized = dataManager.sanitizedSignalType(
+            signalType,
+            specialty: finalSpecialty,
+            accreditationID: currentSignalAccreditationID
+        )
+        guard sanitized != signalType else { return }
+        signalType = sanitized
+        if sanitized == .none {
+            signalNote = ""
+            signalLimitMessage = "The signal was cleared because this specialty uses different signaling rules."
+            showSignalClearedAlert = true
+        }
     }
     
     // Helper function to calculate signal usage including current selection
-    private func calculateSignalUsage(for specialty: String) -> (goldUsed: Int, goldLimit: Int, silverUsed: Int, silverLimit: Int) {
-        let baseUsage = dataManager.getSignalUsage(for: specialty)
+    private func calculateSignalUsage(
+        for specialty: String,
+        accreditationID: String? = nil
+    ) -> (goldUsed: Int, goldLimit: Int, silverUsed: Int, silverLimit: Int) {
+        let baseUsage = dataManager.getSignalUsage(for: specialty, accreditationID: accreditationID)
         
         // Adjust counts based on current selection vs saved state
         var goldUsed = baseUsage.goldUsed
@@ -1500,17 +2471,15 @@ struct ProgramEntryView: View {
     }
     
     private func openInMaps() {
-        // Use full address if available, otherwise use hospital + city + state
-        let addressString: String
-        if !address.isEmpty {
-            addressString = "\(address), \(city), \(state)"
-        } else if !hospital.isEmpty {
-            addressString = "\(hospital), \(city), \(state)"
-        } else if !name.isEmpty {
-            addressString = "\(name), \(city), \(state)"
-        } else {
-            addressString = "\(city), \(state)"
-        }
+        let draft = Program(
+            specialty: specialty,
+            hospital: hospital,
+            city: city,
+            state: state,
+            address: address.isEmpty ? nil : address,
+            accreditationID: accreditationID
+        )
+        let addressString = AddressFormatter.geocodingQuery(for: draft)
         
         Task { @MainActor in
             do {
@@ -1547,94 +2516,89 @@ extension ProgramEntryView {
     @ViewBuilder
     func whiteCardContainer<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         content()
-            .background(
-                ZStack {
-                    // Adaptive background for light/dark mode
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color(.systemBackground))
-                        .shadow(color: Color.black.opacity(0.06), radius: 12, x: 0, y: 4)
-                        .shadow(color: Color.black.opacity(0.04), radius: 4, x: 0, y: 1)
-                    
-                    // Subtle border - adaptive for dark mode
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(
-                            Color(.separator),
-                            lineWidth: 0.5
-                        )
-                }
-            )
+            .padding(.vertical, 4)
+            .glassEffect(.regular, in: .rect(cornerRadius: 16))
     }
     
     // Liquid glass questionnaire section - full width, beautiful design
     @ViewBuilder
-    func whiteCardQuestionnaireSection<Content: View>(
-        title: String,
-        isExpanded: Binding<Bool>,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(spacing: 0) {
-            // Header - tappable to expand/collapse
-            Button(action: {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    isExpanded.wrappedValue.toggle()
-                }
-            }) {
-                HStack(spacing: 12) {
-                    Text(title)
-                        .font(.arial(size: 16, weight: .semibold))
-                        .foregroundColor(.primary)
-                    
-                    Spacer()
-                    
-                    Image(systemName: isExpanded.wrappedValue ? "chevron.down" : "chevron.right")
-                        .font(.arial(size: 11, weight: .semibold))
-                        .foregroundColor(.secondary)
-                        .rotationEffect(.degrees(isExpanded.wrappedValue ? 0 : -90))
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            
-            // Content - expandable
-            if isExpanded.wrappedValue {
-                VStack(spacing: 0) {
-                    Divider()
-                        .padding(.horizontal, 16)
-                    
-                    content()
-                        .padding(.horizontal, 16)
-                        .padding(.top, 6)
-                        .padding(.bottom, 10)
-                }
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        }
-        .background(
-            ZStack {
-                // Adaptive background for light/dark mode
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Color(.systemBackground))
-                    .shadow(color: Color.black.opacity(0.06), radius: 12, x: 0, y: 4)
-                    .shadow(color: Color.black.opacity(0.04), radius: 4, x: 0, y: 1)
-                
-                // Subtle border - adaptive for dark mode
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(
-                        Color(.separator),
-                        lineWidth: 0.5
-                    )
-            }
-        )
+    func questionnaireSectionColor(title: String, sectionId: String) -> Color {
+        QuestionnaireSectionAccent.color(for: sectionId, title: title)
     }
-    
-    private func programTypeIcon(_ type: String) -> String {
-        switch type {
-        case "Academic": return "graduationcap.fill"
-        case "Community": return "house.fill"
-        case "Hybrid": return "square.stack.3d.up.fill"
-        default: return "building.2.fill"
+
+    func questionnaireSectionHeader(
+        title: String,
+        sectionId: String,
+        unansweredCount: Int = 0,
+        accentColor: Color = AppColors.primaryBlue,
+        isExpanded: Binding<Bool>
+    ) -> some View {
+        Button(action: {
+            isExpanded.wrappedValue.toggle()
+        }) {
+            HStack(spacing: 12) {
+                Text(title)
+                    .font(.arial(size: 16, weight: .semibold))
+                    .foregroundColor(.primary)
+                    .multilineTextAlignment(.leading)
+
+                if unansweredCount > 0 {
+                    Text("\(unansweredCount) left")
+                        .font(.arial(size: 11, weight: .semibold))
+                        .foregroundStyle(AppColors.pipelineNeedDate)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(
+                            Capsule()
+                                .fill(AppColors.pipelineNeedDate.opacity(0.14))
+                        )
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: isExpanded.wrappedValue ? "chevron.up.circle.fill" : "chevron.down.circle.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(accentColor)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(AppColors.dashboardCanvas)
+        .padding(.horizontal, 20)
+        .id(Self.sectionHeaderScrollID(sectionId))
+    }
+
+    @ViewBuilder
+    func questionnaireSectionBody<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(spacing: 0) {
+            Divider()
+                .padding(.horizontal, 16)
+
+            content()
+                .padding(.horizontal, 16)
+                .padding(.top, 6)
+                .padding(.bottom, 10)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+        .padding(.horizontal, 20)
+    }
+}
+
+/// Disables swipe-back when there are unsaved changes so the alert can prompt first.
+private struct NavigationPopGestureBlocker: UIViewControllerRepresentable {
+    let isBlocked: Bool
+
+    func makeUIViewController(context: Context) -> UIViewController {
+        UIViewController()
+    }
+
+    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {
+        DispatchQueue.main.async {
+            uiViewController.navigationController?.interactivePopGestureRecognizer?.isEnabled = !isBlocked
         }
     }
 }

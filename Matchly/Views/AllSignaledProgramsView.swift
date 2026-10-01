@@ -2,268 +2,318 @@
 //  AllSignaledProgramsView.swift
 //  Matchly
 //
-//  Created on 11/16/25.
-//
 
 import SwiftUI
 
 struct AllSignaledProgramsView: View {
     @EnvironmentObject var dataManager: DataManager
-    
-    // Get all programs that have signals
+
     private var signaledPrograms: [Program] {
         dataManager.programs.filter { $0.signalType != .none }
     }
-    
-    // Group signaled programs by specialty
-    private var groupedBySpecialty: [String: [Program]] {
-        Dictionary(grouping: signaledPrograms) { $0.specialty }
+
+    private var groupedByBucket: [String: [Program]] {
+        Dictionary(grouping: signaledPrograms) { program in
+            SignalLimits.signalBucket(for: program.specialty, accreditationID: program.accreditationID)
+        }
     }
-    
-    private var sortedSpecialties: [String] {
-        groupedBySpecialty.keys.sorted()
+
+    private var budgetSummaries: [DataManager.SignalBudgetSummary] {
+        dataManager.signalBudgetSummaries()
     }
-    
+
+    private var orderedBucketNames: [String] {
+        let names = Set(budgetSummaries.map(\.displayName)).union(groupedByBucket.keys)
+        return names.sorted()
+    }
+
     var body: some View {
-        Group {
-            if signaledPrograms.isEmpty {
-                // Empty state
-                VStack(spacing: 16) {
-                    Image(systemName: "star.circle")
-                        .font(.system(size: 48))
-                        .foregroundColor(.secondary)
-                    
-                    Text("No Signals Assigned")
-                        .font(.system(size: 18, weight: .semibold))
-                    
-                    Text("You haven't assigned any signals yet")
-                        .font(.system(size: 14))
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 60)
-            } else {
-                List {
-                    ForEach(sortedSpecialties, id: \.self) { specialty in
-                        Section(header: 
-                            HStack(spacing: 6) {
-                                Image(systemName: "stethoscope")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(SpecialtyFormatter.color(for: specialty))
-                                Text("\(specialty) (\(SpecialtyFormatter.abbreviation(for: specialty)))")
-                                    .font(.system(size: 13, weight: .semibold))
-                                
-                                Spacer()
-                                
-                                // Show signal usage (used/total) for this specialty
-                                let usage = dataManager.getSignalUsage(for: specialty)
-                                
-                                if SignalLimits.isTiered(for: specialty) {
-                                    // Show Gold/Silver usage for tiered specialties
-                                    HStack(spacing: 8) {
-                                        // Gold signal usage
-                                        if usage.goldLimit > 0 {
-                                            HStack(spacing: 2) {
-                                                Image(systemName: "star.fill")
-                                                    .font(.system(size: 9))
-                                                Text("\(usage.goldUsed)/\(usage.goldLimit)")
-                                                    .font(.system(size: 10, weight: .medium))
-                                            }
-                                            .foregroundColor(.yellow)
-                                        }
-                                        
-                                        // Silver signal usage
-                                        if usage.silverLimit > 0 {
-                                            HStack(spacing: 2) {
-                                                Image(systemName: "star")
-                                                    .font(.system(size: 9))
-                                                Text("\(usage.silverUsed)/\(usage.silverLimit)")
-                                                    .font(.system(size: 10, weight: .medium))
-                                            }
-                                            .foregroundColor(.gray)
-                                        }
-                                    }
-                                } else {
-                                    // Show single-level signal usage
-                                    if usage.goldLimit > 0 {
-                                        HStack(spacing: 2) {
-                                            Image(systemName: "star.fill")
-                                                .font(.system(size: 9))
-                                            Text("\(usage.goldUsed)/\(usage.goldLimit)")
-                                                .font(.system(size: 10, weight: .medium))
-                                        }
-                                        .foregroundColor(.blue)
-                                    }
-                                }
-                            }
-                            .foregroundColor(.secondary)
-                        ) {
-                            // Sort programs within specialty by score (highest first)
-                            ForEach((groupedBySpecialty[specialty] ?? []).sorted { $0.finalScore > $1.finalScore }) { program in
-                                NavigationLink(destination: ProgramEntryView(program: program)) {
-                                    HStack(spacing: 12) {
-                                        // Score indicator with icon - matching ProgramsListView
-                                        ZStack {
-                                            Circle()
-                                                .fill(scoreColor(program.finalScore).opacity(0.15))
-                                                .frame(width: 42, height: 42)
-                                            
-                                            VStack(spacing: 0) {
-                                                Image(systemName: "star.fill")
-                                                    .font(.system(size: 9))
-                                                    .foregroundColor(scoreColor(program.finalScore))
-                                                Text(String(format: "%.0f", program.finalScore))
-                                                    .font(.system(size: 15, weight: .bold))
-                                                    .foregroundColor(scoreColor(program.finalScore))
-                                            }
-                                        }
-                                        
-                                        // Program info - matching ProgramsListView style
-                                        VStack(alignment: .leading, spacing: 3) {
-                                            // Hospital name with signal indicator
-                                            HStack(spacing: 6) {
-                                                Text(HospitalNameFormatter.format(program.hospital.isEmpty ? (program.name.isEmpty ? "Unnamed Program" : program.name) : program.hospital))
-                                                    .font(.system(size: 15, weight: .semibold))
-                                                    .lineLimit(2)
-                                                
-                                                // Red flag indicator
-                                                if program.hasRedFlags() {
-                                                    Image(systemName: "exclamationmark.triangle.fill")
-                                                        .font(.system(size: 12))
-                                                        .foregroundColor(.red)
-                                                }
-                                                
-                                                // Signal indicator - show different icons for tiered vs single-level
-                                                if SignalLimits.isTiered(for: program.specialty) {
-                                                    // Tiered: Gold = filled star (yellow), Silver = empty star (gray)
-                                                    Image(systemName: program.signalType == .gold ? "star.fill" : "star")
-                                                        .font(.system(size: 11))
-                                                        .foregroundColor(program.signalType == .gold ? .yellow : .gray)
-                                                } else {
-                                                    // Single-level: always filled star (blue)
-                                                    Image(systemName: "star.fill")
-                                                        .font(.system(size: 11))
-                                                        .foregroundColor(.blue)
-                                                }
-                                            }
-                                            
-                                            // Specialty badge - matching ProgramsListView
-                                            if !program.specialty.isEmpty {
-                                                let specialtyColor = SpecialtyFormatter.color(for: program.specialty)
-                                                let specialtyAbbrev = SpecialtyFormatter.abbreviation(for: program.specialty)
-                                                
-                                                HStack(spacing: 3) {
-                                                    Image(systemName: "stethoscope")
-                                                        .font(.system(size: 8))
-                                                    Text(specialtyAbbrev)
-                                                        .font(.system(size: 10, weight: .semibold))
-                                                }
-                                                .foregroundColor(specialtyColor)
-                                                .padding(.horizontal, 6)
-                                                .padding(.vertical, 2)
-                                                .background(specialtyColor.opacity(0.15))
-                                                .cornerRadius(4)
-                                            }
-                                            
-                                            // Location and Accreditation ID on first line - matching ProgramsListView
-                                            HStack(spacing: 8) {
-                                                // Location
-                                                if !program.city.isEmpty && !program.state.isEmpty {
-                                                    HStack(spacing: 3) {
-                                                        Image(systemName: "mappin.circle.fill")
-                                                            .font(.system(size: 9))
-                                                        Text("\(program.city), \(program.state)")
-                                                            .font(.system(size: 11))
-                                                    }
-                                                    .foregroundColor(.secondary)
-                                                }
-                                                
-                                                // Accreditation ID
-                                                if let acgmeID = program.accreditationID, !acgmeID.isEmpty {
-                                                    HStack(spacing: 2) {
-                                                        Image(systemName: "number.circle.fill")
-                                                            .font(.system(size: 9))
-                                                        Text("ID:")
-                                                            .font(.system(size: 10, weight: .medium))
-                                                        Text(acgmeID)
-                                                            .font(.system(size: 11, weight: .medium))
-                                                    }
-                                                    .foregroundColor(.secondary)
-                                                }
-                                            }
-                                            
-                                            // Program Type and IMG on second line - matching ProgramsListView
-                                            HStack(spacing: 8) {
-                                                // Program Type
-                                                if !program.type.isEmpty {
-                                                    HStack(spacing: 3) {
-                                                        Image(systemName: programTypeIcon(program.type))
-                                                            .font(.system(size: 8))
-                                                        Text(program.type)
-                                                            .font(.system(size: 10, weight: .medium))
-                                                    }
-                                                    .foregroundColor(programTypeColor(program.type))
-                                                }
-                                                
-                                                // IMG-Friendly
-                                                let imgStatus = program.isIMGFriendly ?? IMGFriendlyHelper.shared.assessIMGFriendlinessForProgram(program)
-                                                if imgStatus == true {
-                                                    HStack(spacing: 3) {
-                                                        Image(systemName: "globe.americas.fill")
-                                                            .font(.system(size: 8))
-                                                        Text("IMG")
-                                                            .font(.system(size: 10, weight: .medium))
-                                                    }
-                                                    .foregroundColor(.purple)
-                                                }
-                                            }
-                                        }
-                                        
-                                        Spacer()
-                                    }
-                                    .padding(.vertical, 6)
-                                }
-                            }
+        List {
+            if !budgetSummaries.isEmpty {
+                Section {
+                    ForEach(budgetSummaries) { summary in
+                        DashboardSignalBudgetRow(summary: summary, style: .standard)
+                    }
+                } header: {
+                    Text("Signal Budget")
+                } footer: {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Limits follow ERAS / ResidencyCAS rules per specialty. Individual programs may opt out of accepting signals.")
+                        if !signaledPrograms.isEmpty {
+                            Text("Assigned programs are grouped by specialty and signal type below.")
                         }
                     }
+                    .font(.arial(size: 12))
                 }
-                .listStyle(.insetGrouped)
+            }
+
+            if signaledPrograms.isEmpty {
+                Section {
+                    VStack(spacing: 16) {
+                        Image(systemName: "star.circle")
+                            .font(.arial(size: 48))
+                            .foregroundColor(.secondary)
+
+                        Text("No Signals Assigned")
+                            .font(.arial(size: 18, weight: .semibold))
+
+                        Text("Assign signals from any program page. Your remaining budget appears above.")
+                            .font(.arial(size: 14))
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 24)
+                }
+            } else {
+                ForEach(orderedBucketNames, id: \.self) { bucket in
+                    assignedProgramsSection(for: bucket)
+                }
             }
         }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .appCanvasBackground()
         .navigationTitle("Signals")
         .navigationBarTitleDisplayMode(.inline)
-        .padding(.bottom, 90) // Account for custom tab bar
+        .matchlyScrollTabBarClearance()
     }
-    
-    private func scoreColor(_ score: Double) -> Color {
-        if score >= 80 { return .green }
-        if score >= 60 { return .blue }
-        if score >= 40 { return .orange }
-        return .red
-    }
-    
-    private func programTypeColor(_ type: String) -> Color {
-        switch type {
-        case "Academic": return .blue
-        case "Community": return .green
-        case "Hybrid": return .orange
-        default: return .secondary
+
+    @ViewBuilder
+    private func assignedProgramsSection(for bucket: String) -> some View {
+        let programs = groupedByBucket[bucket] ?? []
+        let sampleAccreditationID = programs.first?.accreditationID
+        let config = SignalLimits.configuration(for: bucket, accreditationID: sampleAccreditationID)
+        let usage = dataManager.getSignalUsage(for: bucket, accreditationID: sampleAccreditationID)
+        let summary = budgetSummaries.first { $0.displayName == bucket }
+        let goldPrograms = programs
+            .filter { $0.signalType == .gold }
+            .sorted { $0.finalScore > $1.finalScore }
+        let silverPrograms = programs
+            .filter { $0.signalType == .silver }
+            .sorted { $0.finalScore > $1.finalScore }
+
+        Section {
+            if config.isTiered {
+                signalTypeGroupHeader(
+                    title: "Gold Signals",
+                    used: summary?.goldUsed ?? usage.goldUsed,
+                    limit: summary?.goldLimit ?? usage.goldLimit,
+                    remaining: summary?.goldRemaining ?? max(0, usage.goldLimit - usage.goldUsed),
+                    color: .yellow,
+                    icon: "star.fill"
+                )
+
+                signalTypeProgramRows(
+                    title: "Gold Signals",
+                    remaining: summary?.goldRemaining ?? max(0, usage.goldLimit - usage.goldUsed),
+                    limit: summary?.goldLimit ?? usage.goldLimit,
+                    programs: goldPrograms
+                )
+
+                signalTypeGroupHeader(
+                    title: "Silver Signals",
+                    used: summary?.silverUsed ?? usage.silverUsed,
+                    limit: summary?.silverLimit ?? usage.silverLimit,
+                    remaining: summary?.silverRemaining ?? max(0, usage.silverLimit - usage.silverUsed),
+                    color: Color(white: 0.55),
+                    icon: "star"
+                )
+
+                signalTypeProgramRows(
+                    title: "Silver Signals",
+                    remaining: summary?.silverRemaining ?? max(0, usage.silverLimit - usage.silverUsed),
+                    limit: summary?.silverLimit ?? usage.silverLimit,
+                    programs: silverPrograms
+                )
+            } else if usage.goldLimit > 0 || !goldPrograms.isEmpty {
+                signalTypeGroupHeader(
+                    title: "Signals",
+                    used: summary?.goldUsed ?? usage.goldUsed,
+                    limit: summary?.goldLimit ?? usage.goldLimit,
+                    remaining: summary?.goldRemaining ?? max(0, usage.goldLimit - usage.goldUsed),
+                    color: AppColors.primaryBlue,
+                    icon: "star.fill"
+                )
+
+                signalTypeProgramRows(
+                    title: "Signals",
+                    remaining: summary?.goldRemaining ?? max(0, usage.goldLimit - usage.goldUsed),
+                    limit: summary?.goldLimit ?? usage.goldLimit,
+                    programs: goldPrograms
+                )
+            }
+        } header: {
+            specialtySectionHeader(bucket: bucket, config: config)
         }
     }
-    
-    private func programTypeIcon(_ type: String) -> String {
-        switch type {
-        case "Academic": return "graduationcap.fill"
-        case "Community": return "house.fill"
-        case "Hybrid": return "square.stack.3d.up.fill"
-        default: return "building.2.fill"
+
+    @ViewBuilder
+    private func specialtySectionHeader(bucket: String, config: SignalConfiguration) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "stethoscope")
+                .font(.arial(size: 12, weight: .semibold))
+                .foregroundColor(SpecialtyFormatter.color(for: bucket))
+
+            Text(SpecialtyFormatter.displayNameWithAbbreviation(bucket))
+                .font(.arial(size: 14, weight: .semibold))
+                .foregroundColor(.primary)
+
+            Spacer(minLength: 4)
+
+            if config.usesResidencyCAS {
+                Text("ResidencyCAS")
+                    .font(.arial(size: 9, weight: .semibold))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(Color.blue.opacity(0.12))
+                    .foregroundColor(.blue)
+                    .clipShape(Capsule())
+            }
         }
+        .textCase(nil)
+    }
+
+    @ViewBuilder
+    private func signalTypeProgramRows(
+        title: String,
+        remaining: Int,
+        limit: Int,
+        programs: [Program]
+    ) -> some View {
+        if programs.isEmpty {
+            Text(emptyGroupMessage(title: title, remaining: remaining, limit: limit))
+                .font(.arial(size: 13))
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 4)
+        } else {
+            ForEach(programs) { program in
+                NavigationLink(destination: ProgramEntryView(program: program)) {
+                    signaledProgramRow(program)
+                }
+            }
+        }
+    }
+
+    private func signalTypeGroupHeader(
+        title: String,
+        used: Int,
+        limit: Int,
+        remaining: Int,
+        color: Color,
+        icon: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.arial(size: 13, weight: .semibold))
+                    .foregroundColor(color)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.arial(size: 14, weight: .semibold))
+                        .foregroundColor(.primary)
+
+                    Text(usageSummary(used: used, limit: limit, remaining: remaining))
+                        .font(.arial(size: 12))
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer(minLength: 0)
+
+                Text("\(used)/\(limit)")
+                    .font(.arial(size: 13, weight: .bold))
+                    .foregroundColor(used >= limit ? .red : color)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(color.opacity(0.12))
+                    .clipShape(Capsule())
+            }
+
+            if limit > 0 {
+                DashboardSignalUsageMeter(
+                    title: "",
+                    used: used,
+                    limit: limit,
+                    color: color,
+                    style: .compact
+                )
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func usageSummary(used: Int, limit: Int, remaining: Int) -> String {
+        if limit == 0 {
+            return "Not available for this specialty"
+        }
+        if used == 0 {
+            return remaining == 1 ? "None assigned · 1 available" : "None assigned · \(remaining) available"
+        }
+        if remaining == 0 {
+            return "All \(limit) used"
+        }
+        return "\(used) assigned · \(remaining) remaining"
+    }
+
+    private func emptyGroupMessage(title: String, remaining: Int, limit: Int) -> String {
+        if limit == 0 {
+            return "This specialty does not use \(title.lowercased())."
+        }
+        if remaining == 0 {
+            return "No slots remaining."
+        }
+        return "No programs assigned yet. \(remaining) \(remaining == 1 ? "slot" : "slots") available."
+    }
+
+    @ViewBuilder
+    private func signaledProgramRow(_ program: Program) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(scoreColor(program.finalScore).opacity(0.15))
+                    .frame(width: 42, height: 42)
+
+                VStack(spacing: 0) {
+                    Image(systemName: "star.fill")
+                        .font(.arial(size: 9))
+                        .foregroundColor(scoreColor(program.finalScore))
+                    Text(String(format: "%.0f", program.finalScore))
+                        .font(.arial(size: 15, weight: .bold))
+                        .foregroundColor(scoreColor(program.finalScore))
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(HospitalNameFormatter.format(program.hospital.isEmpty ? program.name : program.hospital))
+                    .font(.arial(size: 15, weight: .semibold))
+                    .lineLimit(2)
+
+                HStack(spacing: 8) {
+                    ProgramVoiceMemoBadge(program: program)
+                    if let note = program.signalNote, !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Label("Statement", systemImage: "text.quote")
+                            .font(.arial(size: 10, weight: .medium))
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                if program.hasDisplayLocation {
+                    Text(program.displayCityState)
+                        .font(.arial(size: 12))
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 4)
     }
 }
 
 #Preview {
-    NavigationView {
+    MatchlyNavigationView {
         AllSignaledProgramsView()
             .environmentObject(DataManager.shared)
     }

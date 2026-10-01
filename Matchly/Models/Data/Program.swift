@@ -14,6 +14,7 @@ struct Program: Identifiable, Codable {
     var hospital: String
     var city: String
     var state: String
+    var postalCode: String?
     var address: String? // Full street address
     var type: String // Academic / Community / Hybrid
     var accreditationID: String? // ACGME Program Code
@@ -37,17 +38,20 @@ struct Program: Identifiable, Codable {
     var contactEmail: String?
     var contactPhone: String?
     var programCoordinator: String?
+    var programDirector: String?
     
     // IMG-friendly status
     var isIMGFriendly: Bool?
     
     // Electronic Medical Record (EMR) the hospital uses.
     // Optional for backward compatibility with programs saved before EMR existed.
-    // Stores an `EMRSystem.rawValue` String (nil = not selected).
+    // Stores an `EMRSystem.rawValue`, or a free-typed name when the user picks Other.
     var emr: String?
     
     // ERAS Signaling
     var signalType: SignalType = .none
+    /// Optional ERAS / ResidencyCAS signal statement text (e.g. Anesthesiology).
+    var signalNote: String?
     
     var finalScore: Double
     
@@ -64,10 +68,29 @@ struct Program: Identifiable, Codable {
             section.items.contains { $0.programRating > 0 && $0.programRating < 6 }
         }
     }
+
+    /// Share of enabled questionnaire items answered (0…1), respecting customization prefs.
+    func questionnaireCompletionRatio(preferences: UserPreferences) -> Double {
+        questionnaire.questionnaireCompletionRatio(preferences: preferences, programEMR: emr)
+    }
+
+    /// True when enabled questionnaire items still need answers (matches Dashboard "To Score").
+    func needsScoring(preferences: UserPreferences) -> Bool {
+        questionnaire.needsScoring(preferences: preferences, programEMR: emr)
+    }
     
     // Pre-calculated interview status for sorting optimization
     var isInterviewed: Bool {
         return interviewDate != nil
+    }
+
+    /// Programs added by hand (not from the ACGME catalog) stay editable in the manual entry form.
+    var isManuallyAdded: Bool {
+        guard let accreditationID = accreditationID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !accreditationID.isEmpty else {
+            return true
+        }
+        return false
     }
     
     // Check if program has any red flags (Yes answers in red flags section)
@@ -135,6 +158,7 @@ struct Program: Identifiable, Codable {
         hospital: String = "",
         city: String = "",
         state: String = "",
+        postalCode: String? = nil,
         address: String? = nil,
         type: String = "Academic",
         accreditationID: String? = nil,
@@ -152,9 +176,11 @@ struct Program: Identifiable, Codable {
         contactEmail: String? = nil,
         contactPhone: String? = nil,
         programCoordinator: String? = nil,
+        programDirector: String? = nil,
         isIMGFriendly: Bool? = nil,
         emr: String? = nil,
         signalType: SignalType = .none,
+        signalNote: String? = nil,
         finalScore: Double = 0.0
     ) {
         self.id = id
@@ -163,6 +189,7 @@ struct Program: Identifiable, Codable {
         self.hospital = hospital
         self.city = city
         self.state = state
+        self.postalCode = postalCode
         self.address = address
         self.type = type
         self.accreditationID = accreditationID
@@ -180,9 +207,11 @@ struct Program: Identifiable, Codable {
         self.contactEmail = contactEmail
         self.contactPhone = contactPhone
         self.programCoordinator = programCoordinator
+        self.programDirector = programDirector
         self.isIMGFriendly = isIMGFriendly
         self.emr = emr
         self.signalType = signalType
+        self.signalNote = signalNote
         self.finalScore = finalScore
     }
 }
@@ -318,9 +347,11 @@ extension Program {
         self.contactEmail = try container.decodeIfPresent(String.self, forKey: .contactEmail)
         self.contactPhone = try container.decodeIfPresent(String.self, forKey: .contactPhone)
         self.programCoordinator = try container.decodeIfPresent(String.self, forKey: .programCoordinator)
+        self.programDirector = try container.decodeIfPresent(String.self, forKey: .programDirector)
         self.isIMGFriendly = try container.decodeIfPresent(Bool.self, forKey: .isIMGFriendly)
         self.emr = try container.decodeIfPresent(String.self, forKey: .emr)
         self.signalType = try container.decodeIfPresent(SignalType.self, forKey: .signalType) ?? .none
+        self.signalNote = try container.decodeIfPresent(String.self, forKey: .signalNote)
         self.finalScore = try container.decodeIfPresent(Double.self, forKey: .finalScore) ?? 0.0
     }
 }

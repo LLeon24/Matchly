@@ -51,14 +51,6 @@ class IMGFriendlyHelper {
             }
         }
         
-        // Check program type (Community programs are often more IMG-friendly).
-        // Academic programs are not penalized here: in practice many academic
-        // programs are still IMG-friendly, so we treat type as a positive-only
-        // signal and let the other indicators decide.
-        if program.type == "Community" {
-            friendlyIndicators += 1
-        }
-        
         // Check state
         if imgFriendlyStates.contains(program.state) {
             friendlyIndicators += 1
@@ -119,6 +111,7 @@ class IMGFriendlyHelper {
             contactEmail: program.contactEmail,
             contactPhone: program.contactPhone,
             programCoordinator: program.programCoordinator,
+            programDirector: program.programDirector,
             address: program.address,
             isIMGFriendly: nil
         )
