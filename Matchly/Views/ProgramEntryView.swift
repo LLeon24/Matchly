@@ -90,6 +90,7 @@ struct ProgramEntryView: View {
     @State private var showSignalClearedAlert = false
     @State private var signalLimitMessage = ""
     @State private var showDatePickerSheet = false
+    @State private var interviewDateSnapshotBeforePicker: Date?
     @State private var showUnansweredQuestionsSheet = false
     
     // New comprehensive questionnaire
@@ -852,88 +853,36 @@ struct ProgramEntryView: View {
             })
             .matchlyExpandedSheet()
         }
-        .sheet(isPresented: $showDatePickerSheet) {
+        .fullScreenCover(isPresented: $showDatePickerSheet) {
             MatchlyNavigationView {
-                VStack(spacing: 20) {
-                    DatePicker("Interview Date & Time", selection: $interviewDate, displayedComponents: [.date, .hourAndMinute])
-                        .datePickerStyle(.wheel)
-                        .labelsHidden()
-                        .padding()
-                        .onChange(of: interviewDate) { oldValue, newValue in
-                            // Update pending date when picker changes
-                            pendingInterviewDate = newValue
-                        }
-                    
-                    Spacer()
-                }
+                InterviewDateSchedulingContent(
+                    programTitle: interviewSchedulingProgramTitle,
+                    institutionSubtitle: interviewSchedulingInstitution,
+                    locationLine: interviewSchedulingLocation,
+                    interviewDate: $interviewDate
+                )
+                .appCanvasBackground()
                 .navigationTitle("Interview Date")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .navigationBarLeading) {
                         Button("Cancel") {
-                            showDatePickerSheet = false
+                            if let snapshot = interviewDateSnapshotBeforePicker {
+                                interviewDate = snapshot
+                            }
                             pendingInterviewDate = nil
+                            interviewDateSnapshotBeforePicker = nil
+                            showDatePickerSheet = false
                         }
                     }
                     ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("Done") {
-                            hasInterviewDate = true
-                            // Set pending date before dismissing sheet
-                            pendingInterviewDate = interviewDate
-                            showDatePickerSheet = false
-                            
-                            if !isInitialLoad {
-                                // Delay to ensure sheet is fully dismissed before showing alert
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                    handleInterviewDateChanged(newDate: interviewDate)
-                                }
-                                
-                                // Auto-save the program with the interview date without dismissing
-                                let finalSpecialty = specialty.isEmpty ? (program?.specialty ?? dataManager.preferences.specialties.first ?? "Unknown") : specialty
-                                let finalScore = questionnaire.totalWeightedScore(preferences: dataManager.preferences, programEMR: emr)
-                                let updatedProgram = Program(
-                                    id: program?.id ?? draftProgramId,
-                                    specialty: finalSpecialty,
-                                    name: name,
-                                    hospital: hospital,
-                                    city: city,
-                                    state: state,
-                                    address: address.isEmpty ? nil : address,
-                                    type: type,
-                                    accreditationID: accreditationID,
-                                    programQuality: ProgramQuality(),
-                                    cultureFit: CultureFit(),
-                                    location: Location(),
-                                    logistics: Logistics(),
-                                    careerAlignment: CareerAlignment(),
-                                    redFlags: RedFlags(),
-                                    questionnaire: questionnaire,
-                                    notes: notes,
-                                    interviewDate: interviewDate,
-                                    voiceMemoURL: currentVoiceMemoReference,
-                                    websiteURL: websiteURL.isEmpty ? nil : websiteURL,
-                                    contactEmail: contactEmail.isEmpty ? nil : contactEmail,
-                                    contactPhone: contactPhone.isEmpty ? nil : contactPhone,
-                                    programCoordinator: programCoordinator.isEmpty ? nil : programCoordinator,
-                                    programDirector: programDirector.isEmpty ? nil : programDirector,
-                                    isIMGFriendly: isIMGFriendly,
-                                    emr: emr,
-                                    signalType: signalType,
-                                    signalNote: trimmedSignalNote,
-                                    finalScore: finalScore
-                                )
-                                if program == nil {
-                                    guard dataManager.addProgram(updatedProgram) == .added else { return }
-                                } else {
-                                    dataManager.updateProgram(updatedProgram)
-                                }
-                                dataManager.saveProgramsImmediately()
-                            }
+                        Button("Save") {
+                            commitInterviewDateFromPicker()
                         }
+                        .fontWeight(.semibold)
                     }
                 }
             }
-            .presentationDetents([.medium])
         }
         .sheet(isPresented: $showUnansweredQuestionsSheet) {
             UnansweredQuestionsSheet(
@@ -1478,38 +1427,40 @@ struct ProgramEntryView: View {
                 .glassEffect(.regular, in: .rect(cornerRadius: 12))
                 .padding(.horizontal, 20)
 
-                VStack(spacing: 0) {
-                    manualFormRow {
-                        Toggle("Set Interview Date", isOn: $hasInterviewDate)
-                            .font(.arial(size: 16))
-                            .onChange(of: hasInterviewDate) { oldValue, newValue in
-                                if newValue && !isInitialLoad {
-                                    handleInterviewDateChanged(newDate: interviewDate)
-                                }
-                            }
-                    }
-
-                    if hasInterviewDate {
-                        manualFormDivider
+                if isManualDraftEntry {
+                    VStack(spacing: 0) {
                         manualFormRow {
-                            DatePicker("Interview Date & Time", selection: $interviewDate, displayedComponents: [.date, .hourAndMinute])
+                            Toggle("Set Interview Date", isOn: $hasInterviewDate)
                                 .font(.arial(size: 16))
-                                .onChange(of: interviewDate) { oldValue, newValue in
-                                    if hasInterviewDate && !isInitialLoad && oldValue != newValue {
-                                        pendingInterviewDate = newValue
-                                        handleInterviewDateChanged(newDate: newValue)
+                                .onChange(of: hasInterviewDate) { oldValue, newValue in
+                                    if newValue && !isInitialLoad {
+                                        handleInterviewDateChanged(newDate: interviewDate)
                                     }
                                 }
                         }
-                    }
-                }
-                .glassEffect(.regular, in: .rect(cornerRadius: 12))
-                .padding(.horizontal, 20)
 
-                if !hospital.isEmpty {
-                    combinedInterviewAndSignalingSection
-                        .padding(.horizontal, 20)
-                        .padding(.top, 4)
+                        if hasInterviewDate {
+                            manualFormDivider
+                            manualFormRow {
+                                DatePicker("Interview Date & Time", selection: $interviewDate, displayedComponents: [.date, .hourAndMinute])
+                                    .font(.arial(size: 16))
+                                    .onChange(of: interviewDate) { oldValue, newValue in
+                                        if hasInterviewDate && !isInitialLoad && oldValue != newValue {
+                                            pendingInterviewDate = newValue
+                                            handleInterviewDateChanged(newDate: newValue)
+                                        }
+                                    }
+                            }
+                        }
+                    }
+                    .glassEffect(.regular, in: .rect(cornerRadius: 12))
+                    .padding(.horizontal, 20)
+
+                    if !hospital.isEmpty {
+                        combinedInterviewAndSignalingSection
+                            .padding(.horizontal, 20)
+                            .padding(.top, 4)
+                    }
                 }
             }
         }
@@ -1554,6 +1505,8 @@ struct ProgramEntryView: View {
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(.secondary)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -1624,6 +1577,8 @@ struct ProgramEntryView: View {
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(.secondary)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -1674,7 +1629,10 @@ struct ProgramEntryView: View {
                         .font(.body.weight(.semibold))
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
     }
 
     private func manualEntrySpecialtySheetRow(_ option: String, isSelected: Bool) -> some View {
@@ -1693,7 +1651,10 @@ struct ProgramEntryView: View {
                         .font(.body.weight(.semibold))
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
     }
 
     private func loadProgram(_ program: Program) {
@@ -2055,6 +2016,77 @@ struct ProgramEntryView: View {
         }
     }
     
+    private var interviewSchedulingProgramTitle: String {
+        ProgramListLabel.primaryTitle(for: currentProgramSnapshot())
+    }
+
+    private var interviewSchedulingInstitution: String? {
+        ProgramListLabel.secondarySubtitle(for: currentProgramSnapshot())
+    }
+
+    private var interviewSchedulingLocation: String? {
+        let snapshot = currentProgramSnapshot()
+        return snapshot.hasDisplayLocation ? snapshot.displayCityState : nil
+    }
+
+    private func commitInterviewDateFromPicker() {
+        hasInterviewDate = true
+        pendingInterviewDate = interviewDate
+        interviewDateSnapshotBeforePicker = nil
+        showDatePickerSheet = false
+
+        guard !isInitialLoad else { return }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            handleInterviewDateChanged(newDate: interviewDate)
+        }
+
+        let finalSpecialty = specialty.isEmpty
+            ? (program?.specialty ?? dataManager.preferences.specialties.first ?? "Unknown")
+            : specialty
+        let finalScore = questionnaire.totalWeightedScore(
+            preferences: dataManager.preferences,
+            programEMR: emr
+        )
+        let updatedProgram = Program(
+            id: program?.id ?? draftProgramId,
+            specialty: finalSpecialty,
+            name: name,
+            hospital: hospital,
+            city: city,
+            state: state,
+            address: address.isEmpty ? nil : address,
+            type: type,
+            accreditationID: accreditationID,
+            programQuality: ProgramQuality(),
+            cultureFit: CultureFit(),
+            location: Location(),
+            logistics: Logistics(),
+            careerAlignment: CareerAlignment(),
+            redFlags: RedFlags(),
+            questionnaire: questionnaire,
+            notes: notes,
+            interviewDate: interviewDate,
+            voiceMemoURL: currentVoiceMemoReference,
+            websiteURL: websiteURL.isEmpty ? nil : websiteURL,
+            contactEmail: contactEmail.isEmpty ? nil : contactEmail,
+            contactPhone: contactPhone.isEmpty ? nil : contactPhone,
+            programCoordinator: programCoordinator.isEmpty ? nil : programCoordinator,
+            programDirector: programDirector.isEmpty ? nil : programDirector,
+            isIMGFriendly: isIMGFriendly,
+            emr: emr,
+            signalType: signalType,
+            signalNote: trimmedSignalNote,
+            finalScore: finalScore
+        )
+        if program == nil {
+            guard dataManager.addProgram(updatedProgram) == .added else { return }
+        } else {
+            dataManager.updateProgram(updatedProgram)
+        }
+        dataManager.saveProgramsImmediately()
+    }
+
     // Handle interview date change and prompt for calendar sync
     private func handleInterviewDateChanged(newDate: Date) {
         pendingInterviewDate = newDate
@@ -2145,6 +2177,7 @@ struct ProgramEntryView: View {
                     .foregroundColor(.primary)
 
                 Button {
+                    interviewDateSnapshotBeforePicker = interviewDate
                     showDatePickerSheet = true
                 } label: {
                     if hasInterviewDate {

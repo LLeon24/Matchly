@@ -32,7 +32,7 @@ struct SetInterviewDatesView: View {
         .navigationTitle("Set Interview Dates")
         .navigationBarTitleDisplayMode(.large)
         .appCanvasBackground()
-        .sheet(item: $programForDatePicker) { program in
+        .fullScreenCover(item: $programForDatePicker) { program in
             SetInterviewDateSheet(
                 program: program,
                 onOpenFullProgram: {
@@ -43,8 +43,6 @@ struct SetInterviewDatesView: View {
                 }
             )
             .environmentObject(dataManager)
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
         }
         .sheet(item: $programForFullEdit) { program in
             MatchlyNavigationView {
@@ -126,54 +124,15 @@ struct SetInterviewDateSheet: View {
     @State private var showEnableCalendarSyncAlert = false
     @State private var isSaving = false
 
-    private var programTitle: String {
-        HospitalNameFormatter.format(
-            program.hospital.isEmpty
-                ? (program.name.isEmpty ? "Unnamed Program" : program.name)
-                : program.hospital
-        )
-    }
-
     var body: some View {
         MatchlyNavigationView {
-            VStack(spacing: 20) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(programTitle)
-                        .font(.arial(size: 18, weight: .semibold))
-                        .foregroundColor(.primary)
-                        .lineLimit(2)
-
-                    if program.hasDisplayLocation {
-                        Label(program.displayCityState, systemImage: "mappin.circle.fill")
-                            .font(.arial(size: 13))
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 20)
-                .padding(.top, 8)
-
-                DatePicker(
-                    "Interview Date & Time",
-                    selection: $interviewDate,
-                    displayedComponents: [.date, .hourAndMinute]
-                )
-                .datePickerStyle(.wheel)
-                .labelsHidden()
-                .frame(maxWidth: .infinity)
-
-                Button {
-                    onOpenFullProgram()
-                } label: {
-                    Label("Open full program", systemImage: "doc.text")
-                        .font(.arial(size: 14, weight: .medium))
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .padding(.horizontal, 20)
-
-                Spacer(minLength: 0)
-            }
+            InterviewDateSchedulingContent(
+                programTitle: ProgramListLabel.primaryTitle(for: program),
+                institutionSubtitle: ProgramListLabel.secondarySubtitle(for: program),
+                locationLine: program.hasDisplayLocation ? program.displayCityState : nil,
+                interviewDate: $interviewDate
+            )
+            .appCanvasBackground()
             .navigationTitle("Interview Date")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -186,6 +145,14 @@ struct SetInterviewDateSheet: View {
                     }
                     .fontWeight(.semibold)
                     .disabled(isSaving)
+                }
+                ToolbarItem(placement: .bottomBar) {
+                    Button {
+                        onOpenFullProgram()
+                    } label: {
+                        Label("Open full program", systemImage: "doc.text")
+                            .font(.arial(size: 15, weight: .medium))
+                    }
                 }
             }
             .alert("Add to Calendar?", isPresented: $showEnableCalendarSyncAlert) {

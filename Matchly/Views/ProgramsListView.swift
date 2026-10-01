@@ -343,8 +343,8 @@ struct ProgramsListView: View {
             
             switch sortOption {
             case .name:
-                programs = programs.sorted { 
-                    HospitalNameFormatter.format($0.hospital) < HospitalNameFormatter.format($1.hospital)
+                programs = programs.sorted {
+                    ProgramListLabel.nameSortKey(for: $0) < ProgramListLabel.nameSortKey(for: $1)
                 }
             case .score:
                 programs = programs.sorted { $0.finalScore > $1.finalScore }
@@ -378,8 +378,8 @@ struct ProgramsListView: View {
         var programs = savedPrograms
         switch sortOption {
         case .name:
-            programs = programs.sorted { 
-                HospitalNameFormatter.format($0.hospital) < HospitalNameFormatter.format($1.hospital)
+            programs = programs.sorted {
+                ProgramListLabel.nameSortKey(for: $0) < ProgramListLabel.nameSortKey(for: $1)
             }
         case .score:
             programs = programs.sorted { $0.finalScore > $1.finalScore }
@@ -444,11 +444,18 @@ struct CompactProgramRowView: View {
             
             // Program info - EXACT same layout as ProgramSearchRowView
             VStack(alignment: .leading, spacing: 3) {
-                // Hospital name
-                Text(HospitalNameFormatter.format(program.hospital.isEmpty ? (program.name.isEmpty ? "Unnamed Program" : program.name) : program.hospital))
+                Text(ProgramListLabel.primaryTitle(for: program))
                     .font(.arial(size: 15, weight: .semibold))
                     .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
+
+                if let institution = ProgramListLabel.secondarySubtitle(for: program) {
+                    Text(institution)
+                        .font(.arial(size: 13, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 
                 // Specialty badge (only badge-style element) - matching search
                 if !program.specialty.isEmpty {

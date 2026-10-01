@@ -64,18 +64,22 @@ struct ManualAddressSearchField: View {
                                     .font(.arial(size: 15, weight: .medium))
                                     .foregroundColor(.primary)
                                     .multilineTextAlignment(.leading)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
                                 if !completion.subtitle.isEmpty {
                                     Text(completion.subtitle)
                                         .font(.arial(size: 12))
                                         .foregroundColor(.secondary)
                                         .multilineTextAlignment(.leading)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
                                 }
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                             .padding(.vertical, 8)
                             .padding(.horizontal, 8)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
                 .background(Color(.secondarySystemGroupedBackground).opacity(0.65))
