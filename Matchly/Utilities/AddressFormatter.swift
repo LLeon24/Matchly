@@ -37,6 +37,7 @@ enum AddressFormatter {
             address: program.address,
             city: program.city,
             state: program.state,
+            postalCode: program.postalCode,
             accreditationID: program.accreditationID
         )
     }
@@ -56,6 +57,7 @@ enum AddressFormatter {
         address: String?,
         city: String,
         state: String,
+        postalCode: String? = nil,
         accreditationID: String? = nil
     ) -> String {
         let r = resolved(
@@ -65,17 +67,24 @@ enum AddressFormatter {
             state: state,
             accreditationID: accreditationID
         )
+        let zipSuffix = formattedPostalSuffix(postalCode)
         if !r.street.isEmpty {
-            return "\(r.street), \(r.city), \(r.state)"
+            return "\(r.street), \(r.city), \(r.state)\(zipSuffix)"
         }
         if let site = r.siteName, !site.isEmpty {
-            return "\(site), \(r.city), \(r.state)"
+            return "\(site), \(r.city), \(r.state)\(zipSuffix)"
         }
         let formattedHospital = HospitalNameFormatter.format(hospital)
         if !formattedHospital.isEmpty {
-            return "\(formattedHospital), \(r.city), \(r.state)"
+            return "\(formattedHospital), \(r.city), \(r.state)\(zipSuffix)"
         }
-        return "\(r.city), \(r.state)"
+        return "\(r.city), \(r.state)\(zipSuffix)"
+    }
+
+    private static func formattedPostalSuffix(_ postalCode: String?) -> String {
+        let trimmed = postalCode?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty else { return "" }
+        return " \(trimmed)"
     }
 
     static func resolved(for program: ResidencyProgramInfo) -> ResolvedAddress {

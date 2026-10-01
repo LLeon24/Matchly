@@ -14,6 +14,7 @@ struct Program: Identifiable, Codable {
     var hospital: String
     var city: String
     var state: String
+    var postalCode: String?
     var address: String? // Full street address
     var type: String // Academic / Community / Hybrid
     var accreditationID: String? // ACGME Program Code
@@ -148,6 +149,7 @@ struct Program: Identifiable, Codable {
         hospital: String = "",
         city: String = "",
         state: String = "",
+        postalCode: String? = nil,
         address: String? = nil,
         type: String = "Academic",
         accreditationID: String? = nil,
@@ -178,6 +180,7 @@ struct Program: Identifiable, Codable {
         self.hospital = hospital
         self.city = city
         self.state = state
+        self.postalCode = postalCode
         self.address = address
         self.type = type
         self.accreditationID = accreditationID

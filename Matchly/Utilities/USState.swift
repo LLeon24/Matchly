@@ -8,6 +8,11 @@
 import Foundation
 
 enum USState {
+    /// Two-letter abbreviations for US states and DC, sorted (for pickers and filters).
+    static var selectableAbbreviations: [String] {
+        centers.keys.sorted()
+    }
+
     /// Returns a two-letter state abbreviation when possible; otherwise the trimmed input.
     static func abbreviation(for state: String) -> String {
         let trimmed = state.trimmingCharacters(in: .whitespacesAndNewlines)

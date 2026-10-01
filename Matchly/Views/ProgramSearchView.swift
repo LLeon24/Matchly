@@ -149,6 +149,24 @@ struct ProgramSearchView: View {
         return nil
     }
 
+    /// Specialty to pre-fill when the user opens manual entry from this search screen.
+    private var manualEntryPreferredSpecialty: String? {
+        if selectedSpecialties.count == 1 {
+            return selectedSpecialties.first
+        }
+        if let specialties = specialtiesToUse, specialties.count == 1 {
+            return specialties.first
+        }
+        if !selectedSpecialties.isEmpty {
+            return selectedSpecialties.sorted().first
+        }
+        if let primary = dataManager.preferences.specialty,
+           !primary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return primary
+        }
+        return dataManager.preferences.specialties.first
+    }
+
     private func resetSpecialtyFilterToUserDefaults() {
         let userSpecialties = dataManager.preferences.specialties
         if !userSpecialties.isEmpty {
@@ -337,7 +355,10 @@ struct ProgramSearchView: View {
             }
             .sheet(isPresented: $showManualEntry) {
                 MatchlyNavigationView {
-                    ProgramEntryView(program: nil)
+                    ProgramEntryView(
+                        program: nil,
+                        preferredSpecialty: manualEntryPreferredSpecialty
+                    )
                         .environmentObject(dataManager)
                 }
                 .matchlyExpandedSheet()

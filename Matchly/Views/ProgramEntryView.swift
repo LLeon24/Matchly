@@ -23,12 +23,15 @@ struct ProgramEntryView: View {
     let program: Program?
     let scrollToFirstMissing: Bool
     let scrollToRedFlags: Bool
+    /// When adding manually from program search, pre-select the specialty the user was filtering by.
+    let preferredSpecialty: String?
     
     @State private var specialty: String = ""
     @State private var name: String = ""
     @State private var hospital: String = ""
     @State private var city: String = ""
     @State private var state: String = ""
+    @State private var postalCode: String = ""
     @State private var address: String = ""
     @State private var accreditationID: String? = nil
     @State private var type: String = ""
@@ -40,6 +43,13 @@ struct ProgramEntryView: View {
     @State private var pendingInterviewDate: Date? = nil
     @State private var previousInterviewDate: Date? = nil
     @State private var isInitialLoad = true
+    /// True after picking a program from search; false while typing a manual program (avoids swapping the form when hospital is filled).
+    @State private var didSelectProgramFromCatalog = false
+    @State private var showManualSpecialtySheet = false
+    @State private var showManualStateSheet = false
+    @State private var manualStateSearchText = ""
+    @State private var showMissingProgramNameAlert = false
+    @State private var highlightMissingProgramName = false
     @State private var didPerformInitialProgramLoad = false
     @State private var hasUnsavedChanges = false
     @State private var showUnsavedChangesAlert = false
@@ -94,11 +104,63 @@ struct ProgramEntryView: View {
     private static func sectionHeaderScrollID(_ sectionId: String) -> String {
         "matchly-section-header-\(sectionId)"
     }
+
+    /// First unanswered / jump targets: sit below pinned section headers.
+    private static let questionnaireQuestionScrollAnchor = UnitPoint(x: 0.5, y: 0.34)
+    /// After answering: bring the next question up without scrolling the previous one off-screen.
+    private static let questionnaireRevealNextAnchor = UnitPoint(x: 0.5, y: 0.88)
     
-    init(program: Program?, scrollToFirstMissing: Bool = false, scrollToRedFlags: Bool = false) {
+    init(
+        program: Program?,
+        scrollToFirstMissing: Bool = false,
+        scrollToRedFlags: Bool = false,
+        preferredSpecialty: String? = nil
+    ) {
         self.program = program
         self.scrollToFirstMissing = scrollToFirstMissing
         self.scrollToRedFlags = scrollToRedFlags
+        self.preferredSpecialty = preferredSpecialty
+
+        if program == nil,
+           let preferredSpecialty,
+           !preferredSpecialty.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            _specialty = State(initialValue: preferredSpecialty)
+        }
+    }
+
+    private var isManualDraftEntry: Bool {
+        program == nil && !didSelectProgramFromCatalog
+    }
+
+    private var showsProgramSummaryHeader: Bool {
+        !isManualDraftEntry && !hospital.isEmpty
+    }
+
+    private var manualEntryAllSpecialtyOptions: [String] {
+        SpecialtyFormatter.commonSpecialties
+    }
+
+    private var manualEntryOtherSpecialtyOptions: [String] {
+        let trimmed = specialty.trimmingCharacters(in: .whitespacesAndNewlines)
+        return manualEntryAllSpecialtyOptions
+            .filter { $0 != trimmed }
+            .sorted()
+    }
+
+    private var trimmedProgramName: String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var canSaveProgram: Bool {
+        !trimmedProgramName.isEmpty
+    }
+
+    private var manualEntrySpecialtyDisplayName: String {
+        let trimmed = specialty.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return "Select specialty"
+        }
+        return SpecialtyFormatter.displayNameWithAbbreviation(trimmed)
     }
     
     // MARK: - Form Content (now using ScrollView for better scrolling)
@@ -106,70 +168,8 @@ struct ProgramEntryView: View {
         ScrollViewReader { scrollProxy in
         ScrollView(.vertical) {
             LazyVStack(spacing: 16, pinnedViews: [.sectionHeaders]) {
-                // Basic Information Section (only show if hospital not selected)
-                if hospital.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Basic Information")
-                            .font(.arial(size: 20, weight: .semibold))
-                            .padding(.horizontal, 20)
-                            .padding(.top, 8)
-                        
-                        VStack(spacing: 12) {
-                            Button(action: {
-                                showProgramSearch = true
-                            }) {
-                                HStack {
-                                    Image(systemName: "magnifyingglass")
-                                        .foregroundColor(.blue)
-                                    Text("Search Programs")
-                                        .foregroundColor(.blue)
-                                    Spacer()
-                                    Image(systemName: "chevron.right")
-                                        .foregroundColor(.secondary)
-                                        .font(.caption)
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 12)
-                                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 10))
-                            }
-                            
-                            ClearableTextField("Program Name", text: $name)
-                                .padding(.horizontal, 16)
-                            
-                            ClearableTextField("Hospital / University", text: $hospital)
-                                .padding(.horizontal, 16)
-                            
-                            ClearableTextField("Street Address (e.g., 123 Main St)", text: $address)
-                                .autocapitalization(.words)
-                                .padding(.horizontal, 16)
-                            
-                            ClearableTextField("City", text: $city)
-                                .padding(.horizontal, 16)
-                            
-                            ClearableTextField("State", text: $state)
-                                .padding(.horizontal, 16)
-                            
-                            Toggle("Set Interview Date", isOn: $hasInterviewDate)
-                                .padding(.horizontal, 16)
-                                .onChange(of: hasInterviewDate) { oldValue, newValue in
-                                    if newValue && !isInitialLoad {
-                                        handleInterviewDateChanged(newDate: interviewDate)
-                                    }
-                                }
-                            
-                            if hasInterviewDate {
-                                DatePicker("Interview Date & Time", selection: $interviewDate, displayedComponents: [.date, .hourAndMinute])
-                                    .padding(.horizontal, 16)
-                                    .onChange(of: interviewDate) { oldValue, newValue in
-                                        if hasInterviewDate && !isInitialLoad && oldValue != newValue {
-                                            pendingInterviewDate = newValue
-                                            handleInterviewDateChanged(newDate: newValue)
-                                        }
-                                    }
-                            }
-                        }
-                    }
-                    .padding(.bottom, 8)
+                if isManualDraftEntry {
+                    manualProgramBasicsSection
                 } else {
                     // Combined Interview & Signaling Section - full width
                     VStack(spacing: 0) {
@@ -282,6 +282,7 @@ struct ProgramEntryView: View {
         .scrollBounceBehavior(.basedOnSize, axes: .vertical)
         .matchlyScrollTabBarClearance()
         .scrollDismissesKeyboard(.interactively)
+        .accessibilityIdentifier(MarketingAccessibilityID.programQuestionnaireRoot)
         .background(AppColors.dashboardCanvas)
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { notification in
             if let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
@@ -668,6 +669,7 @@ struct ProgramEntryView: View {
                                             programRating: Binding(
                                                 get: { questionnaire.sections[sectionIndex].items[itemIndex].programRating },
                                                 set: { newValue in
+                                                    let previousRating = questionnaire.sections[sectionIndex].items[itemIndex].programRating
                                                     var transaction = Transaction()
                                                     transaction.disablesAnimations = true
                                                     withTransaction(transaction) {
@@ -676,7 +678,12 @@ struct ProgramEntryView: View {
                                                         questionnaire = updated
                                                         checkAndExpandNextSection(currentSectionIndex: sectionIndex, currentItemIndex: itemIndex)
                                                     }
-
+                                                    scrollToNextQuestionIfNeeded(
+                                                        fromSectionId: section.id,
+                                                        itemId: item.id,
+                                                        previousRating: previousRating,
+                                                        newRating: newValue
+                                                    )
                                                 }
                                             ),
                                             notes: Binding(
@@ -733,6 +740,7 @@ struct ProgramEntryView: View {
                                             programRating: Binding(
                                                 get: { questionnaire.customSections[sectionIndex].items[itemIndex].programRating },
                                                 set: { newValue in
+                                                    let previousRating = questionnaire.customSections[sectionIndex].items[itemIndex].programRating
                                                     var transaction = Transaction()
                                                     transaction.disablesAnimations = true
                                                     withTransaction(transaction) {
@@ -740,7 +748,12 @@ struct ProgramEntryView: View {
                                                         updated.customSections[sectionIndex].items[itemIndex].programRating = newValue
                                                         questionnaire = updated
                                                     }
-
+                                                    scrollToNextQuestionIfNeeded(
+                                                        fromSectionId: customSection.id,
+                                                        itemId: item.id,
+                                                        previousRating: previousRating,
+                                                        newRating: newValue
+                                                    )
                                                 }
                                             ),
                                             notes: Binding(
@@ -794,6 +807,7 @@ struct ProgramEntryView: View {
         contentWithAlerts
         .sheet(isPresented: $showProgramSearch) {
             ProgramSearchView(onSelect: { programInfo in
+                didSelectProgramFromCatalog = true
                 let mapped = CatalogProgramMapper.toSavedProgram(programInfo)
                 specialty = mapped.specialty
                 name = mapped.name
@@ -945,6 +959,11 @@ struct ProgramEntryView: View {
             } message: {
                 Text(signalLimitMessage)
             }
+            .alert("Program Name Required", isPresented: $showMissingProgramNameAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("Enter a program name before saving. Address search only fills location fields.")
+            }
             .alert(
                 "Already in List",
                 isPresented: Binding(
@@ -992,10 +1011,23 @@ struct ProgramEntryView: View {
     
     private var contentWithChangeTracking: some View {
         contentWithLifecycle
-            .onChange(of: name) { _, _ in debouncedCheckForUnsavedChanges() }
+            .onChange(of: name) { _, _ in
+                if !trimmedProgramName.isEmpty {
+                    highlightMissingProgramName = false
+                }
+                debouncedCheckForUnsavedChanges()
+            }
             .onChange(of: hospital) { _, _ in debouncedCheckForUnsavedChanges() }
             .onChange(of: city) { _, _ in debouncedCheckForUnsavedChanges() }
             .onChange(of: state) { _, _ in debouncedCheckForUnsavedChanges() }
+            .onChange(of: postalCode) { _, newValue in
+                let digits = newValue.filter(\.isNumber)
+                let clipped = String(digits.prefix(5))
+                if clipped != newValue {
+                    postalCode = clipped
+                }
+                debouncedCheckForUnsavedChanges()
+            }
             .onChange(of: notes) { _, _ in debouncedCheckForUnsavedChanges() }
             .onChange(of: interviewDate) { _, _ in debouncedCheckForUnsavedChanges() }
             .onChange(of: hasInterviewDate) { _, _ in debouncedCheckForUnsavedChanges() }
@@ -1082,6 +1114,14 @@ struct ProgramEntryView: View {
         }
     }
 
+    private func locationSubtitle(city: String, state: String) -> String {
+        let zip = postalCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        if zip.isEmpty {
+            return "\(city), \(state)"
+        }
+        return "\(city), \(state) \(zip)"
+    }
+
     private var programHeaderMetadataRow: some View {
         let resolved = AddressFormatter.resolved(
             hospital: hospital,
@@ -1096,7 +1136,7 @@ struct ProgramEntryView: View {
                 HStack(spacing: 3) {
                     Image(systemName: "mappin.circle.fill")
                         .font(.arial(size: 9))
-                    Text("\(resolved.city), \(resolved.state)")
+                    Text(locationSubtitle(city: resolved.city, state: resolved.state))
                         .font(.arial(size: 11))
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
@@ -1118,6 +1158,10 @@ struct ProgramEntryView: View {
                 .foregroundColor(.secondary)
             }
 
+            if !specialty.isEmpty {
+                MatchlyProgramSpecialtyBadge(specialty: specialty)
+            }
+
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1125,8 +1169,7 @@ struct ProgramEntryView: View {
     
     private var mainContentView: some View {
         VStack(spacing: 0) {
-                // Compact Header (if program is selected)
-                if !hospital.isEmpty {
+                if showsProgramSummaryHeader {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(alignment: .top, spacing: 10) {
                             Text(HospitalNameFormatter.format(hospital))
@@ -1252,7 +1295,7 @@ struct ProgramEntryView: View {
                 formContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .navigationTitle(program == nil ? (hospital.isEmpty ? "Add Program" : "") : "Edit Program")
+            .navigationTitle(program == nil ? "Add Program" : "Edit Program")
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(hasUnsavedChanges)
             .toolbar {
@@ -1272,16 +1315,324 @@ struct ProgramEntryView: View {
                     .font(.arial(size: 16, weight: .medium))
                     .buttonStyle(.glassProminent)
                     .tint(.blue)
+                    .disabled(!canSaveProgram)
                 }
             }
             .background(NavigationPopGestureBlocker(isBlocked: hasUnsavedChanges))
     }
     
+    private var manualProgramBasicsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Basic Information")
+                .font(.arial(size: 20, weight: .semibold))
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+
+            VStack(spacing: 12) {
+                Button(action: {
+                    showProgramSearch = true
+                }) {
+                    HStack {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundColor(.blue)
+                        Text("Search Programs")
+                            .foregroundColor(.blue)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .foregroundColor(.secondary)
+                            .font(.caption)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 10))
+                }
+                .padding(.horizontal, 20)
+
+                VStack(spacing: 0) {
+                    manualFormRow {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ClearableTextField("Program Name (required)", text: $name)
+                                .font(.arial(size: 16))
+                                .textContentType(.organizationName)
+                                .autocorrectionDisabled()
+                            if highlightMissingProgramName && trimmedProgramName.isEmpty {
+                                Text("Enter a program name to save.")
+                                    .font(.arial(size: 11, weight: .medium))
+                                    .foregroundColor(.red)
+                            }
+                        }
+                    }
+                    manualFormDivider
+                    manualFormRow {
+                        ClearableTextField("Hospital / University", text: $hospital)
+                            .font(.arial(size: 16))
+                            .textContentType(.organizationName)
+                            .autocorrectionDisabled()
+                    }
+                    manualFormDivider
+                    manualFormRow {
+                        manualEntrySpecialtyPicker
+                    }
+                    manualFormDivider
+                    manualFormRow {
+                        ManualAddressSearchField(
+                            address: $address,
+                            city: $city,
+                            state: $state,
+                            postalCode: $postalCode
+                        )
+                    }
+                    manualFormDivider
+                    manualFormRow {
+                        ClearableTextField("Street Address (e.g., 123 Main St)", text: $address)
+                            .font(.arial(size: 16))
+                            .autocapitalization(.words)
+                    }
+                    manualFormDivider
+                    manualFormRow {
+                        ClearableTextField("City", text: $city)
+                            .font(.arial(size: 16))
+                    }
+                    manualFormDivider
+                    manualFormRow {
+                        manualEntryStatePicker
+                    }
+                    manualFormDivider
+                    manualFormRow {
+                        ClearableTextField("ZIP Code", text: $postalCode)
+                            .font(.arial(size: 16))
+                            .keyboardType(.numberPad)
+                            .textContentType(.postalCode)
+                    }
+                }
+                .glassEffect(.regular, in: .rect(cornerRadius: 12))
+                .padding(.horizontal, 20)
+
+                VStack(spacing: 0) {
+                    manualFormRow {
+                        Toggle("Set Interview Date", isOn: $hasInterviewDate)
+                            .font(.arial(size: 16))
+                            .onChange(of: hasInterviewDate) { oldValue, newValue in
+                                if newValue && !isInitialLoad {
+                                    handleInterviewDateChanged(newDate: interviewDate)
+                                }
+                            }
+                    }
+
+                    if hasInterviewDate {
+                        manualFormDivider
+                        manualFormRow {
+                            DatePicker("Interview Date & Time", selection: $interviewDate, displayedComponents: [.date, .hourAndMinute])
+                                .font(.arial(size: 16))
+                                .onChange(of: interviewDate) { oldValue, newValue in
+                                    if hasInterviewDate && !isInitialLoad && oldValue != newValue {
+                                        pendingInterviewDate = newValue
+                                        handleInterviewDateChanged(newDate: newValue)
+                                    }
+                                }
+                        }
+                    }
+                }
+                .glassEffect(.regular, in: .rect(cornerRadius: 12))
+                .padding(.horizontal, 20)
+
+                if !hospital.isEmpty {
+                    combinedInterviewAndSignalingSection
+                        .padding(.horizontal, 20)
+                        .padding(.top, 4)
+                }
+            }
+        }
+        .padding(.bottom, 8)
+        .sheet(isPresented: $showManualSpecialtySheet) {
+            manualEntrySpecialtySheet
+        }
+        .sheet(isPresented: $showManualStateSheet) {
+            manualEntryStateSheet
+        }
+    }
+
+    private func manualFormRow<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+    }
+
+    private var manualFormDivider: some View {
+        Divider()
+            .padding(.leading, 14)
+    }
+
+    private var manualEntrySpecialtyPicker: some View {
+        Button {
+            showManualSpecialtySheet = true
+        } label: {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Specialty")
+                        .font(.arial(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
+                    Text(manualEntrySpecialtyDisplayName)
+                        .font(.arial(size: 16, weight: .medium))
+                        .foregroundColor(specialty.isEmpty ? .secondary : .blue)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.secondary)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var manualEntrySpecialtySheet: some View {
+        MatchlyNavigationView {
+            List {
+                if !specialty.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Section("Selected") {
+                        manualEntrySpecialtySheetRow(specialty, isSelected: true)
+                    }
+                }
+
+                Section(specialty.isEmpty ? "Specialty" : "Other specialties") {
+                    ForEach(manualEntryOtherSpecialtyOptions, id: \.self) { option in
+                        manualEntrySpecialtySheetRow(option, isSelected: false)
+                    }
+                }
+            }
+            .navigationTitle("Specialty")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        showManualSpecialtySheet = false
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private var manualEntryStateDisplayName: String {
+        let trimmed = state.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return "Select state"
+        }
+        return USState.abbreviation(for: trimmed)
+    }
+
+    private var filteredManualEntryStates: [String] {
+        let query = manualStateSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if query.isEmpty {
+            return USState.selectableAbbreviations
+        }
+        let upper = query.uppercased()
+        return USState.selectableAbbreviations.filter { abbrev in
+            abbrev.contains(upper) || abbrev.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    private var manualEntryStatePicker: some View {
+        Button {
+            manualStateSearchText = ""
+            showManualStateSheet = true
+        } label: {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("State")
+                        .font(.arial(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
+                    Text(manualEntryStateDisplayName)
+                        .font(.arial(size: 16, weight: .medium))
+                        .foregroundColor(state.isEmpty ? .secondary : .primary)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.secondary)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var manualEntryStateSheet: some View {
+        MatchlyNavigationView {
+            List {
+                if !state.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Section("Selected") {
+                        manualEntryStateSheetRow(USState.abbreviation(for: state), isSelected: true)
+                    }
+                }
+
+                Section(state.isEmpty ? "State" : "Other states") {
+                    ForEach(filteredManualEntryStates.filter {
+                        USState.abbreviation(for: state) != $0
+                    }, id: \.self) { abbrev in
+                        manualEntryStateSheetRow(abbrev, isSelected: false)
+                    }
+                }
+            }
+            .searchable(text: $manualStateSearchText, prompt: "Search states")
+            .navigationTitle("State")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        showManualStateSheet = false
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func manualEntryStateSheetRow(_ abbrev: String, isSelected: Bool) -> some View {
+        Button {
+            state = abbrev
+            showManualStateSheet = false
+        } label: {
+            HStack {
+                Text(abbrev)
+                    .foregroundColor(.primary)
+                Spacer()
+                if isSelected || USState.abbreviation(for: state) == abbrev {
+                    Image(systemName: "checkmark")
+                        .foregroundColor(.blue)
+                        .font(.body.weight(.semibold))
+                }
+            }
+        }
+    }
+
+    private func manualEntrySpecialtySheetRow(_ option: String, isSelected: Bool) -> some View {
+        Button {
+            specialty = option
+            revalidateSignalAssignment()
+            showManualSpecialtySheet = false
+        } label: {
+            HStack {
+                Text(SpecialtyFormatter.displayNameWithAbbreviation(option))
+                    .foregroundColor(.primary)
+                Spacer()
+                if isSelected || specialty == option {
+                    Image(systemName: "checkmark")
+                        .foregroundColor(.blue)
+                        .font(.body.weight(.semibold))
+                }
+            }
+        }
+    }
+
     private func loadProgram(_ program: Program) {
+        didSelectProgramFromCatalog = true
         name = program.name
         hospital = program.hospital
         city = program.city
         state = program.state
+        postalCode = program.postalCode ?? ""
         address = program.address ?? ""
         accreditationID = program.accreditationID
         type = program.type
@@ -1345,6 +1696,14 @@ struct ProgramEntryView: View {
         } else if isInitialAppearance {
             draftProgramId = UUID().uuidString
             questionnaire.mergeCustomization(from: dataManager.preferences)
+            if specialty.isEmpty {
+                if let preferredSpecialty,
+                   !preferredSpecialty.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    specialty = preferredSpecialty
+                } else if let defaultSpecialty = dataManager.preferences.specialties.first {
+                    specialty = defaultSpecialty
+                }
+            }
             isInitialLoad = false
         }
     }
@@ -1358,10 +1717,13 @@ struct ProgramEntryView: View {
         return Program(
             id: programId,
             specialty: normalizedSpecialty,
-            name: name,
-            hospital: hospital,
+            name: trimmedProgramName,
+            hospital: hospital.trimmingCharacters(in: .whitespacesAndNewlines),
             city: city,
-            state: state,
+            state: USState.abbreviation(for: state),
+            postalCode: postalCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? nil
+                : postalCode.trimmingCharacters(in: .whitespacesAndNewlines),
             address: address.isEmpty ? nil : address,
             type: type,
             accreditationID: accreditationID,
@@ -1390,6 +1752,7 @@ struct ProgramEntryView: View {
 
     @discardableResult
     private func persistProgramChanges() -> Bool {
+        guard validateProgramNameForSave() else { return false }
         let newProgram = buildProgramDraft()
 
         if program == nil {
@@ -1408,6 +1771,16 @@ struct ProgramEntryView: View {
         guard checkForUnsavedChanges() else { return }
         guard persistProgramChanges() else { return }
         hasUnsavedChanges = false
+    }
+
+    private func validateProgramNameForSave() -> Bool {
+        guard !trimmedProgramName.isEmpty else {
+            highlightMissingProgramName = true
+            showMissingProgramNameAlert = true
+            return false
+        }
+        highlightMissingProgramName = false
+        return true
     }
 
     private func saveProgram() {
@@ -1431,6 +1804,7 @@ struct ProgramEntryView: View {
         guard let program = persistedProgramBaseline() ?? program else {
             // For new programs, check if any fields are filled (quick checks)
             return !name.isEmpty || !hospital.isEmpty || !city.isEmpty || !state.isEmpty ||
+                   !postalCode.isEmpty ||
                    !notes.isEmpty || hasInterviewDate || signalType != .none || !signalNote.isEmpty || emr != nil ||
                    currentVoiceMemoReference != nil ||
                    questionnaire.sections.contains { section in
@@ -1448,7 +1822,9 @@ struct ProgramEntryView: View {
         
         // Quick string comparisons first
         if program.name != name || program.hospital != hospital || program.city != city ||
-           program.state != state || program.notes != notes || program.signalType != signalType ||
+           program.state != USState.abbreviation(for: state) ||
+           (program.postalCode ?? "") != postalCode.trimmingCharacters(in: .whitespacesAndNewlines) ||
+           program.notes != notes || program.signalType != signalType ||
            program.signalNote != trimmedSignalNote || program.emr != emr ||
            program.voiceMemoURL != currentVoiceMemoReference {
             return true
@@ -1483,6 +1859,7 @@ struct ProgramEntryView: View {
         ) else { return }
         dismissProgramEntryKeyboard()
         revealQuestionnaireSection(target.sectionId)
+        requestProgramScroll(to: target.scrollID, anchor: Self.questionnaireQuestionScrollAnchor)
     }
 
     private func focusQuestionnaireOnProgram() {
@@ -1541,15 +1918,32 @@ struct ProgramEntryView: View {
         }
     }
 
-    /// Programmatic scroll for notes and program header only — questionnaire uses manual scrolling.
     private func performProgramScroll(
         scrollID: String,
         anchor: UnitPoint,
         using proxy: ScrollViewProxy
     ) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+        DispatchQueue.main.async {
             scrollProgramContent(proxy, to: scrollID, anchor: anchor)
         }
+    }
+
+    private func scrollToNextQuestionIfNeeded(
+        fromSectionId: String,
+        itemId: String,
+        previousRating: Double,
+        newRating: Double
+    ) {
+        guard previousRating == 0, newRating > 0 else { return }
+        let current = QuestionnaireQuestionRef(sectionId: fromSectionId, itemId: itemId)
+        guard let next = questionnaire.nextQuestion(
+            after: current,
+            preferences: dataManager.preferences
+        ) else { return }
+        if next.sectionId != fromSectionId {
+            revealQuestionnaireSection(next.sectionId)
+        }
+        requestProgramScroll(to: next.scrollID, anchor: Self.questionnaireRevealNextAnchor)
     }
 
     private func sectionUnansweredCount(_ section: QuestionnaireSection) -> Int {
