@@ -147,7 +147,8 @@ struct ProgramsListView: View {
             .sheet(isPresented: $showAddProgram) {
                 ProgramSearchView(
                     onSelect: { _ in },
-                    allowMultiSelect: true
+                    allowMultiSelect: true,
+                    onManualProgramAdded: { showAddProgram = false }
                 )
                 .matchlyExpandedSheet()
             }

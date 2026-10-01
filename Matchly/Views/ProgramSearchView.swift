@@ -48,6 +48,8 @@ struct ProgramSearchView: View {
 
     let onSelect: (ResidencyProgramInfo) -> Void
     var allowMultiSelect: Bool = false
+    /// Dismisses program search after a manual program is saved (returns to My Programs).
+    var onManualProgramAdded: (() -> Void)? = nil
     
     @ObservedObject private var database = ResidencyProgramDatabase.shared
     
@@ -117,9 +119,14 @@ struct ProgramSearchView: View {
         "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY", "DC", "PR"
     ]
     
-    init(onSelect: @escaping (ResidencyProgramInfo) -> Void, allowMultiSelect: Bool = false) {
+    init(
+        onSelect: @escaping (ResidencyProgramInfo) -> Void,
+        allowMultiSelect: Bool = false,
+        onManualProgramAdded: (() -> Void)? = nil
+    ) {
         self.onSelect = onSelect
         self.allowMultiSelect = allowMultiSelect
+        self.onManualProgramAdded = onManualProgramAdded
     }
 
     private var hasActiveFilters: Bool {
@@ -354,16 +361,27 @@ struct ProgramSearchView: View {
                 Text(specialtyConfirmationMessage)
             }
             .sheet(isPresented: $showManualEntry) {
-                MatchlyNavigationView {
-                    ProgramEntryView(
-                        program: nil,
-                        preferredSpecialty: manualEntryPreferredSpecialty
-                    )
-                        .environmentObject(dataManager)
-                }
-                .matchlyExpandedSheet()
+                manualEntrySheet
             }
         }
+    }
+
+    private var manualEntrySheet: some View {
+        MatchlyNavigationView {
+            ProgramEntryView(
+                program: nil,
+                preferredSpecialty: manualEntryPreferredSpecialty,
+                onNewManualProgramSaved: handleManualProgramSaved
+            )
+            .environmentObject(dataManager)
+        }
+        .matchlyExpandedSheet()
+    }
+
+    private func handleManualProgramSaved() {
+        showManualEntry = false
+        onManualProgramAdded?()
+        dismiss()
     }
 
     private var manualEntryFooter: some View {

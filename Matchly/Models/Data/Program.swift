@@ -83,6 +83,15 @@ struct Program: Identifiable, Codable {
     var isInterviewed: Bool {
         return interviewDate != nil
     }
+
+    /// Programs added by hand (not from the ACGME catalog) stay editable in the manual entry form.
+    var isManuallyAdded: Bool {
+        guard let accreditationID = accreditationID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !accreditationID.isEmpty else {
+            return true
+        }
+        return false
+    }
     
     // Check if program has any red flags (Yes answers in red flags section)
     func hasRedFlags() -> Bool {

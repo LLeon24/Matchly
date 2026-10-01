@@ -52,18 +52,21 @@ enum WidgetData {
 struct InterviewsEntry: TimelineEntry {
     let date: Date
     let interviews: [WidgetData.Interview]
+    /// Widget gallery / Xcode previews use a shorter canvas; avoid clipping the header and hero.
+    var isPreview: Bool = false
 }
 
 struct InterviewsProvider: TimelineProvider {
     func placeholder(in context: Context) -> InterviewsEntry {
-        InterviewsEntry(date: Date(), interviews: Self.sampleInterviews)
+        InterviewsEntry(date: Date(), interviews: Self.sampleInterviews, isPreview: true)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (InterviewsEntry) -> Void) {
         let interviews = WidgetData.upcomingInterviews(asOf: Date())
         completion(InterviewsEntry(
             date: Date(),
-            interviews: context.isPreview && interviews.isEmpty ? Self.sampleInterviews : interviews
+            interviews: context.isPreview && interviews.isEmpty ? Self.sampleInterviews : interviews,
+            isPreview: context.isPreview
         ))
     }
 
@@ -213,76 +216,101 @@ struct InterviewsWidgetEntryView: View {
     }
 
     private var large: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            header
-            if entry.interviews.isEmpty {
-                Spacer()
-                emptyState
-                Spacer()
-            } else if let next = entry.interviews.first {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(WidgetStyle.countdownText(to: next.date, from: entry.date))
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(WidgetStyle.brandBlue)
-                        .minimumScaleFactor(0.75)
-                    Text(next.title)
-                        .font(.system(size: 16, weight: .semibold))
-                        .lineLimit(2)
-                    if !next.subtitle.isEmpty {
-                        Text(next.subtitle)
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                    Text(WidgetStyle.shortDate(next.date))
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
+        featuredWithListLayout(
+            followingRowCount: 3,
+            rowTitleSize: 13,
+            rowMetaSize: 11,
+            countdownSize: 28,
+            heroTitleSize: 16,
+            heroMetaSize: 12
+        )
+    }
 
-                if entry.interviews.count > 1 {
-                    Divider().opacity(0.35)
-                    ForEach(entry.interviews.dropFirst().prefix(3)) { interview in
-                        interviewRow(interview, titleSize: 13, metaSize: 11)
-                    }
+    /// iPad extra-large: same hero + list pattern as `large`; more rows on device, compact layout in the gallery preview.
+    private var extraLarge: some View {
+        Group {
+            if entry.isPreview {
+                featuredWithListLayout(
+                    followingRowCount: 3,
+                    rowTitleSize: 13,
+                    rowMetaSize: 11,
+                    countdownSize: 28,
+                    heroTitleSize: 16,
+                    heroMetaSize: 12
+                )
+            } else {
+                ViewThatFits(in: .vertical) {
+                    featuredWithListLayout(
+                        followingRowCount: 6,
+                        rowTitleSize: 14,
+                        rowMetaSize: 12,
+                        countdownSize: 28,
+                        heroTitleSize: 16,
+                        heroMetaSize: 12
+                    )
+                    featuredWithListLayout(
+                        followingRowCount: 4,
+                        rowTitleSize: 14,
+                        rowMetaSize: 12,
+                        countdownSize: 28,
+                        heroTitleSize: 16,
+                        heroMetaSize: 12
+                    )
+                    featuredWithListLayout(
+                        followingRowCount: 3,
+                        rowTitleSize: 13,
+                        rowMetaSize: 11,
+                        countdownSize: 28,
+                        heroTitleSize: 16,
+                        heroMetaSize: 12
+                    )
                 }
-                Spacer(minLength: 0)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    private var extraLarge: some View {
-        VStack(alignment: .leading, spacing: 12) {
+    private func featuredWithListLayout(
+        followingRowCount: Int,
+        rowTitleSize: CGFloat,
+        rowMetaSize: CGFloat,
+        countdownSize: CGFloat,
+        heroTitleSize: CGFloat,
+        heroMetaSize: CGFloat
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
             header
             if entry.interviews.isEmpty {
-                Spacer()
+                Spacer(minLength: 0)
                 emptyState
-                Spacer()
+                Spacer(minLength: 0)
             } else if let next = entry.interviews.first {
-                HStack(alignment: .top, spacing: 16) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(WidgetStyle.countdownText(to: next.date, from: entry.date))
-                            .font(.system(size: 32, weight: .bold))
-                            .foregroundStyle(WidgetStyle.brandBlue)
-                        Text(next.title)
-                            .font(.system(size: 18, weight: .semibold))
-                            .lineLimit(2)
-                        if !next.subtitle.isEmpty {
-                            Text(next.subtitle)
-                                .font(.system(size: 13))
-                                .foregroundStyle(.secondary)
-                        }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(WidgetStyle.countdownText(to: next.date, from: entry.date))
+                        .font(.system(size: countdownSize, weight: .bold))
+                        .foregroundStyle(WidgetStyle.brandBlue)
+                        .minimumScaleFactor(0.75)
+                        .lineLimit(1)
+                    Text(next.title)
+                        .font(.system(size: heroTitleSize, weight: .semibold))
+                        .lineLimit(2)
+                    if !next.subtitle.isEmpty {
+                        Text(next.subtitle)
+                            .font(.system(size: heroMetaSize))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
-                    Spacer(minLength: 0)
                     Text(WidgetStyle.shortDate(next.date))
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: heroMetaSize, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
+                .layoutPriority(1)
 
-                Divider().opacity(0.35)
-
-                ForEach(entry.interviews.dropFirst().prefix(7)) { interview in
-                    interviewRow(interview, titleSize: 14, metaSize: 12)
+                if entry.interviews.count > 1 {
+                    Divider().opacity(0.35)
+                    ForEach(entry.interviews.dropFirst().prefix(followingRowCount)) { interview in
+                        interviewRow(interview, titleSize: rowTitleSize, metaSize: rowMetaSize)
+                    }
                 }
                 Spacer(minLength: 0)
             }
@@ -403,5 +431,5 @@ struct MatchlyWidget: Widget {
 #Preview(as: .systemExtraLarge) {
     MatchlyWidget()
 } timeline: {
-    InterviewsEntry(date: .now, interviews: InterviewsProvider.sampleInterviews)
+    InterviewsEntry(date: .now, interviews: InterviewsProvider.sampleInterviews, isPreview: true)
 }

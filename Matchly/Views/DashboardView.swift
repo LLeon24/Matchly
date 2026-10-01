@@ -118,7 +118,11 @@ struct DashboardView: View {
             MatchlyNavigationView {
                 ProgramSearchView(
                     onSelect: { _ in },
-                    allowMultiSelect: true
+                    allowMultiSelect: true,
+                    onManualProgramAdded: {
+                        showAddProgram = false
+                        selectedTab = MainTabLayout.programsIndex
+                    }
                 )
             }
             .matchlyExpandedSheet()
@@ -277,6 +281,7 @@ struct DashboardView: View {
             .padding(.bottom, screenLayout.pageBottomInset)
         }
         .matchlyScrollTabBarClearance()
+        .accessibilityIdentifier(MarketingAccessibilityID.dashboardRoot)
         .refreshable {
             dataManager.recalculateAllScores()
             dataManager.objectWillChange.send()

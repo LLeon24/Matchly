@@ -25,6 +25,8 @@ struct ProgramEntryView: View {
     let scrollToRedFlags: Bool
     /// When adding manually from program search, pre-select the specialty the user was filtering by.
     let preferredSpecialty: String?
+    /// Called after saving a new manually entered program (closes search and returns to My Programs).
+    var onNewManualProgramSaved: (() -> Void)? = nil
     
     @State private var specialty: String = ""
     @State private var name: String = ""
@@ -50,6 +52,7 @@ struct ProgramEntryView: View {
     @State private var manualStateSearchText = ""
     @State private var showMissingProgramNameAlert = false
     @State private var highlightMissingProgramName = false
+    @State private var isEditingManualProgramDetails = false
     @State private var didPerformInitialProgramLoad = false
     @State private var hasUnsavedChanges = false
     @State private var showUnsavedChangesAlert = false
@@ -114,12 +117,14 @@ struct ProgramEntryView: View {
         program: Program?,
         scrollToFirstMissing: Bool = false,
         scrollToRedFlags: Bool = false,
-        preferredSpecialty: String? = nil
+        preferredSpecialty: String? = nil,
+        onNewManualProgramSaved: (() -> Void)? = nil
     ) {
         self.program = program
         self.scrollToFirstMissing = scrollToFirstMissing
         self.scrollToRedFlags = scrollToRedFlags
         self.preferredSpecialty = preferredSpecialty
+        self.onNewManualProgramSaved = onNewManualProgramSaved
 
         if program == nil,
            let preferredSpecialty,
@@ -132,8 +137,23 @@ struct ProgramEntryView: View {
         program == nil && !didSelectProgramFromCatalog
     }
 
+    private var shouldShowManualBasicsSection: Bool {
+        if program == nil {
+            return !didSelectProgramFromCatalog
+        }
+        return program?.isManuallyAdded ?? false
+    }
+
+    private var isSavedManualProgram: Bool {
+        program?.isManuallyAdded ?? false
+    }
+
+    private var showsCollapsedManualProgramSummary: Bool {
+        isSavedManualProgram && !isEditingManualProgramDetails
+    }
+
     private var showsProgramSummaryHeader: Bool {
-        !isManualDraftEntry && !hospital.isEmpty
+        !isManualDraftEntry && !shouldShowManualBasicsSection && !hospital.isEmpty
     }
 
     private var manualEntryAllSpecialtyOptions: [String] {
@@ -168,9 +188,13 @@ struct ProgramEntryView: View {
         ScrollViewReader { scrollProxy in
         ScrollView(.vertical) {
             LazyVStack(spacing: 16, pinnedViews: [.sectionHeaders]) {
-                if isManualDraftEntry {
+                if showsCollapsedManualProgramSummary {
+                    collapsedManualProgramSummary
+                } else if shouldShowManualBasicsSection {
                     manualProgramBasicsSection
-                } else {
+                }
+
+                if !isManualDraftEntry {
                     // Combined Interview & Signaling Section - full width
                     VStack(spacing: 0) {
                         combinedInterviewAndSignalingSection
@@ -188,8 +212,7 @@ struct ProgramEntryView: View {
                             .padding(.horizontal, 20)
                             .padding(.top, 8)
                     }
-                }
-                
+
                 if canOpenInterviewPrep {
                     interviewPrepReferenceCard
                 }
@@ -272,7 +295,8 @@ struct ProgramEntryView: View {
                     }
                 }
                 .padding(.horizontal, 20)
-                
+                }
+
                 // Extra clearance when the keyboard is open
                 Color.clear.frame(height: keyboardHeight > 0 ? 20 : 0)
             }
@@ -1321,10 +1345,56 @@ struct ProgramEntryView: View {
             .background(NavigationPopGestureBlocker(isBlocked: hasUnsavedChanges))
     }
     
+    private var collapsedManualProgramSummary: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(trimmedProgramName.isEmpty ? "Program" : name)
+                        .font(.arial(size: 18, weight: .semibold))
+                        .foregroundColor(.primary)
+                        .lineLimit(2)
+                    if !hospital.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text(hospital)
+                            .font(.arial(size: 13, weight: .medium))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    } else if !city.isEmpty && !state.isEmpty {
+                        Text(locationSubtitle(city: city, state: USState.abbreviation(for: state)))
+                            .font(.arial(size: 13, weight: .medium))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Button("Edit") {
+                    isEditingManualProgramDetails = true
+                }
+                .font(.arial(size: 15, weight: .semibold))
+                .buttonStyle(.glassProminent)
+                .tint(.blue)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+        }
+        .glassEffect(.regular, in: .rect(cornerRadius: 12))
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+    }
+
     private var manualProgramBasicsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Basic Information")
-                .font(.arial(size: 20, weight: .semibold))
+            HStack(alignment: .center) {
+                Text("Basic Information")
+                    .font(.arial(size: 20, weight: .semibold))
+                Spacer(minLength: 8)
+                if isSavedManualProgram {
+                    Button("Done") {
+                        isEditingManualProgramDetails = false
+                    }
+                    .font(.arial(size: 15, weight: .medium))
+                }
+            }
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
 
@@ -1627,7 +1697,8 @@ struct ProgramEntryView: View {
     }
 
     private func loadProgram(_ program: Program) {
-        didSelectProgramFromCatalog = true
+        didSelectProgramFromCatalog = !program.isManuallyAdded
+        isEditingManualProgramDetails = false
         name = program.name
         hospital = program.hospital
         city = program.city
@@ -1784,12 +1855,19 @@ struct ProgramEntryView: View {
     }
 
     private func saveProgram() {
+        let isNewManualProgram = program == nil && (accreditationID ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         guard persistProgramChanges() else { return }
 
         // Note: Calendar sync is handled through alerts when interview date is set/changed
         // No need to sync here as it's already handled in handleInterviewDateChanged
 
         hasUnsavedChanges = false
+        if isSavedManualProgram {
+            isEditingManualProgramDetails = false
+        }
+        if isNewManualProgram {
+            onNewManualProgramSaved?()
+        }
         dismiss()
     }
     

@@ -29,17 +29,10 @@ enum AddressMapSearch {
             throw SearchError.noResults
         }
 
-        var resolved = parsedAddress(
+        return parsedAddress(
             from: mapItem,
-            supplementalTexts: [completion.title, completion.subtitle]
+            supplementalTexts: [completion.subtitle]
         )
-
-        if resolved.postalCode.isEmpty,
-           let zip = await reverseGeocodedPostalCode(for: mapItem.location) {
-            resolved.postalCode = normalizedPostalCode(zip)
-        }
-
-        return resolved
     }
 
     static func parsedAddress(
@@ -86,21 +79,7 @@ enum AddressMapSearch {
         for text in texts {
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { continue }
-
             applyFullAddressLines(trimmed, street: &street, city: &city, state: &state, postalCode: &postalCode)
-
-            if postalCode.isEmpty, let zip = firstUSPostalCode(in: trimmed) {
-                postalCode = zip
-            }
-        }
-
-        if postalCode.isEmpty {
-            for text in texts {
-                if let zip = firstUSPostalCode(in: text) {
-                    postalCode = zip
-                    break
-                }
-            }
         }
 
         if state.isEmpty {
@@ -112,10 +91,20 @@ enum AddressMapSearch {
             }
         }
 
+        let normalizedState = USState.abbreviation(for: state)
+        if postalCode.isEmpty {
+            postalCode = bestPostalCode(from: texts, expectedState: normalizedState) ?? ""
+        } else if !normalizedState.isEmpty,
+                  !postalMatchesState(postalCode, state: normalizedState, in: texts) {
+            if let corrected = bestPostalCode(from: texts, expectedState: normalizedState) {
+                postalCode = corrected
+            }
+        }
+
         return ResolvedManualAddress(
             street: street,
             city: city,
-            state: USState.abbreviation(for: state),
+            state: normalizedState,
             postalCode: normalizedPostalCode(postalCode)
         )
     }
@@ -124,31 +113,48 @@ enum AddressMapSearch {
         String(raw.filter(\.isNumber).prefix(5))
     }
 
-    private static func firstUSPostalCode(in text: String) -> String? {
-        guard let regex = try? NSRegularExpression(pattern: #"(?<!\d)(\d{5})(?:-\d{4})?(?!\d)"#) else {
-            return nil
+    /// ZIP must appear with a state abbreviation (avoids treating street numbers like 10001 as ZIP codes).
+    private static func bestPostalCode(from texts: [String], expectedState: String) -> String? {
+        var matches: [(state: String, zip: String)] = []
+        for text in texts {
+            matches.append(contentsOf: statePostalMatches(in: text))
+        }
+        guard !matches.isEmpty else { return nil }
+
+        if !expectedState.isEmpty,
+           let match = matches.last(where: { $0.state == expectedState }) {
+            return match.zip
+        }
+        return matches.last?.zip
+    }
+
+    private static func postalMatchesState(_ postal: String, state: String, in texts: [String]) -> Bool {
+        guard !state.isEmpty else { return true }
+        let normalized = normalizedPostalCode(postal)
+        return statePostalMatches(in: texts.joined(separator: "\n"))
+            .contains { $0.state == state && $0.zip == normalized }
+    }
+
+    private static func statePostalMatches(in text: String) -> [(state: String, zip: String)] {
+        guard let regex = try? NSRegularExpression(pattern: #"\b([A-Z]{2})\s+(\d{5})(?:-\d{4})?(?!\d)"#) else {
+            return []
         }
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
-        guard let match = regex.firstMatch(in: text, range: range),
-              match.numberOfRanges > 1,
-              let zipRange = Range(match.range(at: 1), in: text) else {
-            return nil
+        let results = regex.matches(in: text, range: range)
+        return results.compactMap { match in
+            guard match.numberOfRanges > 2,
+                  let stateRange = Range(match.range(at: 1), in: text),
+                  let zipRange = Range(match.range(at: 2), in: text) else {
+                return nil
+            }
+            let abbrev = String(text[stateRange])
+            guard USState.selectableAbbreviations.contains(abbrev) else { return nil }
+            return (abbrev, String(text[zipRange]))
         }
-        return String(text[zipRange])
     }
 
     private static func parsedStateAbbreviation(nearPostalCodeIn text: String) -> String? {
-        guard let regex = try? NSRegularExpression(pattern: #"\b([A-Z]{2})\s+\d{5}(?:-\d{4})?\b"#) else {
-            return nil
-        }
-        let range = NSRange(text.startIndex..<text.endIndex, in: text)
-        guard let match = regex.firstMatch(in: text, range: range),
-              match.numberOfRanges > 1,
-              let stateRange = Range(match.range(at: 1), in: text) else {
-            return nil
-        }
-        let abbrev = String(text[stateRange])
-        return USState.selectableAbbreviations.contains(abbrev) ? abbrev : nil
+        statePostalMatches(in: text).last?.state
     }
 
     private static func applyCityWithContext(
@@ -160,11 +166,15 @@ enum AddressMapSearch {
         let trimmed = cityWithContext.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
-        if postalCode.isEmpty, let zip = firstUSPostalCode(in: trimmed) {
-            postalCode = zip
-        }
         if state.isEmpty, let parsedState = parsedStateAbbreviation(nearPostalCodeIn: trimmed) {
             state = parsedState
+        }
+        if postalCode.isEmpty, let parsedState = state.isEmpty ? parsedStateAbbreviation(nearPostalCodeIn: trimmed) : state,
+           let match = statePostalMatches(in: trimmed).last(where: { $0.state == USState.abbreviation(for: parsedState) }) {
+            postalCode = match.zip
+        } else if postalCode.isEmpty, let match = statePostalMatches(in: trimmed).last {
+            postalCode = match.zip
+            if state.isEmpty { state = match.state }
         }
 
         let parts = trimmed
@@ -224,15 +234,6 @@ enum AddressMapSearch {
         }
     }
 
-    private static func reverseGeocodedPostalCode(for location: CLLocation) async -> String? {
-        guard let request = MKReverseGeocodingRequest(location: location),
-              let mapItems = try? await request.mapItems,
-              let mapItem = mapItems.first else {
-            return nil
-        }
-        let postal = parsedAddress(from: mapItem).postalCode
-        return postal.isEmpty ? nil : postal
-    }
 }
 
 @MainActor

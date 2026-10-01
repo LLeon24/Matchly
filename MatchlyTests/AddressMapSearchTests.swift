@@ -43,4 +43,30 @@ final class AddressMapSearchTests: XCTestCase {
 
         XCTAssertEqual(resolved.postalCode, "95014")
     }
+
+    func testStreetNumberIsNotTreatedAsZIP() {
+        let texts = [
+            "10001 Broadway",
+            "New York, NY 10001",
+        ]
+        let resolved = AddressMapSearch.resolvedAddress(from: texts)
+
+        XCTAssertEqual(resolved.postalCode, "10001")
+        XCTAssertEqual(resolved.state, "NY")
+    }
+
+    func testKissimmeeAddressUsesStateAnchoredZIP() {
+        let texts = [
+            """
+            468 Acacia Tree Way
+            Kissimmee, FL 34758
+            United States
+            """
+        ]
+        let resolved = AddressMapSearch.resolvedAddress(from: texts, preferredStreet: "468 Acacia Tree Way")
+
+        XCTAssertEqual(resolved.city, "Kissimmee")
+        XCTAssertEqual(resolved.state, "FL")
+        XCTAssertEqual(resolved.postalCode, "34758")
+    }
 }
